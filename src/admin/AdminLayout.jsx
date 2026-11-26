@@ -1,9 +1,11 @@
 // Admin layout — sidebar navigation + role guard.
-// Allowed roles: admin and artist. Listeners (and signed-out visitors)
-// see an "Access denied" empty state instead of any admin content.
+// ONLY the allowlisted admin email may open /admin (see
+// src/lib/auth.jsx ADMIN_EMAILS). Not signed in → /login. Signed in but
+// not admin → home. There is NO public "Access denied" page: the route
+// itself never renders admin chrome for non-admins.
 // Wrapped in LanguageProvider so the admin is self-contained for i18n;
 // AuthProvider must still wrap this component from the app root.
-import { NavLink, Outlet, Link } from 'react-router-dom'
+import { NavLink, Navigate, Outlet, Link } from 'react-router-dom'
 import { useAuth, DEMO_ROLES } from '../lib/auth.jsx'
 import { LanguageProvider, useI18n, LOCALES } from '../lib/i18n.js'
 import './admin.css'
@@ -35,7 +37,7 @@ function roleLabelKey(role) {
 }
 
 function AdminLayoutInner() {
-  const { user, role, isAdmin, isArtist, isDemo, setDemoRole, signOut, loading } = useAuth()
+  const { user, role, isAdmin, isDemo, setDemoRole, signOut, loading } = useAuth()
   const { t, lang, setLang, locales } = useI18n()
 
   if (loading) {
@@ -48,7 +50,10 @@ function AdminLayoutInner() {
     )
   }
 
-  const allowed = isAdmin || isArtist
+  // Not signed in → the (unlinked) login page. Signed in but not admin
+  // → home. No admin chrome ever renders for a non-admin.
+  if (!user) return <Navigate to="/login" replace />
+  if (!isAdmin) return <Navigate to="/" replace />
 
   return (
     <div className="admin-shell">
@@ -129,21 +134,7 @@ function AdminLayoutInner() {
         </header>
 
         <main className="admin-content">
-          {!allowed ? (
-            <div className="admin-empty">
-              <h2>{t('admin.accessDenied')}</h2>
-              <p>{t('admin.accessDeniedHint')}</p>
-              <p>
-                {t('admin.signedInAs', { role: t(roleLabelKey(role)) })}
-                {user ? ` — ${user.email}` : ''}
-              </p>
-              <Link to="/" className="admin-btn admin-btn-primary">
-                {t('nav.backToApp')}
-              </Link>
-            </div>
-          ) : (
-            <Outlet />
-          )}
+          <Outlet />
         </main>
       </div>
     </div>

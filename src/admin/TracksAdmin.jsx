@@ -2,7 +2,7 @@
 // Status values are lowercase in the catalog; labels come from locales.
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { tracks, albums } from '../data/catalog.js'
+import { allTracks as catalogTracks, allAlbums as catalogAlbums } from '../data/catalog.js'
 import {
   getMergedTracks,
   saveAdminTrack,
@@ -43,7 +43,7 @@ export default function TracksAdmin() {
   const statusLabel = (s) => t(STATUS_LABEL_KEYS[normalizeStatus(s)] || 'admin.statusDraft')
   const genreLabel = (g) => (GENRE_LABEL_KEYS[g] ? t(GENRE_LABEL_KEYS[g]) : g || '—')
 
-  const allTracks = useMemo(() => getMergedTracks(tracks), [version])
+  const allTracks = useMemo(() => getMergedTracks(catalogTracks), [version])
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
     return allTracks.filter((tr) => {
@@ -158,7 +158,7 @@ export default function TracksAdmin() {
         />
         <select className="admin-input" value={albumFilter} onChange={(e) => { setAlbumFilter(e.target.value); setPage(1) }} aria-label={t('admin.allAlbums')}>
           <option value="all">{t('admin.allAlbums')}</option>
-          {albums.map((a) => (
+          {catalogAlbums.map((a) => (
             <option key={a.id} value={a.id}>
               {a.titleTa || a.titleEn || a.id}
             </option>

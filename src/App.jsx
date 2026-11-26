@@ -4,7 +4,7 @@
 // Routes are code-split with React.lazy (performance budget: admin + EPK
 // load only when visited). Mobile: bottom nav + mini-player above it.
 // Desktop (≥1024px): left sidebar; mini-player at the very bottom.
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { LanguageProvider, useI18n } from './lib/i18n.js'
@@ -16,11 +16,14 @@ import Sidebar, { BottomNav } from './components/Sidebar.jsx'
 import TopBar from './components/TopBar.jsx'
 import PlayerBar from './player/PlayerBar.jsx'
 import MobilePlayer from './player/MobilePlayer.jsx'
+// Search is imported eagerly (not lazy): it is the most-visited route
+// from the top bar, and a lazy chunk made every search flash a bare
+// "Loading…" before the page's own skeleton appeared.
+import Search from './pages/Search.jsx'
 
 // Code-split pages (default exports, so React.lazy works).
 const Home = lazy(() => import('./pages/Home.jsx'))
 const Discover = lazy(() => import('./pages/Discover.jsx'))
-const Search = lazy(() => import('./pages/Search.jsx'))
 const Library = lazy(() => import('./pages/Library.jsx'))
 const Liked = lazy(() => import('./pages/Liked.jsx'))
 const Playlists = lazy(() => import('./pages/Playlists.jsx'))
@@ -28,6 +31,13 @@ const PlaylistDetail = lazy(() => import('./pages/PlaylistDetail.jsx'))
 const Artist = lazy(() => import('./pages/Artist.jsx'))
 const Album = lazy(() => import('./pages/Album.jsx'))
 const EPK = lazy(() => import('./pages/EPK.jsx'))
+// Login is unlinked in the public UI — the admin opens /login directly.
+const Login = lazy(() => import('./pages/Login.jsx'))
+
+// Build id baked into this bundle (written by scripts/write-version.mjs
+// on every build). Compared against the live /version.json below.
+import versionInfo from './version.json'
+const RUNNING_BUILD_ID = versionInfo?.buildId || ''
 
 // Admin (lazy — only downloaded when an admin opens /admin).
 const AdminLayout = lazy(() => import('./admin/AdminLayout.jsx'))
@@ -54,6 +64,65 @@ function LoadingFallback() {
   )
 }
 
+/**
+ * Deploy freshness: checks whether the live site has a newer build than
+ * the one this tab loaded. Runs on mount, when the tab becomes visible,
+ * and every 5 minutes. Shows a slim banner + Refresh button ONLY — it
+ * never auto-reloads (a reload mid-song would cut playback). The fetch
+ * uses cache: 'no-store' and the service worker never caches
+ * /version.json, so the check always sees the live build id.
+ */
+function useVersionCheck() {
+  const [updateAvailable, setUpdateAvailable] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    async function check() {
+      try {
+        const res = await fetch('/version.json', { cache: 'no-store' })
+        if (!res.ok) return
+        const data = await res.json()
+        if (!cancelled && data?.buildId && data.buildId !== RUNNING_BUILD_ID) {
+          setUpdateAvailable(true)
+        }
+      } catch {
+        /* offline or version file not deployed yet — ignore */
+      }
+    }
+    check()
+    const interval = setInterval(check, 5 * 60 * 1000)
+    function onVisible() {
+      if (document.visibilityState === 'visible') check()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [])
+
+  return updateAvailable
+}
+
+function UpdateBanner() {
+  const { t } = useI18n()
+  const updateAvailable = useVersionCheck()
+  if (!updateAvailable) return null
+  return (
+    <div className="update-banner" role="status">
+      <span>{t('app.newVersion')}</span>
+      <button
+        type="button"
+        className="update-banner__btn"
+        onClick={() => window.location.reload()}
+      >
+        {t('app.refresh')}
+      </button>
+    </div>
+  )
+}
+
 function AppShell() {
   const location = useLocation()
   const { role } = useAuth()
@@ -61,57 +130,64 @@ function AppShell() {
 
   if (isAdminRoute) {
     return (
-      <Suspense fallback={<LoadingFallback />}>
-        <Routes>
-          <Route path="/admin" element={<AdminLayout />}>
-            <Route index element={<Dashboard />} />
-            <Route path="tracks" element={<TracksAdmin />} />
-            <Route path="tracks/new" element={<TrackEditor />} />
-            <Route path="tracks/:id/edit" element={<TrackEditor />} />
-            <Route path="albums" element={<AlbumsAdmin />} />
-            <Route path="artists" element={<ArtistsAdmin />} />
-            <Route path="lyrics" element={<LyricsAdmin />} />
-            <Route path="playlists" element={<PlaylistsAdmin />} />
-            <Route path="users" element={<UsersAdmin />} />
-            <Route path="analytics" element={<Analytics />} />
-            <Route path="settings" element={<SiteSettings />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/admin" replace />} />
-        </Routes>
-      </Suspense>
+      <>
+        <UpdateBanner />
+        <Suspense fallback={<LoadingFallback />}>
+          <Routes>
+            <Route path="/admin" element={<AdminLayout />}>
+              <Route index element={<Dashboard />} />
+              <Route path="tracks" element={<TracksAdmin />} />
+              <Route path="tracks/new" element={<TrackEditor />} />
+              <Route path="tracks/:id/edit" element={<TrackEditor />} />
+              <Route path="albums" element={<AlbumsAdmin />} />
+              <Route path="artists" element={<ArtistsAdmin />} />
+              <Route path="lyrics" element={<LyricsAdmin />} />
+              <Route path="playlists" element={<PlaylistsAdmin />} />
+              <Route path="users" element={<UsersAdmin />} />
+              <Route path="analytics" element={<Analytics />} />
+              <Route path="settings" element={<SiteSettings />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/admin" replace />} />
+          </Routes>
+        </Suspense>
+      </>
     )
   }
 
   return (
-    <div className="app-layout">
-      <a href="#main" className="skip-link">
-        Skip to content
-      </a>
-      <Sidebar role={role} />
-      <div className="app-main-wrap">
-        <TopBar />
-        <main id="main" className="main" tabIndex={-1}>
-          <Suspense fallback={<LoadingFallback />}>
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/discover" element={<Discover />} />
-              <Route path="/search" element={<Search />} />
-              <Route path="/library" element={<Library />} />
-              <Route path="/liked" element={<Liked />} />
-              <Route path="/playlists" element={<Playlists />} />
-              <Route path="/playlist/:id" element={<PlaylistDetail />} />
-              <Route path="/artist/:id" element={<Artist />} />
-              <Route path="/album/:id" element={<Album />} />
-              <Route path="/epk" element={<EPK />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Suspense>
-        </main>
+    <>
+      <UpdateBanner />
+      <div className="app-layout">
+        <a href="#main" className="skip-link">
+          Skip to content
+        </a>
+        <Sidebar role={role} />
+        <div className="app-main-wrap">
+          <TopBar />
+          <main id="main" className="main" tabIndex={-1}>
+            <Suspense fallback={<LoadingFallback />}>
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/discover" element={<Discover />} />
+                <Route path="/search" element={<Search />} />
+                <Route path="/library" element={<Library />} />
+                <Route path="/liked" element={<Liked />} />
+                <Route path="/playlists" element={<Playlists />} />
+                <Route path="/playlist/:id" element={<PlaylistDetail />} />
+                <Route path="/artist/:id" element={<Artist />} />
+                <Route path="/album/:id" element={<Album />} />
+                <Route path="/epk" element={<EPK />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
+          </main>
+        </div>
+        <BottomNav />
+        <PlayerBar />
+        <MobilePlayer />
       </div>
-      <BottomNav />
-      <PlayerBar />
-      <MobilePlayer />
-    </div>
+    </>
   )
 }
 

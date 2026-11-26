@@ -11,7 +11,7 @@
  * ('nandha-now-playing-id'), written by PlayerContext.
  */
 
-export const AUDIO_CACHE = 'nandha-audio'
+export const AUDIO_CACHE = 'nandha-audio-v2'
 export const MAX_PINNED = 50
 export const PIN_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 const META_KEY = 'nandha-pinned-meta'
@@ -57,6 +57,36 @@ export async function registerServiceWorker() {
     const registration = await navigator.serviceWorker.register('/sw.js')
     // eslint-disable-next-line no-console
     console.log('[pwa] Service worker registered:', registration.scope)
+
+    // Deploy freshness: when a NEW worker installs while an old one is
+    // already controlling the page, reload ONCE so the fresh shell/chunks
+    // take over instead of the stale cache. The flag guards against a
+    // reload loop. `hadController` is captured BEFORE the new worker
+    // takes over — controllerchange also fires on first install, when
+    // there was no previous controller, and must NOT reload then.
+    let reloading = false
+    const hadController = Boolean(navigator.serviceWorker.controller)
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloading) return
+      reloading = true
+      window.location.reload()
+    })
+    registration.addEventListener('updatefound', () => {
+      const newWorker = registration.installing
+      if (!newWorker) return
+      newWorker.addEventListener('statechange', () => {
+        if (
+          newWorker.state === 'installed' &&
+          navigator.serviceWorker.controller
+        ) {
+          // The new worker calls skipWaiting() on install, so it takes
+          // over and the controllerchange handler above reloads once.
+          // eslint-disable-next-line no-console
+          console.log('[pwa] New service worker installed — updating')
+        }
+      })
+    })
+
     return { ok: true, scope: registration.scope, registration }
   } catch (err) {
     // eslint-disable-next-line no-console

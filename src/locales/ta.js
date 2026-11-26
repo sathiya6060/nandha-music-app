@@ -1,6 +1,8 @@
 // Tamil locale — Noto Sans Tamil renders these strings.
 export default {
   'app.tagline': 'YOUR BEAT. YOUR ECHO.',
+  'app.newVersion': 'புதிய பதிப்பு உள்ளது',
+  'app.refresh': 'புதுப்பி',
   'nav.home': 'முகப்பு',
   'nav.search': 'தேடுக',
   'nav.library': 'நூலகம்',
@@ -151,9 +153,6 @@ export default {
   'admin.noResultSearches': 'முடிவில்லாத தேடல்கள்',
   'admin.demoNotice': 'சோதனை முறை — மாற்றங்கள் இந்த உலாவியில் மட்டும் சேமிக்கப்படும்.',
   'auth.demoRole': 'சோதனை பங்கு',
-  'auth.signInDemo': 'சோதனை உள்நுழைவு: எந்த மின்னஞ்சலும் வேலை செய்யும். நிர்வாகி அணுகலுக்கு மின்னஞ்சலில் “admin” சேர்க்கவும்.',
-  'auth.demoNotice': 'சோதனை முறை — உள்நுழைவு இன்னும் இயக்கப்படவில்லை. தாராளமாக உலாவுங்கள்; பிடித்தவை, பட்டியல்கள் இந்தச் சாதனத்தில் சேமிக்கப்படும்.',
-  'auth.demoSignIn': 'சோதனை — உள்நுழை',
   'common.seeAll': 'அனைத்தும் பார்',
   'common.loadError': 'இசையை ஏற்ற முடியவில்லை. இணைப்பைச் சரிபார்த்து மீண்டும் முயல்க.',
   'common.album': 'ஆல்பம்',
@@ -296,5 +295,14 @@ export default {
   'admin.nameEn': 'பெயர் (ஆங்கிலம்)',
   'admin.photo': 'புகைப்படம்',
   'auth.email': 'மின்னஞ்சல்',
+  'auth.password': 'கடவுச்சொல்',
+  'auth.signInGoogle': 'Google மூலம் தொடரவும்',
+  'auth.signInError': 'உள்நுழைவு தோல்வி. மின்னஞ்சல் மற்றும் கடவுச்சொல்லைச் சரிபார்த்து மீண்டும் முயலவும்.',
+  'auth.loginHint': 'நிர்வாக அணுகல் அதிகாரப்பூர்வ நந்தா மியூசிக் கணக்கிற்கு மட்டுமே.',
+  'auth.signUp': 'கணக்கை உருவாக்கு',
+  'auth.switchToSignUp': 'கணக்கு இல்லையா? உருவாக்கு',
+  'auth.switchToSignIn': 'ஏற்கனவே கணக்கு உள்ளதா? உள்நுழைக',
+  'auth.signUpHint': 'officialnandhamusic@gmail.com மூலம் கணக்கை உருவாக்குங்கள் — அந்த மின்னஞ்சல் மட்டுமே நிர்வாகத்தைத் திறக்கும்.',
+  'auth.confirmEmail': 'உறுதிப்படுத்தும் இணைப்புக்கு உங்கள் மின்னஞ்சலைப் பார்த்து, பின் உள்நுழைக.',
   'common.saving': 'சேமிக்கிறது…',
 };

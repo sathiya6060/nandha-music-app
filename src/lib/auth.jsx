@@ -1,29 +1,39 @@
 // Auth — Supabase Auth when configured, otherwise DEMO MODE.
 // Demo mode: role is stored in localStorage ('nandha-demo-role') and any
-// email signs in; the role is inferred from the email address.
-// The UI must clearly label demo mode so it is never mistaken for real auth.
+// email signs in; the role is derived from the email address.
+// ADMIN ACCESS: only the allowlisted email below is ever an admin — in
+// BOTH Supabase mode and demo mode. No other email, substring or stored
+// role can grant admin. The UI must clearly label demo mode so it is
+// never mistaken for real auth.
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase.js'
 
 const DEMO_ROLE_KEY = 'nandha-demo-role'
 const DEMO_USER = { id: 'demo-user', email: 'demo@nandhamusic.app', name: 'Demo User' }
 
+/** The ONLY account that may access /admin. Case-insensitive. */
+export const ADMIN_EMAILS = ['officialnandhamusic@gmail.com']
+
 export const DEMO_ROLES = ['admin', 'artist', 'listener']
 
-function roleFromEmail(email) {
-  const e = String(email || '').toLowerCase()
-  if (e.includes('admin')) return 'admin'
-  if (e.includes('artist')) return 'artist'
-  return 'listener'
+function isAdminEmail(email) {
+  return ADMIN_EMAILS.includes(String(email || '').trim().toLowerCase())
+}
+
+/**
+ * Clamp a requested role: 'admin' survives only for the allowlisted
+ * email. Anything else falls back to 'listener' (artist is unaffected).
+ */
+function clampRole(role, email) {
+  if (role === 'admin' && !isAdminEmail(email)) return 'listener'
+  return role
 }
 
 function roleFromSupabaseUser(sbUser) {
   if (!sbUser) return 'listener'
-  return (
-    sbUser.app_metadata?.role ||
-    sbUser.user_metadata?.role ||
-    'listener'
-  )
+  if (isAdminEmail(sbUser.email)) return 'admin'
+  const metaRole = sbUser.app_metadata?.role || sbUser.user_metadata?.role
+  return metaRole === 'artist' ? 'artist' : 'listener'
 }
 
 function isSupabaseConfigured() {
@@ -42,10 +52,12 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [isDemo, setIsDemo] = useState(!isSupabaseConfigured())
 
-  // Demo-mode role persisted in localStorage.
+  // Demo-mode role persisted in localStorage — clamped on read so a
+  // stale stored 'admin' never grants admin without the allowlisted email.
   const [demoRole, setDemoRoleState] = useState(() => {
     try {
-      return localStorage.getItem(DEMO_ROLE_KEY) || 'listener'
+      const stored = localStorage.getItem(DEMO_ROLE_KEY) || 'listener'
+      return clampRole(stored, DEMO_USER.email)
     } catch {
       return 'listener'
     }
@@ -53,10 +65,13 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (!isSupabaseConfigured()) {
-      // DEMO MODE — no backend: signed-in demo user with the stored role.
+      // DEMO MODE — no backend: signed-in demo user with the stored role,
+      // clamped so a stale stored 'admin' never grants admin without the
+      // allowlisted email.
       setIsDemo(true)
-      setUser({ ...DEMO_USER, role: demoRole })
-      setRole(demoRole)
+      const safeRole = clampRole(demoRole, DEMO_USER.email)
+      setUser({ ...DEMO_USER, role: safeRole })
+      setRole(safeRole)
       setLoading(false)
       return undefined
     }
@@ -88,23 +103,32 @@ export function AuthProvider({ children }) {
     }
   }, [demoRole])
 
-  const setDemoRole = (nextRole) => {
+  /**
+   * Demo-mode role switch (admin demo bar). 'admin' is accepted only
+   * when the current demo user's email is allowlisted; otherwise the
+   * request is clamped to 'listener'. `emailForCheck` lets sign-in pass
+   * the just-entered email instead of the previous user's.
+   */
+  const setDemoRole = (nextRole, emailForCheck) => {
     if (!DEMO_ROLES.includes(nextRole)) return
+    const email = emailForCheck ?? user?.email ?? DEMO_USER.email
+    const safeRole = clampRole(nextRole, email)
     try {
-      localStorage.setItem(DEMO_ROLE_KEY, nextRole)
+      localStorage.setItem(DEMO_ROLE_KEY, safeRole)
     } catch {
       // ignore storage failures — role still applies for this session
     }
-    setDemoRoleState(nextRole)
-    setRole(nextRole)
-    setUser((u) => (u ? { ...u, role: nextRole } : { ...DEMO_USER, role: nextRole }))
+    setDemoRoleState(safeRole)
+    setRole(safeRole)
+    setUser((u) => (u ? { ...u, role: safeRole } : { ...DEMO_USER, role: safeRole }))
   }
 
   const signInEmail = async (email, password) => {
     if (!isSupabaseConfigured()) {
-      // DEMO MODE: accept any email; role inferred from the address.
-      const nextRole = roleFromEmail(email)
-      setDemoRole(nextRole)
+      // DEMO MODE: admin only for the allowlisted email; everyone else
+      // signs in as a listener.
+      const nextRole = isAdminEmail(email) ? 'admin' : 'listener'
+      setDemoRole(nextRole, email)
       const demoUser = { ...DEMO_USER, email: email || DEMO_USER.email, role: nextRole }
       setUser(demoUser)
       return { user: demoUser, error: null }
@@ -115,6 +139,21 @@ export function AuthProvider({ children }) {
       setRole(roleFromSupabaseUser(data.user))
     }
     return { user: data?.user || null, error }
+  }
+
+  const signUpEmail = async (email, password) => {
+    if (!isSupabaseConfigured()) {
+      // DEMO MODE: creating an account is the same as signing in.
+      return signInEmail(email, password)
+    }
+    const { data, error } = await supabase.auth.signUp({ email, password })
+    if (!error && data?.user) {
+      setUser(data.user)
+      setRole(roleFromSupabaseUser(data.user))
+    }
+    // data.session is null when email confirmation is required — the
+    // caller shows the confirm-email hint in that case.
+    return { user: data?.user || null, session: data?.session || null, error }
   }
 
   const signInGoogle = async () => {
@@ -151,6 +190,7 @@ export function AuthProvider({ children }) {
       isDemo,
       demoRole,
       signInEmail,
+      signUpEmail,
       signInGoogle,
       signOut,
       setDemoRole,

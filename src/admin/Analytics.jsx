@@ -1,6 +1,6 @@
 // Analytics — simple bar lists (no chart library).
 import { useMemo } from 'react'
-import { tracks } from '../data/catalog.js'
+import { allTracks } from '../data/catalog.js'
 import { getMergedTracks, getNoResultSearches } from '../lib/adminStore.js'
 import { useI18n } from '../lib/i18n.js'
 
@@ -45,7 +45,7 @@ function BarList({ items, labelKey, valueKey, formatValue }) {
 
 export default function Analytics() {
   const { t, lang } = useI18n()
-  const mergedTracks = useMemo(() => getMergedTracks(tracks), [])
+  const mergedTracks = useMemo(() => getMergedTracks(allTracks), [])
   const noResultSearches = useMemo(() => getNoResultSearches(), [])
 
   const topTracks = useMemo(

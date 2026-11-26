@@ -1,6 +1,6 @@
 // Curated playlists admin — CRUD with track add/remove + reorder.
 import { useMemo, useState } from 'react'
-import { tracks, playlists } from '../data/catalog.js'
+import { allTracks as catalogTracks, allPlaylists as catalogPlaylists } from '../data/catalog.js'
 import {
   getMergedTracks,
   getMergedPlaylists,
@@ -17,7 +17,7 @@ const EMPTY_PLAYLIST = { name: '', description: '', trackIds: [] }
 export default function PlaylistsAdmin() {
   const { user } = useAuth()
   const { t } = useI18n()
-  const allTracks = useMemo(() => getMergedTracks(tracks).filter((tr) => tr.status !== 'deleted'), [])
+  const allTracks = useMemo(() => getMergedTracks(catalogTracks).filter((tr) => tr.status !== 'deleted'), [])
   const [version, setVersion] = useState(0)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_PLAYLIST)
@@ -25,7 +25,7 @@ export default function PlaylistsAdmin() {
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
 
-  const mergedPlaylists = useMemo(() => getMergedPlaylists(playlists), [version])
+  const mergedPlaylists = useMemo(() => getMergedPlaylists(catalogPlaylists), [version])
 
   const startNew = () => {
     setEditing('new')

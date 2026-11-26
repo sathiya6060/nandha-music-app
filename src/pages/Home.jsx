@@ -210,7 +210,6 @@ function SongOfTheDay() {
       <div className="section-head">
         <div>
           <h2 className="section-title">{t('home.songOfTheDay')}</h2>
-          <p className="section-subtitle">{song.titleTa || song.titleEn}</p>
         </div>
       </div>
       <div className="sotd-card">
@@ -227,12 +226,12 @@ function SongOfTheDay() {
           <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
             <button
               type="button"
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary"
               onClick={() => (isCurrent ? player?.playPause?.() : player?.play?.(song, [song]))}
             >
               {isCurrent && player?.isPlaying ? t('common.pause') : t('common.play')}
             </button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={handleShare} disabled={busy}>
+            <button type="button" className="btn btn-ghost" onClick={handleShare} disabled={busy}>
               <Icon name="share" size={18} /> {t('home.shareStatus')}
             </button>
           </div>
@@ -379,6 +378,7 @@ export default function Home() {
             <>
               <SongOfTheDay />
 
+              {daypartTracks.length > 0 && (
               <section className="section" aria-label={`${daypart.labelTa} · ${daypart.labelEn}`}>
                 <div className="section-head">
                   <div>
@@ -388,16 +388,13 @@ export default function Home() {
                     <p className="section-subtitle">{daypart.genres.join(' · ')}</p>
                   </div>
                 </div>
-                {daypartTracks.length === 0 ? (
-                  <p style={{ color: 'var(--muted)' }}>{t('common.noResults')}</p>
-                ) : (
                   <div className="list-stack">
                     {daypartTracks.slice(0, 5).map((track, i) => (
                       <TrackRow key={track.id} track={track} index={i} queue={daypartTracks} />
                     ))}
                   </div>
-                )}
               </section>
+              )}
 
               <section className="section" aria-label={t('home.dailyMix')}>
                 <div className="section-head">

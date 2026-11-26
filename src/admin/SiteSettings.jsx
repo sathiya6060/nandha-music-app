@@ -1,7 +1,7 @@
 // Site settings / EPK — bio, announcement, Artist Pick, press photos, contact,
 // plus Song of the Day (admin override for catalog.js getSongOfTheDay).
 import { useMemo, useState } from 'react'
-import { tracks, getSongOfTheDay, REAL_TRACK_ID } from '../data/catalog.js'
+import { allTracks as catalogTracks, getSongOfTheDay, REAL_TRACK_ID } from '../data/catalog.js'
 import {
   getMergedTracks,
   loadSiteSettings,
@@ -17,7 +17,7 @@ import { useI18n } from '../lib/i18n.js'
 export default function SiteSettings() {
   const { user } = useAuth()
   const { t, lang } = useI18n()
-  const allTracks = useMemo(() => getMergedTracks(tracks).filter((tr) => tr.status !== 'deleted'), [])
+  const allTracks = useMemo(() => getMergedTracks(catalogTracks).filter((tr) => tr.status !== 'deleted'), [])
   const [form, setForm] = useState(() => loadSiteSettings())
   const [pressPhotoInput, setPressPhotoInput] = useState('')
   const [notice, setNotice] = useState('')

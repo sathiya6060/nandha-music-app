@@ -2,7 +2,7 @@
 // Includes hookStartSec / hookDurationSec (Discover hook clip timing).
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
-import { tracks, albums, artists, getTrack } from '../data/catalog.js'
+import { allTracks, allAlbums, allArtists, getTrack } from '../data/catalog.js'
 import {
   getMergedTracks,
   saveAdminTrack,
@@ -66,9 +66,9 @@ export default function TrackEditor() {
   const existing = useMemo(() => {
     if (isNew) return null
     try {
-      return getTrack(id) || getMergedTracks(tracks).find((tr) => tr.id === id) || null
+      return getTrack(id) || getMergedTracks(allTracks).find((tr) => tr.id === id) || null
     } catch {
-      return getMergedTracks(tracks).find((tr) => tr.id === id) || null
+      return getMergedTracks(allTracks).find((tr) => tr.id === id) || null
     }
   }, [id, isNew])
 
@@ -126,7 +126,7 @@ export default function TrackEditor() {
   }
 
   const onArtistChange = (artistId) => {
-    const artist = artists.find((a) => a.id === artistId)
+    const artist = allArtists.find((a) => a.id === artistId)
     setForm((f) => ({
       ...f,
       artistId,
@@ -135,7 +135,7 @@ export default function TrackEditor() {
   }
 
   const onAlbumChange = (albumId) => {
-    const album = albums.find((a) => a.id === albumId)
+    const album = allAlbums.find((a) => a.id === albumId)
     setForm((f) => ({
       ...f,
       albumId,
@@ -287,7 +287,7 @@ export default function TrackEditor() {
             <span>{t('admin.artist')} *</span>
             <select className="admin-input" value={form.artistId} onChange={(e) => onArtistChange(e.target.value)} aria-required="true" aria-invalid={Boolean(errors.artist)}>
               <option value="">{t('admin.selectArtist')}</option>
-              {artists.map((a) => (
+              {allArtists.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name || a.nameEn || a.id}
                 </option>
@@ -318,7 +318,7 @@ export default function TrackEditor() {
             <span>{t('admin.album')}</span>
             <select className="admin-input" value={form.albumId} onChange={(e) => onAlbumChange(e.target.value)}>
               <option value="">{t('admin.noAlbum')}</option>
-              {albums.map((a) => (
+              {allAlbums.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.titleTa || a.titleEn || a.id}
                 </option>

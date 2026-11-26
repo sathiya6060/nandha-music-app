@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ta">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/assets/nandha-logo.png" />
@@ -28,6 +28,33 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Boot guard: if React has not mounted after 8s, the page would
+         otherwise sit blank (dark background only). Show a visible,
+         brand-coloured fallback with a Reload button instead. A successful
+         React mount wipes this automatically, and normal loads mount in
+         well under 8s, so it never flashes on a healthy load. -->
+    <script>
+      (function () {
+        function bootCheck() {
+          setTimeout(function () {
+            var root = document.getElementById('root')
+            if (root && !root.hasChildNodes()) {
+              root.innerHTML =
+                '<div style="min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#1E293B;color:#FEF3C7;font-family:system-ui,sans-serif;text-align:center;padding:24px;box-sizing:border-box">' +
+                '<div style="font-size:20px;font-weight:700">Nandha Music is taking too long to load</div>' +
+                '<div style="font-size:14px;opacity:.85">Please check your connection and try again.</div>' +
+                '<button type="button" onclick="window.location.reload()" style="background:#F59E0B;color:#1E293B;border:0;border-radius:999px;padding:12px 28px;font-size:16px;font-weight:700;cursor:pointer;min-height:44px">Reload</button>' +
+                '</div>'
+            }
+          }, 8000)
+        }
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', bootCheck)
+        } else {
+          bootCheck()
+        }
+      })()
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

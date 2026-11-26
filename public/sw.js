@@ -1,18 +1,28 @@
 /* Nandha Music service worker.
  *
- * - App shell + covers: cache-first ('nandha-shell-v1', covers capped at
- *   200 entries / 30 days).
+ * - Navigation (app shell): NETWORK-FIRST — fetch fresh, cache the fresh
+ *   response, fall back to the cached shell ONLY when the network fails
+ *   (offline). A stale shell can never be served while the network works,
+ *   so every deployment reaches returning phones.
+ * - Scripts / styles / fonts: cache-first (Vite hashes them), BUT only
+ *   cache a response whose Content-Type matches the expected type. A
+ *   response with an HTML content-type is NEVER cached under an asset
+ *   URL — the old v1 worker cached Pages' SPA-fallback HTML under .js
+ *   URLs, which then failed to parse and left a blank page.
+ * - /sw.js and /version.json: network-first, NEVER cached.
+ * - Covers / images: cache-first, capped at 200 entries / 30 days.
  * - API / metadata: network-first, short-lived cache fallback.
  * - Audio: ONLY user-pinned tracks are served from / stored in the
- *   'nandha-audio' cache. Unpinned audio is fetched from the network and
- *   NEVER cached here (pinning is done by src/lib/pwa.js).
- * - Versioned cache names, skipWaiting + clients.claim.
+ *   'nandha-audio-v2' cache. Unpinned audio is fetched from the network
+ *   and NEVER cached here (pinning is done by src/lib/pwa.js).
+ * - Versioned cache names (v2); activation deletes every v1 cache, so
+ *   the poisoned v1 entries are gone for good. skipWaiting + clients.claim.
  */
 
-const SHELL_CACHE = 'nandha-shell-v1'
-const API_CACHE = 'nandha-api-v1'
-const AUDIO_CACHE = 'nandha-audio'
-const COVER_CACHE = 'nandha-covers-v1'
+const SHELL_CACHE = 'nandha-shell-v2'
+const API_CACHE = 'nandha-api-v2'
+const AUDIO_CACHE = 'nandha-audio-v2'
+const COVER_CACHE = 'nandha-covers-v2'
 
 const MAX_COVERS = 200
 const COVER_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
@@ -46,6 +56,62 @@ function isApiRequest(request) {
     url.pathname.includes('/rest/v1/') ||
     url.pathname.includes('/auth/v1/')
   )
+}
+
+/** Never cache /sw.js or /version.json — freshness checks must hit the network. */
+function isFreshnessRequest(request) {
+  const url = new URL(request.url)
+  return (
+    url.origin === self.location.origin &&
+    (url.pathname === '/sw.js' || url.pathname === '/version.json')
+  )
+}
+
+/**
+ * Expected Content-Type for a cacheable asset, by destination/extension.
+ * Returns null for "no cacheable asset type" (e.g. documents).
+ * An HTML response is NEVER cacheable under an asset URL.
+ */
+function expectedAssetType(request) {
+  const url = new URL(request.url)
+  const path = url.pathname.toLowerCase()
+  if (request.destination === 'script' || path.endsWith('.js') || path.endsWith('.mjs')) {
+    return 'javascript'
+  }
+  if (request.destination === 'style' || path.endsWith('.css')) return 'css'
+  if (
+    request.destination === 'font' ||
+    path.endsWith('.woff2') ||
+    path.endsWith('.woff') ||
+    path.endsWith('.ttf') ||
+    path.endsWith('.otf')
+  ) {
+    return 'font'
+  }
+  if (request.destination === 'image' || isCoverRequest(request)) return 'image'
+  return null
+}
+
+function isCacheableAssetResponse(request, response) {
+  if (!response || !response.ok) return false
+  const contentType = (response.headers.get('content-type') || '').toLowerCase()
+  // Poison guard: HTML must never be stored under an asset URL.
+  if (contentType.includes('text/html')) return false
+  const expected = expectedAssetType(request)
+  if (!expected) return false
+  if (expected === 'javascript') return contentType.includes('javascript')
+  if (expected === 'css') return contentType.includes('css')
+  if (expected === 'font') {
+    return (
+      contentType.includes('font') ||
+      contentType.includes('octet-stream') ||
+      contentType.includes('x-font')
+    )
+  }
+  if (expected === 'image') {
+    return contentType.includes('image') || contentType.includes('svg')
+  }
+  return false
 }
 
 async function trimCache(cacheName, maxEntries) {
@@ -118,8 +184,14 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // 1. Audio — pinned only. Serve from 'nandha-audio' if pinned, otherwise
-  //    go to network and DO NOT cache the response.
+  // 0. Freshness files — always network, never cached.
+  if (isFreshnessRequest(request)) {
+    event.respondWith(fetch(request))
+    return
+  }
+
+  // 1. Audio — pinned only. Serve from 'nandha-audio-v2' if pinned,
+  //    otherwise go to network and DO NOT cache the response.
   if (isAudioRequest(request)) {
     event.respondWith(
       (async () => {
@@ -170,7 +242,7 @@ self.addEventListener('fetch', (event) => {
         if (cached) return cached
         try {
           const response = await fetch(request)
-          if (response.ok) {
+          if (isCacheableAssetResponse(request, response)) {
             cache.put(request, response.clone()).catch(() => {})
             trimCache(COVER_CACHE, MAX_COVERS)
           }
@@ -187,23 +259,57 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // 4. App shell + everything else same-origin — cache-first, then network.
+  // 4. Navigation (app shell) — NETWORK-FIRST. Fetch fresh, cache the
+  //    fresh shell, fall back to the cached shell ONLY when offline.
+  //    This is what makes every deployment reach returning phones.
+  if (
+    request.mode === 'navigate' ||
+    url.pathname === '/' ||
+    url.pathname === '/index.html'
+  ) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(SHELL_CACHE)
+        try {
+          const response = await fetch(request)
+          if (response.ok && url.origin === self.location.origin) {
+            const contentType = (response.headers.get('content-type') || '').toLowerCase()
+            if (contentType.includes('text/html')) {
+              cache.put('/index.html', response.clone()).catch(() => {})
+            }
+          }
+          return response
+        } catch {
+          const shell =
+            (await cache.match(request, { ignoreSearch: true })) ||
+            (await cache.match('/index.html'))
+          if (shell) return shell
+          throw new Error('offline')
+        }
+      })(),
+    )
+    return
+  }
+
+  // 5. Scripts / styles / fonts + anything else same-origin — cache-first
+  //    (Vite hashes them), but ONLY for a matching Content-Type. An HTML
+  //    response under an asset URL is never cached (poison guard).
   event.respondWith(
     (async () => {
       const cache = await caches.open(SHELL_CACHE)
-      const cached = await cache.match(request, { ignoreSearch: true })
+      const cached = await cache.match(request)
       if (cached) return cached
       try {
         const response = await fetch(request)
-        if (response.ok && url.origin === self.location.origin) {
+        if (
+          response.ok &&
+          url.origin === self.location.origin &&
+          isCacheableAssetResponse(request, response)
+        ) {
           cache.put(request, response.clone()).catch(() => {})
         }
         return response
       } catch {
-        if (request.mode === 'navigate') {
-          const shell = await cache.match('/index.html')
-          if (shell) return shell
-        }
         throw new Error('offline')
       }
     })(),

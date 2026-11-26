@@ -32,7 +32,7 @@ function logNoResult(query) {
  */
 export default function Search() {
   const { t } = useI18n()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const initialQuery = searchParams.get('q') || searchParams.get('genre') || ''
   const [query, setQuery] = useState(initialQuery)
   const [debounced, setDebounced] = useState(initialQuery)
@@ -54,6 +54,20 @@ export default function Search() {
     }, DEBOUNCE_MS)
     return () => clearTimeout(timer)
   }, [query])
+
+  // The URL ?q= is the single source of truth for the search text, so
+  // the top-bar search box follows what is typed here (and vice versa).
+  // replace: true keeps typing out of the browser history.
+  useEffect(() => {
+    const current = searchParams.get('q') || ''
+    if (debounced === current) return
+    if (debounced.trim() === '') {
+      if (current !== '') setSearchParams({}, { replace: true })
+    } else {
+      setSearchParams({ q: debounced }, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debounced])
 
   const results = useMemo(() => {
     const q = debounced.trim()
@@ -105,7 +119,14 @@ export default function Search() {
         )}
       </div>
 
-      {debounced.trim() === '' ? (
+      {searching && results.length === 0 && query.trim() !== '' ? (
+        // First search only: a skeleton while the debounce settles. Once
+        // results exist they stay visible while the next keystroke
+        // debounces — no more results/skeleton flicker on every key.
+        <div className="section" aria-label={t('common.loading')}>
+          <Skeleton height={64} lines={4} />
+        </div>
+      ) : debounced.trim() === '' ? (
         <section className="section" aria-label={t('home.browseGenre')}>
           <div className="section-head">
             <div>
@@ -124,10 +145,6 @@ export default function Search() {
             )}
           </div>
         </section>
-      ) : searching ? (
-        <div className="section" aria-label={t('common.loading')}>
-          <Skeleton height={64} lines={4} />
-        </div>
       ) : results.length > 0 ? (
         <section className="section" aria-label={t('search.title')}>
           <p aria-live="polite" style={{ color: 'var(--muted)', fontSize: '0.875rem', margin: '0 0 8px' }}>

@@ -1,6 +1,6 @@
 // Synced lyrics admin — per-track lines with timestamps (mm:ss).
 import { useMemo, useState } from 'react'
-import { tracks } from '../data/catalog.js'
+import { allTracks as catalogTracks } from '../data/catalog.js'
 import {
   getMergedTracks,
   loadSyncedLyrics,
@@ -28,7 +28,7 @@ function linesFromTrack(track) {
 export default function LyricsAdmin() {
   const { user } = useAuth()
   const { t } = useI18n()
-  const allTracks = useMemo(() => getMergedTracks(tracks).filter((tr) => tr.status !== 'deleted'), [])
+  const allTracks = useMemo(() => getMergedTracks(catalogTracks).filter((tr) => tr.status !== 'deleted'), [])
   const [trackId, setTrackId] = useState('')
   const [lines, setLines] = useState([])
   const [loaded, setLoaded] = useState(false)

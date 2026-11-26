@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { usePlayer, formatTime } from './PlayerContext.jsx'
 import { useI18n } from '../lib/i18n.js'
+import Icon from '../components/Icons.jsx'
 import QueuePanel from './QueuePanel.jsx'
 import './player.css'
 
@@ -85,6 +86,7 @@ export default function PlayerBar() {
     toggleShuffle,
     cycleRepeat,
     openPlayer,
+    stopPlayback,
   } = usePlayer()
   const [showQueue, setShowQueue] = useState(false)
 
@@ -181,6 +183,16 @@ export default function PlayerBar() {
           title={t('common.next')}
         >
           <IconNext />
+        </button>
+
+        <button
+          type="button"
+          className="player-icon-btn player-close"
+          onClick={stopPlayback}
+          aria-label={t('common.close')}
+          title={t('common.close')}
+        >
+          <Icon name="close" size={20} />
         </button>
 
         <button

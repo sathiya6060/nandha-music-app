@@ -2,11 +2,11 @@
  * Nandha Music — catalog data layer (local / demo source of truth).
  *
  * ONE real track only: 'Vaazhvinil Orumurayenum' (release 2026-12-10).
- * Everything else is CLEARLY MARKED sample data (`isSample: true`,
- * titleEn 'Sample Track N — Coming Soon', audio URLs null) so the UI can
- * never mistake a placeholder for a real song. Sample tracks are generated
- * deterministically at module load from a fixed seed — no Math.random(),
- * no Date.now() — so the catalog is identical on every load.
+ *
+ * USER-FACING exports (`tracks`, `albums`, `artists`, `playlists` and
+ * every getter) contain ONLY real content — samples never reach the UI.
+ * The full demo lists live in `allTracks` / `allAlbums` / `allArtists` /
+ * `allPlaylists` (plus `sampleTracks`) for the admin panel and tests.
  *
  * When Supabase is configured, the app layer queries the `tracks` /
  * `albums` / `artists` / `playlists` tables (see
@@ -83,9 +83,9 @@ export const realTrack = {
 };
 
 // ---------------------------------------------------------------------------
-// Artists (2 real + 4 sample)
+// Artists (2 real + 4 sample — user-facing export keeps only the real ones)
 // ---------------------------------------------------------------------------
-export const artists = [
+export const allArtists = [
   {
     id: 'nandha-music',
     name: 'Nandha Music',
@@ -149,6 +149,9 @@ export const artists = [
   },
 ];
 
+/** User-facing artists: real artists only. */
+export const artists = allArtists.filter((a) => !a.isSample);
+
 // ---------------------------------------------------------------------------
 // Albums (1 real + 11 sample)
 // ---------------------------------------------------------------------------
@@ -166,7 +169,7 @@ const SAMPLE_ALBUM_DEFS = [
   { id: 'love-and-longing', titleEn: 'Love and Longing', titleTa: 'காதலும் ஏக்கமும்', genre: 'Love' },
 ];
 
-export const albums = [
+export const allAlbums = [
   {
     id: 'annamalaiyar',
     titleEn: 'Annamalaiyar',
@@ -192,6 +195,9 @@ export const albums = [
     _order: i,
   })),
 ];
+
+/** User-facing albums: real albums only. */
+export const albums = allAlbums.filter((a) => !a.isSample);
 
 // ---------------------------------------------------------------------------
 // Sample tracks — 199, deterministic
@@ -251,22 +257,25 @@ function buildSampleTracks() {
 
 export const sampleTracks = buildSampleTracks();
 
-/** All 200 tracks: the 1 real track first, then the 199 samples. */
-export const tracks = [realTrack, ...sampleTracks];
+/** Full 200-track list (real + samples) — admin/tests only. */
+export const allTracks = [realTrack, ...sampleTracks];
+
+/** User-facing tracks: the ONE real track only. No samples, no dummy songs. */
+export const tracks = [realTrack];
 
 // ---------------------------------------------------------------------------
 // Playlists (3 curated, ordered track-id arrays)
 // ---------------------------------------------------------------------------
-const sivanTrackIds = tracks
+const sivanTrackIds = allTracks
   .filter((t) => t.genre === 'Sivan' || t.genre === 'Siddhar')
   .slice(0, 20)
   .map((t) => t.id);
-const loveTrackIds = tracks
+const loveTrackIds = allTracks
   .filter((t) => t.genre === 'Love' || t.genre === 'Melody')
   .slice(0, 20)
   .map((t) => t.id);
 
-export const playlists = [
+export const allPlaylists = [
   {
     id: 'best-of-nandha',
     titleEn: 'Best of Nandha',
@@ -298,6 +307,14 @@ export const playlists = [
     trackIds: loveTrackIds,
   },
 ];
+
+/**
+ * User-facing playlists: only playlists containing at least one real
+ * track. ('Best of Nandha' survives; the sample-only lists do not.)
+ */
+export const playlists = allPlaylists.filter((p) =>
+  (p.trackIds || []).includes(REAL_TRACK_ID),
+);
 
 // ---------------------------------------------------------------------------
 // Lookups

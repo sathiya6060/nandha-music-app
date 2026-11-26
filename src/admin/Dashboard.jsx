@@ -1,7 +1,7 @@
 // Admin dashboard — headline stats, top tracks, recent activity.
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { tracks, albums, artists } from '../data/catalog.js'
+import { allTracks, allAlbums, allArtists } from '../data/catalog.js'
 import { getMergedTracks, getActivityLog, loadUsers } from '../lib/adminStore.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useI18n } from '../lib/i18n.js'
@@ -24,7 +24,7 @@ function formatBytes(bytes) {
 export default function Dashboard() {
   const { user } = useAuth()
   const { t, lang } = useI18n()
-  const mergedTracks = useMemo(() => getMergedTracks(tracks), [])
+  const mergedTracks = useMemo(() => getMergedTracks(allTracks), [])
   const activity = useMemo(() => getActivityLog(), [])
   const users = useMemo(() => loadUsers(), [])
 
@@ -54,8 +54,8 @@ export default function Dashboard() {
     return {
       totalPlays,
       totalTracks: mergedTracks.length,
-      totalAlbums: albums.length,
-      totalArtists: artists.length,
+      totalAlbums: allAlbums.length,
+      totalArtists: allArtists.length,
       totalUsers: users.length,
       usedBytes,
       storagePct: Math.min(100, (usedBytes / FREE_STORAGE_LIMIT_BYTES) * 100),

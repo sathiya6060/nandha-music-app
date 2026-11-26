@@ -54,6 +54,10 @@
 
 html, body, #root { min-height: 100%; }
 
+/* Never allow page-level horizontal scrolling: any stray wide element is
+   clipped instead of pushing the page wider than the viewport. */
+html, body { overflow-x: clip; }
+
 body {
   margin: 0;
   font-family: var(--font);
@@ -69,6 +73,19 @@ a:hover { text-decoration: underline; }
 img { max-width: 100%; display: block; }
 button { font-family: inherit; cursor: pointer; }
 input { font-family: inherit; }
+/* Selects and textareas do NOT inherit the font from the UA stylesheet —
+   without this they fall back to a system font that lacks Tamil glyphs
+   (tofu boxes in the Bhakti Streak "Aarti song" select). */
+select, textarea { font-family: var(--font); }
+.input { font-family: var(--font); }
+/* Hide the native WebKit search-field clear (×) button: the search boxes
+   already render their own clear button — two of them showed at once. */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
 
 :focus-visible {
   outline: 2px solid var(--gold);
@@ -116,6 +133,18 @@ input { font-family: inherit; }
   background: var(--bg);
 }
 
+/* THE mobile-width fix: .app-main-wrap is the flex item of .app-layout
+   and had NO rule, so its default min-width: auto (min-content) applied.
+   Its min-content is the full width of the horizontal card rows
+   (.section-row sums every card, ~3,400px), so the whole page laid out
+   3,460px wide and was only visually clipped by overflow-x: clip —
+   text and buttons were cut off at the right edge on phones. min-width: 0
+   lets it shrink to the viewport; the rows then scroll internally. */
+.app-main-wrap {
+  flex: 1 1 0%;
+  min-width: 0;
+}
+
 .sidebar {
   display: none; /* mobile: bottom nav instead */
 }
@@ -124,9 +153,28 @@ input { font-family: inherit; }
   flex: 1;
   min-width: 0;
   /* Reserve room for the fixed player bar + bottom nav so content is
-     never hidden behind them. */
-  padding: 0 16px calc(var(--chrome-bottom) + 24px + env(safe-area-inset-bottom, 0px));
+     never hidden behind them. The chrome is player + nav, each with its
+     own safe-area padding, so the bottom reserve adds the safe area
+     twice (once per bar). */
+  padding: 0 16px calc(var(--chrome-bottom) + 24px + env(safe-area-inset-bottom, 0px) * 2);
 }
+
+/* "Skip to content" — visually hidden until keyboard focus, so it never
+   shows as a stray link at the top-left of the page. */
+.skip-link {
+  position: absolute;
+  left: 12px;
+  top: -60px;
+  z-index: 200;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: var(--slate);
+  font-weight: 700;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+.skip-link:focus-visible { top: 12px; text-decoration: none; }
 
 /* Screen-reader-only text (visible to AT, not sighted users). */
 .sr-only {
@@ -163,7 +211,11 @@ input { font-family: inherit; }
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 0 -16px;
+  /* No negative margins: the topbar is a direct child of .app-main-wrap
+     (which has no horizontal padding), so -16px margins pushed it 16px
+     past each side of the viewport — the page-level horizontal scrollbar
+     at every width. */
+  margin: 0;
   padding: 0 16px;
   background: rgba(30, 41, 59, 0.92);
   backdrop-filter: blur(8px);
@@ -208,6 +260,7 @@ input { font-family: inherit; }
 .section-row {
   display: flex;
   gap: 12px;
+  min-width: 0;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   padding-bottom: 6px;
@@ -597,8 +650,8 @@ input { font-family: inherit; }
 .topbar__search { display: none; flex: 1; max-width: 480px; }
 .topbar__actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .topbar__notice {
-  width: 100%;
-  margin: 0 -16px;
+  width: auto;
+  margin: 0;
   padding: 8px 16px;
   background: rgba(245, 158, 11, 0.14);
   color: var(--sand);
@@ -660,8 +713,8 @@ input { font-family: inherit; }
 /* ---------- Tablet ---------- */
 @media (min-width: 640px) {
   .main { padding-left: 24px; padding-right: 24px; }
-  .topbar { margin: 0 -24px; padding: 0 24px; }
-  .topbar__notice { margin: 0 -24px; padding-left: 24px; padding-right: 24px; }
+  .topbar { margin: 0; padding: 0 24px; }
+  .topbar__notice { margin: 0; padding-left: 24px; padding-right: 24px; }
   .topbar__search { display: flex; }
   .track-row { grid-template-columns: 28px 48px minmax(0, 1fr) auto auto; }
   .track-row__index { display: block; }
@@ -731,6 +784,7 @@ input { font-family: inherit; }
   border: 1px solid var(--border);
 }
 .streak-hero__top { display: flex; gap: 16px; align-items: center; }
+.streak-hero__top > * { min-width: 0; }
 .streak-hero__flame {
   flex-shrink: 0;
   width: 64px;
@@ -777,11 +831,40 @@ input { font-family: inherit; }
 .streak-hero__field label { font-size: 0.8rem; font-weight: 700; color: var(--muted); }
 .streak-hero__field .input { min-width: 0; }
 
+/* ---------- Small phones: let single-row bars wrap/stack ---------- */
+@media (max-width: 639px) {
+  /* Top bar: logo + language + Admin + sign-in cannot fit one 390px row
+     in every language — wrap instead of overflowing. Tighten padding/gap
+     first so the common case still fits one row (36 logo + 8 gap +
+     ~85 select + 8 + 75 log in + 8 + 138 sign up + 24 padding ≈ 382). */
+  .topbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: var(--topbar-h);
+    padding-top: 8px;
+    padding-bottom: 8px;
+    padding-left: 12px;
+    padding-right: 12px;
+    row-gap: 8px;
+    gap: 8px;
+  }
+  .lang-select { padding: 8px 6px; }
+  .topbar__actions { flex-wrap: wrap; }
+  /* Bhakti Streak alarm: stack time / song / save vertically so nothing
+     is squeezed off the right edge. */
+  .streak-hero__alarm-row { flex-direction: column; align-items: stretch; }
+  .streak-hero__field { flex: 1 1 auto; min-width: 0; }
+  .streak-hero__alarm-row .btn { justify-content: center; }
+}
+
 /* ---------- Discover swipe feed ---------- */
 .discover-feed {
   position: relative;
-  height: calc(100dvh - var(--topbar-h) - var(--chrome-bottom) - 8px);
-  height: calc(100svh - var(--topbar-h) - var(--chrome-bottom) - 8px);
+  /* The feed sits below the route subtitle (~48px of heading + margins)
+     and above the fixed player + bottom nav — both are subtracted so the
+     last card's action row is never hidden behind the player bar. */
+  height: calc(100dvh - var(--topbar-h) - var(--chrome-bottom) - 48px - env(safe-area-inset-bottom, 0px));
+  height: calc(100svh - var(--topbar-h) - var(--chrome-bottom) - 48px - env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
   overflow-x: hidden;
   scroll-snap-type: y mandatory;
@@ -789,7 +872,12 @@ input { font-family: inherit; }
   border-radius: var(--radius-lg);
   background: var(--surface);
   outline: none;
+  /* Dragging must scroll the feed, never select the card text. */
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-y;
 }
+.discover-card { user-select: none; -webkit-user-select: none; }
 .discover-feed:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .discover-card {
   position: relative;
@@ -911,4 +999,38 @@ input { font-family: inherit; }
     scroll-behavior: auto !important;
   }
   .loading-skeleton::after { animation: none; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Version-update banner (App.jsx) — slim fixed strip at the top of   */
+/* the viewport. Banner + Refresh button only; it never auto-reloads. */
+/* ------------------------------------------------------------------ */
+.update-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: #1E293B;
+  color: #FEF3C7;
+  border-bottom: 2px solid #F59E0B;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.update-banner__btn {
+  min-height: 44px;
+  padding: 6px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: #F59E0B;
+  color: #1E293B;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
 }

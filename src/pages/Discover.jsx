@@ -21,7 +21,7 @@ function isPlayable(track) {
   return !!track && !track.isSample && !!(track.audio128 || track.audio320)
 }
 
-function DiscoverCard({ track, index, onPrev, onNext, isFirst, isLast }) {
+function DiscoverCard({ track, index, onPrev, onNext, isFirst, isLast, ref }) {
   const { t } = useI18n()
   const player = usePlayer()
   const [liked, setLiked] = useState(() => isLiked(track.id))
@@ -38,7 +38,10 @@ function DiscoverCard({ track, index, onPrev, onNext, isFirst, isLast }) {
   const isCurrent = !!current && current.id === track.id
   const isPlaying = isCurrent && !!player?.isPlaying
   const title = track.titleTa || track.titleEn || 'Untitled'
-  const lyric = (track.lyricsTa && track.lyricsTa[0]) || track.titleTa || ''
+  // First lyric line only. Never fall back to the title here — sample
+  // tracks have no lyrics, and the title-as-lyric fallback printed the
+  // same title twice on every card (big lyric line + heading).
+  const lyric = (track.lyricsTa && track.lyricsTa[0]) || ''
   const playable = isPlayable(track)
 
   const shareText = `${title} — ${track.artist || 'Nandha Music'} | Nandha Music ${window.location.origin}/discover`
@@ -51,7 +54,7 @@ function DiscoverCard({ track, index, onPrev, onNext, isFirst, isLast }) {
   }
 
   return (
-    <article className="discover-card" aria-label={`${title} — ${track.artist || 'Nandha Music'}`}>
+    <article ref={ref} className="discover-card" aria-label={`${title} — ${track.artist || 'Nandha Music'}`}>
       {track.cover ? (
         <img className="discover-card__cover" src={track.cover} alt="" loading={index === 0 ? 'eager' : 'lazy'} />
       ) : (
@@ -117,29 +120,62 @@ export function DiscoverFeed({ style }) {
   const feed = tracks.filter((tr) => tr.status === 'published')
   const [index, setIndex] = useState(0)
   const containerRef = useRef(null)
-  const touchStartY = useRef(null)
-  const lastWheelAt = useRef(0)
+  const cardRefs = useRef([])
+  const programmaticScrollRef = useRef(false)
+  const programmaticTimerRef = useRef(null)
+  const firstRunRef = useRef(true)
+  const isPlayingRef = useRef(false)
   const seekTimer = useRef(null)
   const stopTimer = useRef(null)
+
+  // Mirror isPlaying in a ref so the autoplay effect reads the live
+  // value instead of the closure from the render that set the index.
+  isPlayingRef.current = !!player?.isPlaying
 
   const current = feed[index]
   const title = current ? (current.titleTa || current.titleEn || '') : ''
 
+  // Scroll the feed to a card AND make it the active (playing) one.
+  // scrollTo by index * clientHeight was unreliable with scroll-snap
+  // fighting it, so we scroll to the card's own offsetTop instead.
   const goTo = useCallback((next) => {
-    setIndex(Math.max(0, Math.min(feed.length - 1, next)))
-  }, [feed.length])
-
-  // Scroll the container to the active card (snap handles most of it).
-  useEffect(() => {
+    const target = Math.max(0, Math.min(feed.length - 1, next))
+    setIndex(target)
     const el = containerRef.current
-    if (el) el.scrollTo({ top: index * el.clientHeight, behavior: 'auto' })
-  }, [index])
+    const card = cardRefs.current[target]
+    if (el && card) {
+      // Ignore scroll events from this programmatic move for ~700ms:
+      // the smooth scroll passes intermediate cards, and handleScroll
+      // would otherwise re-set the index (and the track) mid-flight.
+      programmaticScrollRef.current = true
+      clearTimeout(programmaticTimerRef.current)
+      programmaticTimerRef.current = setTimeout(() => {
+        programmaticScrollRef.current = false
+      }, 700)
+      el.scrollTo({ top: card.offsetTop, behavior: 'smooth' })
+    }
+  }, [feed.length])
 
   // Play the hook clip for the active card.
   useEffect(() => {
     const track = feed[index]
     if (!track) return
     if (!isPlayable(track)) return
+    const nowPlaying = player?.track ?? player?.current
+    // Never restart the track that is already playing — opening
+    // Discover (or scrolling back to) the current track used to reset
+    // it to 0:00.
+    if (nowPlaying && nowPlaying.id === track.id) {
+      firstRunRef.current = false
+      return
+    }
+    // On first mount, never hijack playback that is already in
+    // progress elsewhere in the app — navigating to Discover used to
+    // cut the current song and restart card 0's hook.
+    if (firstRunRef.current) {
+      firstRunRef.current = false
+      if (isPlayingRef.current) return
+    }
     clearTimeout(seekTimer.current)
     clearTimeout(stopTimer.current)
     player?.play?.(track, feed)
@@ -157,19 +193,16 @@ export function DiscoverFeed({ style }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index])
 
+  // Native scrolling (touch / wheel / trackpad) drives the index through
+  // scroll-snap: each card snaps to the top, and this derives the active
+  // card from the scroll position. No custom wheel/touch handlers: the
+  // old ones double-advanced with the native scroll and fought the snap.
   function handleScroll() {
+    if (programmaticScrollRef.current) return
     const el = containerRef.current
     if (!el || el.clientHeight === 0) return
     const next = Math.round(el.scrollTop / el.clientHeight)
     if (next !== index) setIndex(Math.max(0, Math.min(feed.length - 1, next)))
-  }
-
-  function handleWheel(e) {
-    const now = Date.now()
-    if (now - lastWheelAt.current < 600) return
-    if (Math.abs(e.deltaY) < 30) return
-    lastWheelAt.current = now
-    goTo(index + (e.deltaY > 0 ? 1 : -1))
   }
 
   function handleKeyDown(e) {
@@ -192,19 +225,12 @@ export function DiscoverFeed({ style }) {
         role="region"
         aria-label={t('discover.title')}
         onScroll={handleScroll}
-        onWheel={handleWheel}
         onKeyDown={handleKeyDown}
-        onTouchStart={(e) => { touchStartY.current = e.touches[0].clientY }}
-        onTouchEnd={(e) => {
-          if (touchStartY.current == null) return
-          const dy = touchStartY.current - e.changedTouches[0].clientY
-          touchStartY.current = null
-          if (Math.abs(dy) > 50) goTo(index + (dy > 0 ? 1 : -1))
-        }}
       >
         {feed.map((track, i) => (
           <DiscoverCard
             key={track.id}
+            ref={(el) => { cardRefs.current[i] = el }}
             track={track}
             index={i}
             isFirst={i === 0}

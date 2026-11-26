@@ -8,6 +8,12 @@ import {
   useState,
 } from 'react'
 import { useMediaSession } from './useMediaSession.js'
+import {
+  resolvePlayableUrl,
+  isSignedTrack,
+  dropSignedAudioUrl,
+  SIGNED_TRACK_FILE,
+} from '../lib/signedAudio.js'
 
 // ---------------------------------------------------------------------------
 // Optional parallel-module integrations (catalog.js / cache.js / config.js
@@ -144,6 +150,8 @@ export function PlayerProvider({ children }) {
   const repeatRef = useRef('off')
   const shuffleRef = useRef(false)
   const trackRef = useRef(null)
+  const loadSeqRef = useRef(0) // guards stale signed-URL resolutions
+  const signedRetryRef = useRef(null) // track id already retried once after an expiry error
 
   const initialQueue = useMemo(readQueue, [])
   const [queue, setQueue] = useState(initialQueue.queue)
@@ -229,47 +237,41 @@ export function PlayerProvider({ children }) {
     }
   }, [])
 
-  /** Load (but do not necessarily play) the track at `index`. Returns false
-   *  when the track is a sample / has no audio — caller then skips on.
-   *  `opts.startAt` (seconds) starts playback part-way in — used for
-   *  Discover-feed hook playback; 0 (default) starts at the beginning. */
-  const loadTrackAt = useCallback(
-    (index, { autoplay = true, startAt = 0 } = {}) => {
-      const list = queueRef.current
-      const nextTrack = list[index]
-      if (!nextTrack) return false
-      const audio = audioRef.current
-      if (!audio) return false
-
-      setQueueIndex(index)
-      setCurrentTime(0)
-      setDuration(
-        Number.isFinite(nextTrack.durationSec) ? nextTrack.durationSec : 0,
-      )
-      playCountedRef.current = null
-      prefetchedForRef.current = null
-      if (prefetchRef.current) {
-        prefetchRef.current.src = ''
-        prefetchRef.current = null
-      }
-
-      if (!isPlayable(nextTrack, qualityRef.current)) {
-        showNotice(SAMPLE_NOTICE)
-        audio.removeAttribute('src')
-        audio.load()
-        setIsPlaying(false)
+  /**
+   * Attach a playable src to the shared <audio> element. Async because the
+   * real track's URL is minted per play from the Edge Function (300 s
+   * signed URL); every other track resolves synchronously. `silent`
+   * suppresses the failure notice (used by the mount restore, which runs
+   * without a user gesture). Returns false when no URL could be resolved.
+   * Stale guard: if the user moved to another track while the signed URL
+   * was being minted, the late result is discarded.
+   */
+  const attachSrc = useCallback(
+    async (
+      audio,
+      trackToLoad,
+      qualityValue,
+      { autoplay = true, startAt = 0, silent = false } = {},
+    ) => {
+      const seq = loadSeqRef.current
+      const url = await resolvePlayableUrl(trackToLoad, qualityValue)
+      if (seq !== loadSeqRef.current) return false
+      if (!url) {
+        if (!silent) {
+          showNotice('Could not play this track — try again')
+          setIsPlaying(false)
+        }
         return false
       }
-
-      audio.src = resolveAudioUrl(nextTrack, qualityRef.current)
+      audio.src = url
       audio.load()
 
       // Clamp the hook start inside the track; 0 = normal start.
       const hookAt =
         Number.isFinite(startAt) &&
         startAt > 0 &&
-        (!Number.isFinite(nextTrack.durationSec) ||
-          startAt < nextTrack.durationSec)
+        (!Number.isFinite(trackToLoad.durationSec) ||
+          startAt < trackToLoad.durationSec)
           ? startAt
           : 0
 
@@ -306,6 +308,53 @@ export function PlayerProvider({ children }) {
       return true
     },
     [showNotice],
+  )
+
+  /** Load (but do not necessarily play) the track at `index`. Returns false
+   *  when the track is a sample / has no audio — caller then skips on.
+   *  `opts.startAt` (seconds) starts playback part-way in — used for
+   *  Discover-feed hook playback; 0 (default) starts at the beginning. */
+  const loadTrackAt = useCallback(
+    (index, { autoplay = true, startAt = 0 } = {}) => {
+      const list = queueRef.current
+      const nextTrack = list[index]
+      if (!nextTrack) return false
+      const audio = audioRef.current
+      if (!audio) return false
+
+      setQueueIndex(index)
+      setCurrentTime(0)
+      setDuration(
+        Number.isFinite(nextTrack.durationSec) ? nextTrack.durationSec : 0,
+      )
+      playCountedRef.current = null
+      prefetchedForRef.current = null
+      if (prefetchRef.current) {
+        prefetchRef.current.src = ''
+        prefetchRef.current = null
+      }
+
+      if (!isPlayable(nextTrack, qualityRef.current)) {
+        showNotice(SAMPLE_NOTICE)
+        audio.removeAttribute('src')
+        audio.load()
+        setIsPlaying(false)
+        return false
+      }
+
+      loadSeqRef.current += 1
+      signedRetryRef.current = null
+      // Fire-and-forget: the signed URL is minted async, but the track IS
+      // playable, so loadTrackAt still returns true synchronously (callers
+      // rely on it to decide whether to skip on). attachSrc shows a notice
+      // itself if the URL cannot be minted.
+      attachSrc(audio, nextTrack, qualityRef.current, {
+        autoplay,
+        startAt,
+      })
+      return true
+    },
+    [showNotice, attachSrc],
   )
 
   /** Advance to the next playable track from `fromIndex`. Returns true if
@@ -421,9 +470,11 @@ export function PlayerProvider({ children }) {
         return
       }
       // (Re)attach src if it was cleared (e.g. after a sample skip).
+      // The signed URL is minted async; attachSrc starts playback itself.
       if (!audio.src) {
-        audio.src = resolveAudioUrl(current, qualityRef.current)
-        audio.load()
+        loadSeqRef.current += 1
+        attachSrc(audio, current, qualityRef.current, { autoplay: true })
+        return
       }
       audio
         .play()
@@ -433,7 +484,7 @@ export function PlayerProvider({ children }) {
       audio.pause()
       setIsPlaying(false)
     }
-  }, [showNotice, skipToNextPlayable])
+  }, [showNotice, skipToNextPlayable, attachSrc])
 
   const seekTo = useCallback((seconds) => {
     const audio = audioRef.current
@@ -476,23 +527,33 @@ export function PlayerProvider({ children }) {
     if (!audio || !current || !isPlayable(current, nextQ)) return
     const wasPlaying = !audio.paused
     const resumeAt = audio.currentTime || 0
-    audio.src = resolveAudioUrl(current, nextQ)
-    audio.load()
-    const onMeta = () => {
-      audio.removeEventListener('loadedmetadata', onMeta)
-      if (Number.isFinite(resumeAt) && resumeAt > 0) {
-        try {
-          audio.currentTime = resumeAt
-        } catch {
-          /* some streams reject seeking before enough data — ignore */
+    const seq = loadSeqRef.current + 1
+    loadSeqRef.current = seq
+    resolvePlayableUrl(current, nextQ).then((url) => {
+      if (seq !== loadSeqRef.current) return
+      if (!url) {
+        showNotice('Could not play this track — try again')
+        setIsPlaying(false)
+        return
+      }
+      audio.src = url
+      audio.load()
+      const onMeta = () => {
+        audio.removeEventListener('loadedmetadata', onMeta)
+        if (Number.isFinite(resumeAt) && resumeAt > 0) {
+          try {
+            audio.currentTime = resumeAt
+          } catch {
+            /* some streams reject seeking before enough data — ignore */
+          }
+        }
+        if (wasPlaying) {
+          audio.play().catch(() => setIsPlaying(false))
         }
       }
-      if (wasPlaying) {
-        audio.play().catch(() => setIsPlaying(false))
-      }
-    }
-    audio.addEventListener('loadedmetadata', onMeta)
-  }, [])
+      audio.addEventListener('loadedmetadata', onMeta)
+    })
+  }, [showNotice])
 
   const toggleShuffle = useCallback(() => {
     setShuffle((s) => !s)
@@ -569,6 +630,43 @@ export function PlayerProvider({ children }) {
   const openPlayer = useCallback(() => setIsPlayerOpen(true), [])
   const closePlayer = useCallback(() => setIsPlayerOpen(false), [])
 
+  /**
+   * Stop playback entirely (mini-player close button): pause, clear the
+   * audio src, drop the cached signed URL, clear the track + queue, close
+   * the expanded player, and clear the now-playing key. The player bar
+   * renders only when a current track exists, so it disappears too.
+   */
+  const stopPlayback = useCallback(() => {
+    const audio = audioRef.current
+    if (audio) {
+      audio.pause()
+      audio.removeAttribute('src')
+      audio.load()
+    }
+    loadSeqRef.current += 1
+    signedRetryRef.current = null
+    if (prefetchRef.current) {
+      prefetchRef.current.src = ''
+      prefetchRef.current = null
+    }
+    dropSignedAudioUrl(SIGNED_TRACK_FILE)
+    setQueue([])
+    setQueueIndex(0)
+    queueRef.current = []
+    queueIndexRef.current = 0
+    setIsPlaying(false)
+    setCurrentTime(0)
+    setDuration(0)
+    setIsPlayerOpen(false)
+    playCountedRef.current = null
+    prefetchedForRef.current = null
+    try {
+      localStorage.removeItem(LS_NOW_PLAYING)
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
   // --- <audio> element wiring (single element, rendered once below) -------
   useEffect(() => {
     const audio = audioRef.current
@@ -613,7 +711,10 @@ export function PlayerProvider({ children }) {
           if (
             nextTrack &&
             nextTrack.id !== current.id &&
-            isPlayable(nextTrack, qualityRef.current)
+            isPlayable(nextTrack, qualityRef.current) &&
+            // Signed tracks mint their URL on demand — prefetching would
+            // burn a short-lived URL, and the old Pages path is dead.
+            !isSignedTrack(nextTrack, qualityRef.current)
           ) {
             const url = resolveAudioUrl(nextTrack, qualityRef.current)
             if (url) {
@@ -671,6 +772,45 @@ export function PlayerProvider({ children }) {
     const onError = () => {
       // Ignore errors when no src is set (sample tracks / cleared queue).
       if (!audio.getAttribute('src') && !audio.currentSrc) return
+      const current = trackRef.current
+      // Signed URL expired mid-play (403 on a Range request): mint a fresh
+      // one and resume from where playback stopped. Once per track load.
+      if (
+        current &&
+        isSignedTrack(current, qualityRef.current) &&
+        signedRetryRef.current !== current.id
+      ) {
+        signedRetryRef.current = current.id
+        const resumeAt = audio.currentTime || 0
+        dropSignedAudioUrl(SIGNED_TRACK_FILE)
+        loadSeqRef.current += 1
+        const seq = loadSeqRef.current
+        resolvePlayableUrl(current, qualityRef.current).then((url) => {
+          if (seq !== loadSeqRef.current) return
+          if (!url) {
+            showNotice('Could not play this track — skipping')
+            setIsPlaying(false)
+            skipToNextPlayable(queueIndexRef.current)
+            return
+          }
+          audio.src = url
+          audio.load()
+          const onMeta = () => {
+            audio.removeEventListener('loadedmetadata', onMeta)
+            if (Number.isFinite(resumeAt) && resumeAt > 0) {
+              try {
+                audio.currentTime = resumeAt
+              } catch {
+                /* ignore */
+              }
+            }
+            audio.play().catch(() => setIsPlaying(false))
+          }
+          if (audio.readyState >= 1) onMeta()
+          else audio.addEventListener('loadedmetadata', onMeta)
+        })
+        return
+      }
       showNotice('Could not play this track — skipping')
       setIsPlaying(false)
       skipToNextPlayable(queueIndexRef.current)
@@ -706,8 +846,13 @@ export function PlayerProvider({ children }) {
     if (!saved) return
     setDuration(Number.isFinite(saved.durationSec) ? saved.durationSec : 0)
     if (isPlayable(saved, qualityRef.current)) {
-      audio.src = resolveAudioUrl(saved, qualityRef.current)
-      audio.load()
+      // Silent: no notice on failure (no user gesture yet — the function
+      // may not be deployed, or the listener is offline).
+      loadSeqRef.current += 1
+      attachSrc(audio, saved, qualityRef.current, {
+        autoplay: false,
+        silent: true,
+      })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -740,6 +885,7 @@ export function PlayerProvider({ children }) {
       clearQueue,
       openPlayer,
       closePlayer,
+      stopPlayback,
       setNotice: showNotice,
       formatTime,
       audioRef,
@@ -771,6 +917,7 @@ export function PlayerProvider({ children }) {
       clearQueue,
       openPlayer,
       closePlayer,
+      stopPlayback,
       showNotice,
     ],
   )

@@ -8,13 +8,13 @@ import ta from '../locales/ta.js';
 import hi from '../locales/hi.js';
 
 export const LOCALES = {
-  ta: { label: 'தமிழ்', strings: ta, font: "'Noto Sans Tamil', 'Inter', system-ui, sans-serif" },
   en: { label: 'English', strings: en, font: "'Inter', 'Noto Sans Tamil', system-ui, sans-serif" },
+  ta: { label: 'தமிழ்', strings: ta, font: "'Noto Sans Tamil', 'Inter', system-ui, sans-serif" },
   hi: { label: 'हिन्दी', strings: hi, font: "'Inter', 'Noto Sans Tamil', system-ui, sans-serif" },
 };
 
-export const DEFAULT_LANG = 'ta';
-const STORAGE_KEY = 'nandha-lang';
+export const DEFAULT_LANG = 'en';
+const STORAGE_KEY = 'nandha-lang-v2';
 
 const LanguageContext = createContext(null);
 

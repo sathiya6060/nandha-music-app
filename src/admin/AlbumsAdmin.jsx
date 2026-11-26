@@ -1,6 +1,6 @@
 // Albums admin — list + create/edit with track ordering.
 import { useMemo, useState } from 'react'
-import { tracks, albums } from '../data/catalog.js'
+import { allTracks as catalogTracks, allAlbums as catalogAlbums } from '../data/catalog.js'
 import {
   getMergedTracks,
   getMergedAlbums,
@@ -17,14 +17,14 @@ const EMPTY_ALBUM = { titleTa: '', titleEn: '', releaseDate: '', trackIds: [] }
 export default function AlbumsAdmin() {
   const { user } = useAuth()
   const { t } = useI18n()
-  const allTracks = useMemo(() => getMergedTracks(tracks), [])
+  const allTracks = useMemo(() => getMergedTracks(catalogTracks), [])
   const [version, setVersion] = useState(0)
   const [editing, setEditing] = useState(null) // album id or 'new'
   const [form, setForm] = useState(EMPTY_ALBUM)
   const [coverPreview, setCoverPreview] = useState('')
   const [notice, setNotice] = useState('')
 
-  const mergedAlbums = useMemo(() => getMergedAlbums(albums), [version])
+  const mergedAlbums = useMemo(() => getMergedAlbums(catalogAlbums), [version])
 
   const startNew = () => {
     setEditing('new')

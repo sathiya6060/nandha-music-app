@@ -1,6 +1,8 @@
 // Hindi locale — core UI strings translated. Missing keys fall back to English.
 export default {
   'app.tagline': 'YOUR BEAT. YOUR ECHO.',
+  'app.newVersion': 'नया संस्करण उपलब्ध है',
+  'app.refresh': 'रिफ़्रेश करें',
   'nav.home': 'होम',
   'nav.search': 'खोजें',
   'nav.library': 'लाइब्रेरी',
@@ -151,9 +153,6 @@ export default {
   'admin.noResultSearches': 'बिना परिणाम वाली खोजें',
   'admin.demoNotice': 'डेमो मोड — बदलाव केवल इस ब्राउज़र में सहेजे जाते हैं।',
   'auth.demoRole': 'डेमो भूमिका',
-  'auth.signInDemo': 'डेमो साइन-इन: कोई भी ईमेल चलेगा। एडमिन पहुंच के लिए ईमेल में “admin” लिखें।',
-  'auth.demoNotice': 'डेमो मोड — साइन-इन अभी चालू नहीं है। खुलकर ब्राउज़ करें; पसंद और प्लेलिस्ट इसी डिवाइस पर सहेजी जाती हैं।',
-  'auth.demoSignIn': 'डेमो — साइन इन',
   'common.seeAll': 'सभी देखें',
   'common.loadError': 'संगीत लोड नहीं हुआ। कनेक्शन जाँचकर फिर कोशिश करें।',
   'common.album': 'एल्बम',
@@ -296,5 +295,14 @@ export default {
   'admin.nameEn': 'नाम (अंग्रेज़ी)',
   'admin.photo': 'फ़ोटो',
   'auth.email': 'ईमेल',
+  'auth.password': 'पासवर्ड',
+  'auth.signInGoogle': 'Google से जारी रखें',
+  'auth.signInError': 'साइन-इन विफल रहा। अपना ईमेल और पासवर्ड जांचकर पुनः प्रयास करें।',
+  'auth.loginHint': 'एडमिन पहुंच केवल आधिकारिक नंदा म्यूज़िक खाते तक सीमित है।',
+  'auth.signUp': 'खाता बनाएँ',
+  'auth.switchToSignUp': 'खाता नहीं है? बनाएँ',
+  'auth.switchToSignIn': 'पहले से खाता है? साइन इन करें',
+  'auth.signUpHint': 'officialnandhamusic@gmail.com से खाता बनाएँ — केवल वही ईमेल एडमिन खोलेगा।',
+  'auth.confirmEmail': 'पुष्टिकरण लिंक के लिए अपना ईमेल देखें, फिर साइन इन करें।',
   'common.saving': 'सहेजा जा रहा है…',
 };

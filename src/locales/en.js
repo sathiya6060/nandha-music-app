@@ -2,6 +2,8 @@
 // translate the values, save as src/locales/<code>.js, register it in src/lib/i18n.js.
 export default {
   'app.tagline': 'YOUR BEAT. YOUR ECHO.',
+  'app.newVersion': 'New version available',
+  'app.refresh': 'Refresh',
   'nav.home': 'Home',
   'nav.search': 'Search',
   'nav.library': 'Library',
@@ -152,9 +154,6 @@ export default {
   'admin.noResultSearches': 'Searches with no results',
   'admin.demoNotice': 'Demo mode — changes are saved in this browser only.',
   'auth.demoRole': 'Demo role',
-  'auth.signInDemo': 'Demo sign-in: any email works. Use “admin” in the email for admin access.',
-  'auth.demoNotice': 'Demo mode — sign-in is not enabled yet. Browse freely; likes and playlists are saved on this device.',
-  'auth.demoSignIn': 'Demo — Sign in',
   'common.seeAll': 'See all',
   'common.loadError': 'Couldn’t load the music. Please check your connection and try again.',
   'common.album': 'Album',
@@ -297,5 +296,14 @@ export default {
   'admin.nameEn': 'Name (English)',
   'admin.photo': 'Photo',
   'auth.email': 'Email',
+  'auth.password': 'Password',
+  'auth.signInGoogle': 'Continue with Google',
+  'auth.signInError': 'Sign-in failed. Check your email and password and try again.',
+  'auth.loginHint': 'Admin access is restricted to the official Nandha Music account.',
+  'auth.signUp': 'Create account',
+  'auth.switchToSignUp': 'No account yet? Create one',
+  'auth.switchToSignIn': 'Already have an account? Sign in',
+  'auth.signUpHint': 'Create the account with officialnandhamusic@gmail.com — only that mail id opens the admin.',
+  'auth.confirmEmail': 'Check your email for the confirmation link, then sign in.',
   'common.saving': 'Saving…',
 };

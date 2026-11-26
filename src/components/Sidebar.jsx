@@ -27,19 +27,18 @@ const BOTTOM_ITEMS = [
   { to: '/library', labelKey: 'nav.profile', icon: 'profile' },
 ]
 
+/**
+ * The role comes from Auth (src/lib/auth.jsx) — admin only for the
+ * allowlisted email. There is deliberately NO localStorage fallback here:
+ * a stored string must never be able to surface the Admin link.
+ */
 function getRole(roleProp) {
-  if (roleProp) return roleProp
-  try {
-    return localStorage.getItem('nandha-role') || 'listener'
-  } catch {
-    return 'listener'
-  }
+  return roleProp || 'listener'
 }
 
 /**
  * Desktop left navigation (visible >= 1024px via CSS).
- * Props: { role } — 'admin' shows the Admin link; defaults to the
- * demo role stored in localStorage ('nandha-role') or 'listener'.
+ * Props: { role } — 'admin' shows the Admin link; defaults to 'listener'.
  * The lockup is the transparent logo + 'NANDHA MUSIC' text (the approved
  * N-first lockup composition). /assets/nandha-lockup.png ships on a white
  * background, so it is used as a press asset on the EPK page, not on the
