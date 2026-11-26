@@ -19,21 +19,6 @@
  */
 
 // ---------------------------------------------------------------------------
-// Deterministic PRNG (mulberry32, fixed seed) — used ONLY by getDailyMix
-// to rotate the (1-track) mix by day-of-year. No other randomness here.
-// ---------------------------------------------------------------------------
-function mulberry32(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-// ---------------------------------------------------------------------------
 // The ONE real track
 // ---------------------------------------------------------------------------
 export const REAL_TRACK_ID = 'vaazhvinil-orumurayenum';
@@ -50,7 +35,7 @@ const realTrack = {
   genre: 'Devotional',
   language: 'Tamil',
   durationSec: 224,
-  cover: '/assets/vaazhvinil-cover.jpg',
+  cover: '/assets/vaazhvinil-cover-800.webp',
   audio128: '/assets/vaazhvinil-orumurayenum.mp3',
   audio320: '/assets/vaazhvinil-orumurayenum.mp3',
   status: 'published',
@@ -122,7 +107,7 @@ export const albums = [
     artist: 'Nandha Music',
     artistId: 'nandha-music',
     genre: 'Devotional',
-    cover: '/assets/vaazhvinil-cover.jpg',
+    cover: '/assets/vaazhvinil-cover-800.webp',
     releaseDate: '2026-12-10',
   },
 ];
@@ -138,11 +123,12 @@ export const tracks = [realTrack];
 export const playlists = [
   {
     id: 'best-of-nandha',
+    title: 'Best of Nandha',
     titleEn: 'Best of Nandha',
     titleTa: 'நந்தாவின் சிறந்தவை',
     descriptionEn: 'The best of Nandha Music — starting with Vaazhvinil Orumurayenum.',
     descriptionTa: 'நந்தா மியூசிக்கின் சிறந்த பாடல்கள்.',
-    cover: '/assets/vaazhvinil-cover.jpg',
+    cover: '/assets/vaazhvinil-cover-800.webp',
     trackIds: [REAL_TRACK_ID],
   },
 ];
@@ -188,28 +174,6 @@ export function getDaypart(date = new Date()) {
   return { key: 'night', labelEn: 'Night Calm', labelTa: 'இரவு அமைதி', genres: ['Melody', 'Devotional'] };
 }
 
-export function getDaypartTracks(date = new Date(), limit = 20) {
-  const part = getDaypart(date);
-  const pool = tracks.filter((t) => t.status === 'published' && part.genres.includes(t.genre));
-  return pool.slice(0, limit);
-}
-
-// Rule-based Daily Mix: rotates by day-of-year, seeded — same mix all day,
-// different mix tomorrow. Real track first when it matches the seed window.
-export function getDailyMix(date = new Date(), limit = 20) {
-  const published = tracks.filter((t) => t.status === 'published');
-  const dayOfYear = Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 86400000);
-  const rand = mulberry32(dayOfYear * 7919 + 13);
-  const pool = [...published];
-  for (let i = pool.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(rand() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
-  const mix = pool.slice(0, limit);
-  if (!mix.some((t) => t.id === REAL_TRACK_ID)) mix[0] = realTrack;
-  return mix;
-}
-
 // Song of the Day: one devotional track per calendar day, deterministic.
 // Admin override (localStorage 'nandha-song-of-day') wins when set for today.
 export function getSongOfTheDay(date = new Date()) {
@@ -225,4 +189,3 @@ export function getSongOfTheDay(date = new Date()) {
   return devotionals[dayOfYear % devotionals.length] || realTrack;
 }
 
-export default tracks;

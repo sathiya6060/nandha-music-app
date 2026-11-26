@@ -1,8 +1,16 @@
 // Track editor — create (/admin/tracks/new) and edit (/admin/tracks/:id/edit).
 // Includes hookStartSec / hookDurationSec (Discover hook clip timing).
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
-import { tracks, albums, artists, getTrack } from '../data/catalog.js'
+import { tracks, albums as fallbackAlbums, artists as fallbackArtists, getTrack } from '../data/catalog.js'
+import { useTrack, useAlbums, useArtists } from '../lib/supabaseCatalog.js'
+import {
+  supabaseWritesEnabled,
+  saveTrackToSupabase,
+  adminErrorMessage,
+  validateAudioFile,
+  validateCoverFile,
+} from '../lib/supabaseAdmin.js'
 import {
   getMergedTracks,
   saveAdminTrack,
@@ -63,7 +71,15 @@ export default function TrackEditor() {
   const { t } = useI18n()
   const isNew = !id || id === 'new'
 
-  const existing = useMemo(() => {
+  // Supabase read layer (B1) first; static catalog + local overrides
+  // are the fallback while it loads / when Supabase is unreachable.
+  const { data: sbTrack, isLoading: trackLoading } = useTrack(isNew ? null : id)
+  const { data: sbAlbums } = useAlbums()
+  const { data: sbArtists } = useArtists()
+  const albums = sbAlbums || fallbackAlbums
+  const artists = sbArtists || fallbackArtists
+
+  const localExisting = useMemo(() => {
     if (isNew) return null
     try {
       return getTrack(id) || getMergedTracks(tracks).find((tr) => tr.id === id) || null
@@ -71,6 +87,7 @@ export default function TrackEditor() {
       return getMergedTracks(tracks).find((tr) => tr.id === id) || null
     }
   }, [id, isNew])
+  const existing = sbTrack ?? localExisting
 
   const [form, setForm] = useState(EMPTY_FORM)
   const [audioFile, setAudioFile] = useState(null)
@@ -80,10 +97,16 @@ export default function TrackEditor() {
   const [errors, setErrors] = useState({})
   const [warning, setWarning] = useState('')
   const [notice, setNotice] = useState('')
+  const [saveError, setSaveError] = useState('')
   const [saving, setSaving] = useState(false)
+  // Only initialise the form once per track id — the Supabase row
+  // arriving after the static fallback must not wipe typed input.
+  const initializedIdRef = useRef(null)
 
   useEffect(() => {
     if (!existing) return
+    if (initializedIdRef.current === existing.id) return
+    initializedIdRef.current = existing.id
     setForm({
       titleTa: existing.titleTa || '',
       titleEn: existing.titleEn || '',
@@ -146,6 +169,15 @@ export default function TrackEditor() {
   const onAudioChange = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
+    // L6: validate before accepting — a bad file never reaches upload.
+    try {
+      validateAudioFile(file)
+    } catch (err) {
+      setSaveError(validationMessage(err, 'audio'))
+      e.target.value = ''
+      return
+    }
+    setSaveError('')
     setAudioFile(file)
     setAudioMeta({ name: file.name, size: file.size, type: file.type })
   }
@@ -153,9 +185,23 @@ export default function TrackEditor() {
   const onCoverChange = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
+    try {
+      validateCoverFile(file)
+    } catch (err) {
+      setSaveError(validationMessage(err, 'cover'))
+      e.target.value = ''
+      return
+    }
+    setSaveError('')
     setCoverFile(file)
     if (coverPreview && coverPreview.startsWith('blob:')) URL.revokeObjectURL(coverPreview)
     setCoverPreview(URL.createObjectURL(file))
+  }
+
+  // Map an upload-validation error to a localised admin message.
+  const validationMessage = (err, kind) => {
+    if (err?.code === 'too-big') return t('admin.fileTooBig', { max: err.maxLabel || '25 MB' })
+    return t(kind === 'audio' ? 'admin.audioInvalid' : 'admin.coverInvalid')
   }
 
   const validate = () => {
@@ -166,6 +212,12 @@ export default function TrackEditor() {
     if (!form.artistId && !form.artist.trim()) {
       next.artist = t('admin.artistRequired')
     }
+    // M5: publishing without audio is BLOCKED (was a warning before).
+    const wantsPublish = form.status === 'published'
+    const hasAudio = Boolean(audioFile || audioMeta || existing?.audio128 || existing?.audio320)
+    if (wantsPublish && !hasAudio) {
+      next.audio = t('admin.audioRequired')
+    }
     setErrors(next)
     return Object.keys(next).length === 0
   }
@@ -173,15 +225,9 @@ export default function TrackEditor() {
   const handleSave = async (e) => {
     e.preventDefault()
     setNotice('')
+    setSaveError('')
     setWarning('')
     if (!validate()) return
-
-    const wantsPublish = form.status === 'published'
-    const hasAudio = Boolean(audioFile || audioMeta || existing?.audio128 || existing?.audio320)
-    if (isNew && wantsPublish && !hasAudio) {
-      // Demo mode: warn, do not block.
-      setWarning(t('admin.audioWarn'))
-    }
 
     setSaving(true)
     try {
@@ -225,6 +271,35 @@ export default function TrackEditor() {
         audioSize: audioFile ? audioFile.size : existing?.audioSize || null,
       }
 
+      // Supabase write path (B1): audio -> private "audio" bucket,
+      // cover -> "covers" bucket, row + lyrics -> tables. A failed
+      // write shows a clear message and does NOT fall back to
+      // localStorage (that would fake a success).
+      if (supabaseWritesEnabled()) {
+        try {
+          const saved = await saveTrackToSupabase(track, { audioFile, coverFile })
+          logActivity({
+            actor: user?.email || 'Admin',
+            action: isNew ? 'Created track' : 'Updated track',
+            detail: saved.titleTa || saved.titleEn || saved.id,
+          })
+          setNotice(t('admin.trackSaved', { title: saved.titleTa || saved.titleEn || saved.id }))
+          // M3: the track saved but the lyrics did not — show the
+          // warning and STAY on the form (no navigation) so the admin
+          // can retry the lyrics instead of believing all is saved.
+          if (saved.lyricsOk === false) {
+            setWarning(t('admin.lyricsSaveFailed'))
+            return
+          }
+          if (isNew) {
+            navigate(`/admin/tracks/${saved.id}/edit`, { replace: true })
+          }
+        } catch (err) {
+          setSaveError(adminErrorMessage(err, t))
+        }
+        return
+      }
+
       const saved = saveAdminTrack(track)
       logActivity({
         actor: user?.email || 'Admin',
@@ -242,6 +317,15 @@ export default function TrackEditor() {
   }
 
   if (!isNew && !existing) {
+    if (trackLoading) {
+      return (
+        <div className="admin-page">
+          <div className="admin-empty">
+            <h2>{t('common.loading')}</h2>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="admin-page">
         <div className="admin-empty">
@@ -270,6 +354,7 @@ export default function TrackEditor() {
       </div>
 
       {notice && <div className="admin-notice admin-notice-success" role="status" aria-live="polite">{notice}</div>}
+      {saveError && <div className="admin-notice admin-notice-warn" role="alert" aria-live="polite">{saveError}</div>}
       {warning && <div className="admin-notice admin-notice-warn" role="status" aria-live="polite">{warning}</div>}
 
       <form className="admin-form" onSubmit={handleSave} noValidate>
@@ -305,6 +390,9 @@ export default function TrackEditor() {
           <label className="admin-field">
             <span>{t('admin.featuredArtists')}</span>
             <input className="admin-input" value={form.featuredArtists} onChange={(e) => set('featuredArtists', e.target.value)} />
+            {supabaseWritesEnabled() && (
+              <span className="admin-field-hint">{t('admin.featuredArtistsNotStored')}</span>
+            )}
           </label>
           <label className="admin-field">
             <span>{t('admin.composer')}</span>
@@ -362,6 +450,9 @@ export default function TrackEditor() {
               onChange={(e) => set('scheduledAt', e.target.value)}
               disabled={form.status !== 'scheduled'}
             />
+            {form.status === 'scheduled' && (
+              <span className="admin-field-hint">{t('admin.scheduledNoAutoPublish')}</span>
+            )}
           </label>
           <label className="admin-field">
             <span>{t('admin.hookStart')}</span>
@@ -392,6 +483,7 @@ export default function TrackEditor() {
           <label className="admin-field">
             <span>{t('admin.audioFile')}</span>
             <input type="file" accept=".mp3,audio/mpeg" className="admin-input" onChange={onAudioChange} />
+            {errors.audio && <span className="admin-field-error" role="alert">{errors.audio}</span>}
             {audioMeta && (
               <span className="admin-field-hint">
                 {audioMeta.name}

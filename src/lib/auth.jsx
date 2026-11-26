@@ -238,4 +238,3 @@ export function useAuth() {
   return ctx
 }
 
-export default AuthContext

@@ -134,7 +134,7 @@ export default function PlayerBar() {
       >
         <span className="player-bar-cover">
           {track.cover ? (
-            <img src={track.cover} alt="" loading="lazy" />
+            <img src={track.cover} alt="" loading="lazy" width={800} height={800} />
           ) : (
             <span className="player-bar-cover-fallback" aria-hidden="true">
               N

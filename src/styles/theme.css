@@ -19,6 +19,10 @@
      (WCAG AA). Brand gold itself stays for fills, large graphics,
      icons on dark surfaces, and buttons with dark text. */
   --gold-deep: #92400E;
+  /* Light-surface / dark-surface split (Phase 2, WCAG 2.2 AA): --gold-deep
+     is ~7.1:1 on white and ~6.4:1 on Warm Sand, so it is ONLY for text on
+     LIGHT surfaces. On the dark slate shell it is 2.06:1 and must never
+     be text — dark-surface text uses --gold #F59E0B (6.81:1 on slate). */
   --slate: #1E293B;
   --sand: #FEF3C7;
   --steel: #64748B;
@@ -82,7 +86,9 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-a { color: var(--gold-deep); text-decoration: none; }
+/* Dark shell: links use brand gold #F59E0B (6.81:1 on slate). --gold-deep
+   is reserved for links on LIGHT surfaces (see .card-light below). */
+a { color: var(--gold); text-decoration: none; }
 a:hover { text-decoration: underline; }
 img { max-width: 100%; display: block; }
 button { font-family: inherit; cursor: pointer; }
@@ -110,7 +116,7 @@ input[type="search"]::-webkit-search-decoration {
 /* Brand tagline — gold, bold, letterspaced. Shown on Home + EPK. */
 .tagline {
   margin: 6px 0 0;
-  color: var(--gold-deep);
+  color: var(--gold);
   font-weight: 800;
   font-size: 0.8rem;
   letter-spacing: 0.14em;
@@ -132,11 +138,16 @@ input[type="search"]::-webkit-search-decoration {
   color: var(--slate);
 }
 
-/* Form validation message — gold alert (palette has no red). */
+/* Links on a light surface keep --gold-deep (6.37:1 on Warm Sand);
+   brand gold #F59E0B would be 1.93:1 there. */
+.card-light a { color: var(--gold-deep); }
+
+/* Form validation message — gold alert (palette has no red). On the dark
+   shell this is brand gold (6.81:1); --gold-deep was 2.06:1 here. */
 .form-error {
   width: 100%;
   margin: 4px 0 0;
-  color: var(--gold-deep);
+  color: var(--gold);
   font-size: 0.875rem;
   font-weight: 600;
 }
@@ -265,10 +276,14 @@ input[type="search"]::-webkit-search-decoration {
 }
 
 .section-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 6px;
   flex-shrink: 0;
   font-size: 0.875rem;
   font-weight: 600;
-  color: var(--gold-deep);
+  color: var(--gold);
   white-space: nowrap;
 }
 
@@ -311,7 +326,7 @@ input[type="search"]::-webkit-search-decoration {
    a 1% settle) instead of only changing colour on hover. */
 .track-row:active { background: var(--surface-2); transform: scale(0.99); }
 .track-row.is-current { background: var(--surface); border-color: var(--border); }
-.track-row.is-current .track-row__title { color: var(--gold-deep); }
+.track-row.is-current .track-row__title { color: var(--gold); }
 
 .track-row__index {
   display: none;
@@ -393,10 +408,19 @@ input[type="search"]::-webkit-search-decoration {
 .track-row__cover-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .track-row__cover-btn .track-row__cover { width: 100%; height: 100%; }
 .track-row__title-btn {
-  all: unset;
+  /* No `all: unset` here: it resets box-sizing to content-box, so
+     min-height:44 + padding made the button 64px and the row 102px.
+     Explicit resets only — and outline is left alone for :focus-visible. */
+  background: transparent;
+  border: 0;
+  margin: 0;
   cursor: pointer;
   display: block;
   max-width: 100%;
+  /* 44px tap target: 10px vertical padding + ~23px line, min-height
+     enforces 44px; block layout keeps the ellipsis working. */
+  min-height: 44px;
+  padding: 10px 0;
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--text-strong);
@@ -404,11 +428,11 @@ input[type="search"]::-webkit-search-decoration {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.track-row__title-btn:hover { color: var(--gold-deep); }
+.track-row__title-btn:hover { color: var(--gold); }
 .track-row__title-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .track-row__play:hover { background: var(--gold); color: var(--slate); border-color: var(--gold); }
 .track-row__like { background: transparent; }
-.track-row__like.is-liked { color: var(--gold-deep); border-color: var(--gold-deep); }
+.track-row__like.is-liked { color: var(--gold); border-color: var(--gold); }
 
 .track-card {
   width: 160px;
@@ -447,6 +471,25 @@ input[type="search"]::-webkit-search-decoration {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Phase 2 (S4): explicit button/link resets — the old inline
+   `all: unset` also reset outline-style to none and, as an inline style,
+   beat the global :focus-visible rule, so these had no focus ring. These
+   resets set only what is needed and leave outline alone. */
+.track-card__play-btn,
+.card-link {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  display: block;
+  width: 100%;
+}
+.card-link:hover { text-decoration: none; }
 .track-card__artist {
   margin: 0;
   font-size: 0.825rem;
@@ -550,6 +593,7 @@ input[type="search"]::-webkit-search-decoration {
 .chip {
   display: inline-flex;
   align-items: center;
+  min-height: 44px;
   padding: 8px 16px;
   border-radius: 999px;
   border: 1px solid var(--border);
@@ -561,7 +605,7 @@ input[type="search"]::-webkit-search-decoration {
   text-decoration: none;
   transition: background-color 0.15s var(--nm-ease), border-color 0.15s var(--nm-ease), color 0.15s var(--nm-ease), transform 0.12s var(--nm-ease);
 }
-.chip:hover { text-decoration: none; border-color: var(--gold); color: var(--gold-deep); }
+.chip:hover { text-decoration: none; border-color: var(--gold); color: var(--gold); }
 .chip:active { transform: scale(0.96); }
 .chip.is-active { background: var(--gold); border-color: var(--gold); color: #1E293B; }
 
@@ -577,7 +621,7 @@ input[type="search"]::-webkit-search-decoration {
   padding: 2px 8px;
   border-radius: 999px;
   background: rgba(245, 158, 11, 0.16);
-  color: var(--gold-deep);
+  color: var(--gold); /* 5.11:1 on the badge tint; --gold-deep was 1.55:1 */
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -635,6 +679,7 @@ input[type="search"]::-webkit-search-decoration {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-height: 44px;
   padding: 10px 12px;
   border-radius: var(--radius);
   color: var(--muted);
@@ -645,14 +690,15 @@ input[type="search"]::-webkit-search-decoration {
 }
 .sidebar__link:hover { color: var(--text-strong); background: var(--surface); text-decoration: none; }
 .sidebar__link:active { transform: scale(0.98); }
-.sidebar__link.is-active { color: var(--gold-deep); background: rgba(245, 158, 11, 0.12); box-shadow: inset 3px 0 0 var(--gold); }
+.sidebar__link.is-active { color: var(--gold); background: rgba(245, 158, 11, 0.12); box-shadow: inset 3px 0 0 var(--gold); }
 .sidebar__section-label {
   margin: 16px 12px 6px;
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--steel);
+  /* Steel Grey #64748B is 3.07:1 on slate — Warm Sand tint is 6.84:1. */
+  color: var(--muted);
 }
 
 .bottom-nav {
@@ -889,7 +935,7 @@ input[type="search"]::-webkit-search-decoration {
   border-top: 1px solid var(--border);
   padding-top: 16px;
 }
-.streak-hero__alarm h3 { margin: 0 0 4px; font-size: 1rem; color: var(--text-strong); }
+.streak-hero__alarm h2 { margin: 0 0 4px; font-size: 1rem; color: var(--text-strong); }
 .streak-hero__alarm-row {
   display: flex;
   gap: 8px;
@@ -967,7 +1013,13 @@ input[type="search"]::-webkit-search-decoration {
 .discover-card__scrim {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgba(15, 23, 42, 0.92) 0%, rgba(15, 23, 42, 0.25) 45%, rgba(15, 23, 42, 0.1) 100%);
+  /* S2: near-opaque slate band behind the lyric/title/artist text.
+     The cover's baked-in Tamil title + "VAAZHVINIL ORUMURAYENUM" /
+     "NANDHA MUSIC" print is too large/bright for the old 0.92 scrim,
+     so the bottom ~55% (the whole text zone) is now essentially solid
+     slate, fading only toward the top third so the cover art still
+     shows above the text. Cover image itself is unchanged. */
+  background: linear-gradient(to top, rgba(15, 23, 42, 0.97) 0%, rgba(15, 23, 42, 0.96) 40%, rgba(15, 23, 42, 0.78) 55%, rgba(15, 23, 42, 0.28) 75%, rgba(15, 23, 42, 0.08) 100%);
 }
 .discover-card__body {
   position: absolute;
@@ -1232,6 +1284,18 @@ input[type="search"]::-webkit-search-decoration {
   font-size: 0.875rem;
   line-height: 1.5;
 }
+/* Phase 2: inline legal links were ~17px tall — inline-flex + 44px
+   min-height makes them a real tap target (line box grows on that line). */
+.consent-banner__text a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 6px;
+  /* Underline: axe link-in-text-block — gold #F59E0B vs the sand body
+     text is only 1.92:1, so colour alone must not be the only cue. */
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .consent-banner__actions {
   display: flex;
   gap: 10px;
@@ -1295,4 +1359,16 @@ input[type="search"]::-webkit-search-decoration {
   font-size: 0.875rem;
   line-height: 1.6;
   color: var(--muted);
+}
+/* Phase 2: inline legal links were ~17px tall — same 44px treatment as
+   the consent banner (see above). */
+.auth-consent a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 6px;
+  /* Underline: same link-in-text-block reason as the consent banner —
+     inline links inside a sentence need a non-colour cue. */
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }

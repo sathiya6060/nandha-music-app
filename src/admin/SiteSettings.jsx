@@ -1,7 +1,8 @@
 // Site settings / EPK — bio, announcement, Artist Pick, press photos, contact,
 // plus Song of the Day (admin override for catalog.js getSongOfTheDay).
 import { useMemo, useState } from 'react'
-import { tracks as catalogTracks, getSongOfTheDay, REAL_TRACK_ID } from '../data/catalog.js'
+import { tracks as catalogTracks, REAL_TRACK_ID } from '../data/catalog.js'
+import { useTracks, getSongOfTheDayFrom } from '../lib/supabaseCatalog.js'
 import {
   getMergedTracks,
   loadSiteSettings,
@@ -17,7 +18,14 @@ import { useI18n } from '../lib/i18n.js'
 export default function SiteSettings() {
   const { user } = useAuth()
   const { t, lang } = useI18n()
-  const adminTracks = useMemo(() => getMergedTracks(catalogTracks).filter((tr) => tr.status !== 'deleted'), [])
+  // Supabase read layer (B1, all statuses for admin); static catalog +
+  // local overrides are the fallback. Site settings themselves stay
+  // localStorage-backed (no DB table for them in this phase).
+  const { data: sbTracks } = useTracks({ publishedOnly: false })
+  const adminTracks = useMemo(
+    () => getMergedTracks(sbTracks || catalogTracks).filter((tr) => tr.status !== 'deleted'),
+    [sbTracks],
+  )
   const [form, setForm] = useState(() => loadSiteSettings())
   const [pressPhotoInput, setPressPhotoInput] = useState('')
   const [notice, setNotice] = useState('')
@@ -40,7 +48,10 @@ export default function SiteSettings() {
   })
 
   // Currently effective pick (override for today wins, else the automatic pick).
-  const effectiveSotd = useMemo(() => getSongOfTheDay(), [sotdVersion])
+  const effectiveSotd = useMemo(() => getSongOfTheDayFrom(adminTracks), [sotdVersion, adminTracks])
+  // Date label, computed during render (accepted lint baseline item:
+  // react(purity) — it is a pure function of `lang` + today, and the
+  // admin page re-renders on every edit anyway; see docs/lint-baseline.md).
   const todayLabel = new Date().toLocaleDateString(lang, {
     weekday: 'long',
     day: 'numeric',

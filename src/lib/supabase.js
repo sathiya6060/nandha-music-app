@@ -26,4 +26,3 @@ export const supabase = isSupabaseConfigured
     })
   : null;
 
-export default supabase;

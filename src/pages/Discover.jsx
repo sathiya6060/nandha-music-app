@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../lib/i18n.js'
-import { tracks } from '../data/catalog.js'
+import { tracks as fallbackTracks } from '../data/catalog.js'
+import { useTracks } from '../lib/supabaseCatalog.js'
 import { usePlayer } from '../player/PlayerContext.jsx'
 import { isLiked, toggleLiked } from '../components/TrackRow.jsx'
 import Icon, { HeartIcon } from '../components/Icons.jsx'
@@ -55,7 +56,7 @@ function DiscoverCard({ track, index, isActive, onPrev, onNext, isFirst, isLast,
   return (
     <article ref={ref} className={`discover-card${isActive ? ' is-active' : ''}`} aria-label={`${title} — ${track.artist || 'Nandha Music'}`}>
       {track.cover ? (
-        <img className="discover-card__cover" src={track.cover} alt="" loading={index === 0 ? 'eager' : 'lazy'} />
+        <img className="discover-card__cover" src={track.cover} alt="" loading={index === 0 ? 'eager' : 'lazy'} width={800} height={800} fetchPriority={index === 0 ? 'high' : undefined} />
       ) : (
         <span className="cover-placeholder discover-card__cover" aria-hidden="true" style={{ fontSize: '8rem', borderRadius: 0 }}>N</span>
       )}
@@ -111,7 +112,10 @@ function DiscoverCard({ track, index, isActive, onPrev, onNext, isFirst, isLast,
 export function DiscoverFeed({ style }) {
   const { t } = useI18n()
   const player = usePlayer()
-  const feed = tracks.filter((tr) => tr.status === 'published')
+  // Supabase read layer (B1); static catalog is the fallback.
+  // Lyrics rendering here is unchanged (see DiscoverCard below).
+  const { data: sbTracks } = useTracks()
+  const feed = (sbTracks || fallbackTracks).filter((tr) => tr.status === 'published')
   const [index, setIndex] = useState(0)
   const containerRef = useRef(null)
   const cardRefs = useRef([])

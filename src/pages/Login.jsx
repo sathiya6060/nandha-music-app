@@ -7,15 +7,19 @@ import { ADMIN_EMAILS, useAuth } from '../lib/auth.jsx'
  * Route '/login' — deliberately NOT linked anywhere in the public UI.
  * The admin opens this URL directly (or from a bookmark).
  * Email + password sign-in via Supabase, or create the account here
- * (sign-up) — the admin account does not exist yet, so the toggle
- * matters. Google button kept. On success, the allowlisted admin
- * email goes to /admin, everyone else goes home. Listening needs no
- * account at all.
+ * (sign-up). On success, the allowlisted admin email goes to /admin,
+ * everyone else goes home. Listening needs no account at all.
+ *
+ * Google sign-in is HIDDEN (27 Nov 2026): the Google provider is
+ * DISABLED in Supabase Auth (Email is enabled), so the button would
+ * be dead. The code stays in src/lib/auth.jsx (signInGoogle /
+ * signInWithOAuth('google')) — show the button again once Google
+ * OAuth is configured in the Supabase dashboard.
  */
 export default function Login() {
   const { t } = useI18n()
   const navigate = useNavigate()
-  const { user, isAdmin, loading, configError, signInEmail, signUpEmail, signInGoogle } = useAuth()
+  const { user, isAdmin, loading, configError, signInEmail, signUpEmail } = useAuth()
   const [mode, setMode] = useState('signin') // 'signin' | 'signup'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -77,16 +81,6 @@ export default function Login() {
     setMode(next)
     setError('')
     setNotice('')
-  }
-
-  async function handleGoogle() {
-    setError('')
-    setBusy(true)
-    const { error: err } = await signInGoogle()
-    setBusy(false)
-    // Supabase OAuth redirects away; on return the effect above routes.
-    // In demo mode there is no redirect — the effect routes as well.
-    if (err) setError(t('auth.signInError'))
   }
 
   if (loading) {
@@ -162,11 +156,12 @@ export default function Login() {
         </button>
       </div>
 
-      <div style={{ marginTop: 16 }}>
-        <button type="button" className="btn btn-ghost" onClick={handleGoogle} disabled={busy || configError}>
-          {t('auth.signInGoogle')}
-        </button>
-      </div>
+      {/* Google sign-in hidden (27 Nov 2026): the Google provider is
+          DISABLED in Supabase Auth, so the button would be dead.
+          Re-enable by restoring the button below + handleGoogle()
+          calling signInGoogle() from useAuth() — the OAuth code stays
+          in src/lib/auth.jsx. The 'auth.signInGoogle' locale key is
+          kept for that day. */}
     </div>
   )
 }

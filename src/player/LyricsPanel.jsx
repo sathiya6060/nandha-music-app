@@ -17,6 +17,20 @@ import './player.css'
  * applies when lines carry timestamps (synced).
  */
 function normaliseLines(track) {
+  // Synced lyrics from Supabase (B1): track.syncedLyrics is
+  // [{ t, ta, en }] straight from the lyrics table.
+  if (Array.isArray(track?.syncedLyrics) && track.syncedLyrics.length > 0) {
+    const lines = track.syncedLyrics
+      .map((l) => ({
+        t: Number.isFinite(l?.t) ? l.t : null,
+        ta: l?.ta || '',
+        en: l?.en || null,
+      }))
+      .filter((l) => l.ta || l.en)
+    if (lines.length > 0) {
+      return { synced: lines.some((l) => l.t != null), lines }
+    }
+  }
   const ta = track?.lyricsTa
   const en = track?.lyricsEn
   const out = { synced: false, lines: [] }

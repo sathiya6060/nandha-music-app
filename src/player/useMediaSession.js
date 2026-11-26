@@ -126,4 +126,3 @@ export function useMediaSession({
   }, [isPlaying, onPlayPause, onNext, onPrev, onSeek])
 }
 
-export default useMediaSession

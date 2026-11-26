@@ -1,5 +1,6 @@
 // Nandha Music — app shell.
-// Monolith SPA: one Vite build + Supabase (BaaS) + R2 audio + Upstash cache.
+// Monolith SPA: one Vite build + Supabase (BaaS) + signed Supabase
+// Storage audio + Upstash cache.
 // Providers: Language (i18n) → Auth → QueryClient → Player.
 // Routes are code-split with React.lazy (performance budget: admin + EPK
 // load only when visited). Mobile: bottom nav + mini-player above it.
@@ -16,6 +17,7 @@ import Sidebar, { BottomNav } from './components/Sidebar.jsx'
 import TopBar from './components/TopBar.jsx'
 import Footer from './components/Footer.jsx'
 import ConsentBanner from './components/ConsentBanner.jsx'
+import ErrorBoundary from './components/ErrorBoundary.jsx'
 import PlayerBar from './player/PlayerBar.jsx'
 import MobilePlayer from './player/MobilePlayer.jsx'
 // Search is imported eagerly (not lazy): it is the most-visited route
@@ -43,6 +45,8 @@ const Privacy = lazy(() => import('./pages/legal/Privacy.jsx'))
 const Terms = lazy(() => import('./pages/legal/Terms.jsx'))
 const Cookies = lazy(() => import('./pages/legal/Cookies.jsx'))
 const Refund = lazy(() => import('./pages/legal/Refund.jsx'))
+// Branded 404 (N8): unknown paths show this instead of bouncing home.
+const NotFound = lazy(() => import('./pages/NotFound.jsx'))
 
 // Build id baked into this bundle (written by scripts/write-version.mjs
 // on every build). Compared against the live /version.json below.
@@ -142,9 +146,10 @@ function AppShell() {
     return (
       <>
         <UpdateBanner />
-        <Suspense fallback={<LoadingFallback />}>
-          <Routes>
-            <Route path="/admin" element={<AdminLayout />}>
+        <ErrorBoundary>
+          <Suspense fallback={<LoadingFallback />}>
+            <Routes>
+              <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<Dashboard />} />
               <Route path="tracks" element={<TracksAdmin />} />
               <Route path="tracks/new" element={<TrackEditor />} />
@@ -159,7 +164,8 @@ function AppShell() {
             </Route>
             <Route path="*" element={<Navigate to="/admin" replace />} />
           </Routes>
-        </Suspense>
+          </Suspense>
+        </ErrorBoundary>
       </>
     )
   }
@@ -175,8 +181,9 @@ function AppShell() {
         <div className="app-main-wrap">
           <TopBar />
           <main id="main" className="main" tabIndex={-1}>
-            <Suspense fallback={<LoadingFallback />}>
-              <Routes>
+            <ErrorBoundary>
+              <Suspense fallback={<LoadingFallback />}>
+                <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/discover" element={<Discover />} />
                 <Route path="/search" element={<Search />} />
@@ -193,9 +200,10 @@ function AppShell() {
                 <Route path="/terms" element={<Terms />} />
                 <Route path="/cookies" element={<Cookies />} />
                 <Route path="/refund" element={<Refund />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
+                <Route path="*" element={<NotFound />} />
               </Routes>
-            </Suspense>
+              </Suspense>
+            </ErrorBoundary>
           </main>
           <Footer />
         </div>
@@ -221,7 +229,12 @@ export default function App() {
         <QueryClientProvider client={queryClient}>
           <PlayerProvider>
             <BrowserRouter>
-              <AppShell />
+              {/* Top-level boundary: catches provider / router failures
+                  above AppShell (the per-Suspense boundaries inside
+                  AppShell catch route render + lazy-chunk failures). */}
+              <ErrorBoundary>
+                <AppShell />
+              </ErrorBoundary>
             </BrowserRouter>
           </PlayerProvider>
         </QueryClientProvider>

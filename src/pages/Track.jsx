@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useI18n } from '../lib/i18n.js'
-import { getTrack, tracks } from '../data/catalog.js'
-import { cachedFetch } from '../lib/redisGuard.js'
+import { getTrack as getFallbackTrack } from '../data/catalog.js'
+import { useTrack, useTracks } from '../lib/supabaseCatalog.js'
 import TrackRow from '../components/TrackRow.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import { usePlayer, formatTime } from '../player/PlayerContext.jsx'
+import { setPageMeta, resetPageMeta } from '../lib/pageMeta.js'
 
 /**
  * Route '/track/:id' — deep link to a single song (H1, OpenCodeReview
@@ -22,24 +23,30 @@ export default function Track() {
   const [shared, setShared] = useState(false)
   const playedForRef = useRef(null)
 
-  // Sync value first (no loading flash), then refresh through the
-  // Redis guard (high priority): memory -> localStorage -> Redis ->
-  // static catalog. The guard never throws; a Redis outage keeps the
-  // sync value on screen.
-  const [track, setTrack] = useState(() => getTrack(id))
+  // Supabase read layer first (B1); the static catalog is the sync
+  // fallback so there is no loading flash and the page still works
+  // offline / when Supabase is unreachable.
+  const { data: sbTrack } = useTrack(id)
+  const { data: sbTracks } = useTracks()
+  const track = sbTrack ?? getFallbackTrack(id)
+  const allTracks = sbTracks || []
 
+  // Per-route title + OG tags (S7): "<song> — <artist> | Nandha Music",
+  // absolute og:url + the track cover. Cleanup restores site defaults.
   useEffect(() => {
-    let cancelled = false
-    void cachedFetch(`track:${id}`, async () => getTrack(id), {
-      ttlSeconds: 3600,
-      priority: 'high',
-    }).then((t) => {
-      if (!cancelled && t) setTrack(t)
+    if (!track) return undefined
+    const name = track.titleTa || track.titleEn || ''
+    setPageMeta({
+      title: `${name} — ${track.artist || 'Nandha Music'}`,
+      description: `${name} — ${track.artist || 'Nandha Music'} | Nandha Music`,
+      // M1: OG/social gets the original full-size cover, not the
+      // 800px card variant.
+      image: track.coverOg || track.cover,
+      url: `/track/${track.id}`,
+      type: 'music.song',
     })
-    return () => {
-      cancelled = true
-    }
-  }, [id])
+    return resetPageMeta
+  }, [track])
 
   // Deep link: load the track and open the player for it. Guarded by
   // track id so StrictMode's double-effect in dev doesn't restart it.
@@ -48,7 +55,7 @@ export default function Track() {
     playedForRef.current = track.id
     const current = player?.track
     if (!current || current.id !== track.id) {
-      player?.play?.(track, tracks)
+      player?.play?.(track, allTracks)
     }
     player?.openPlayer?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -69,12 +76,12 @@ export default function Track() {
     )
   }
 
-  const albumTracks = tracks.filter(
+  const albumTracks = allTracks.filter(
     (tr) => String(tr.albumId) === String(track.albumId) || tr.album === track.album,
   )
 
   function playTrack() {
-    player?.play?.(track, tracks)
+    player?.play?.(track, allTracks)
     player?.openPlayer?.()
   }
 
@@ -108,7 +115,7 @@ export default function Track() {
     <div>
       <div className="detail-head">
         {track.cover ? (
-          <img className="detail-head__cover" src={track.cover} alt={`Cover art for ${track.titleEn || track.titleTa}`} />
+          <img className="detail-head__cover" src={track.cover} alt={`Cover art for ${track.titleEn || track.titleTa}`} width={800} height={800} fetchPriority="high" />
         ) : (
           <span className="cover-placeholder cover-placeholder--lg detail-head__cover" aria-hidden="true" style={{ fontSize: '4rem' }}>N</span>
         )}

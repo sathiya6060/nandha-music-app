@@ -57,7 +57,7 @@ function roundedRect(ctx, x, y, w, h, r) {
  * Generate the 1080x1920 story card for a track.
  * Returns { blob, url, filename }. Caller must revoke `url` when done.
  */
-export async function generateStoryCard(track, { lyric } = {}) {
+async function generateStoryCard(track, { lyric } = {}) {
   // Make sure the Tamil bold face is available before measuring text.
   try {
     await document.fonts.load('700 64px "Noto Sans Tamil"')

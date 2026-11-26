@@ -1,21 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { useI18n } from '../lib/i18n.js'
-import { queryClientOptions } from '../lib/cache.js'
-import { cachedFetch } from '../lib/redisGuard.js'
+import { REAL_TRACK_ID, getDaypart } from '../data/catalog.js'
 import {
-  REAL_TRACK_ID,
-  albums,
-  artists,
-  getDailyMix,
-  getDaypart,
-  getDaypartTracks,
-  getSongOfTheDay,
-  getTrack,
-  playlists,
-  tracks,
-} from '../data/catalog.js'
+  useTracks,
+  useAlbums,
+  useArtists,
+  usePlaylists,
+  getDaypartTracksFrom,
+  getDailyMixFrom,
+  getSongOfTheDayFrom,
+} from '../lib/supabaseCatalog.js'
 import { usePlayer } from '../player/PlayerContext.jsx'
 import {
   DEFAULT_ALARM_TIME,
@@ -35,15 +30,13 @@ import EmptyState, { Skeleton } from '../components/EmptyState.jsx'
 import Icon from '../components/Icons.jsx'
 import { DiscoverFeed } from './Discover.jsx'
 
-const STALE_TIME = 5 * 60 * 1000 // 5 minutes — in-memory React Query cache
-// Shared React Query defaults from the 5-layer cache module (layer 4).
-const QUERY_DEFAULTS = queryClientOptions?.defaultOptions?.queries ?? {}
+const EMPTY_LIST = []
 
 function byReleaseDateDesc(a, b) {
   return String(b.releaseDate || '').localeCompare(String(a.releaseDate || ''))
 }
 
-function StreakHero() {
+function StreakHero({ tracksList }) {
   const { t } = useI18n()
   const player = usePlayer()
   const [streak, setStreak] = useState(() => getStreak())
@@ -85,7 +78,7 @@ function StreakHero() {
     const id = setInterval(() => {
       if (!shouldFireAarti(alarm)) return
       markAartiFired()
-      const song = (alarm.trackId && getTrack(alarm.trackId)) || getTrack(REAL_TRACK_ID)
+      const song = (alarm.trackId && tracksList.find((tr) => tr.id === alarm.trackId)) || tracksList.find((tr) => tr.id === REAL_TRACK_ID)
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && song) {
         try {
           new Notification('Nandha Music', {
@@ -116,8 +109,8 @@ function StreakHero() {
   }
 
   const devotionalTracks = useMemo(
-    () => tracks.filter((tr) => tr.genre === 'Devotional' && tr.status === 'published').slice(0, 12),
-    [],
+    () => (tracksList || []).filter((tr) => tr.genre === 'Devotional' && tr.status === 'published').slice(0, 12),
+    [tracksList],
   )
   const lamp = isLampLit(streak)
 
@@ -128,7 +121,7 @@ function StreakHero() {
           <Icon name="flame" size={36} />
         </span>
         <div>
-          <p className="streak-hero__count">{t('streak.days', { n: streak.count })}</p>
+          <p className="streak-hero__count">{streak.count === 0 ? t('streak.daysZero') : t('streak.days', { n: streak.count })}</p>
           <p className="streak-hero__hint">{t('streak.keepGoing')}</p>
           {lamp && (
             <span className="lamp-badge">
@@ -138,7 +131,7 @@ function StreakHero() {
         </div>
       </div>
       <form className="streak-hero__alarm" onSubmit={saveAartiAlarm}>
-        <h3>{t('streak.aartiAlarm')}</h3>
+        <h2>{t('streak.aartiAlarm')}</h2>
         <p className="streak-hero__hint" style={{ margin: 0 }}>
           {t('streak.todayAarti', { time: alarm.time || DEFAULT_ALARM_TIME })}
         </p>
@@ -182,12 +175,12 @@ function StreakHero() {
   )
 }
 
-function SongOfTheDay() {
+function SongOfTheDay({ tracksList }) {
   const { t } = useI18n()
   const player = usePlayer()
   const [shareState, setShareState] = useState('')
   const [busy, setBusy] = useState(false)
-  const song = useMemo(() => getSongOfTheDay(), [])
+  const song = useMemo(() => getSongOfTheDayFrom(tracksList), [tracksList])
   if (!song) return null
 
   const lyric = (song.lyricsTa && song.lyricsTa[0]) || song.titleTa || ''
@@ -244,43 +237,24 @@ function SongOfTheDay() {
 }
 
 export default function Home() {
-  const { t } = useI18n()
+  const { t, tp } = useI18n()
   const navigate = useNavigate()
   const [tab, setTab] = useState('home')
 
-  // Home feed through the Redis guard (high priority): memory ->
-  // localStorage -> Redis -> static catalog. Search is deliberately
-  // NOT wired through Redis — unique queries would burn the budget.
-  const tracksQuery = useQuery({
-    queryKey: ['catalog', 'tracks'],
-    queryFn: async () =>
-      cachedFetch('home', async () => tracks, { ttlSeconds: 600, priority: 'high' }),
-    ...QUERY_DEFAULTS,
-    staleTime: STALE_TIME,
-  })
-  const albumsQuery = useQuery({
-    queryKey: ['catalog', 'albums'],
-    queryFn: async () => albums,
-    ...QUERY_DEFAULTS,
-    staleTime: STALE_TIME,
-  })
-  const artistsQuery = useQuery({
-    queryKey: ['catalog', 'artists'],
-    queryFn: async () => artists,
-    ...QUERY_DEFAULTS,
-    staleTime: STALE_TIME,
-  })
-  const playlistsQuery = useQuery({
-    queryKey: ['catalog', 'playlists'],
-    queryFn: async () => playlists,
-    ...QUERY_DEFAULTS,
-    staleTime: STALE_TIME,
-  })
+  // Home feed through the Supabase catalog read layer (B1), with the
+  // Redis guard (high priority) on the tracks query: memory ->
+  // localStorage -> Redis -> Supabase -> static catalog fallback.
+  // Search is deliberately NOT wired through Redis — unique queries
+  // would burn the budget.
+  const tracksQuery = useTracks({ publishedOnly: true, guardKey: 'home' })
+  const albumsQuery = useAlbums()
+  const artistsQuery = useArtists()
+  const playlistsQuery = usePlaylists()
 
   const isLoading = tracksQuery.isLoading || albumsQuery.isLoading || artistsQuery.isLoading || playlistsQuery.isLoading
   const isError = tracksQuery.isError || albumsQuery.isError || artistsQuery.isError || playlistsQuery.isError
 
-  const homeTracks = tracksQuery.data || []
+  const homeTracks = tracksQuery.data || EMPTY_LIST
   const player = usePlayer()
   const popularTracks = useMemo(
     () => [...homeTracks].sort((a, b) => (b.plays || 0) - (a.plays || 0)).slice(0, 8),
@@ -301,8 +275,8 @@ export default function Home() {
   const featuredPlaylistCount = (playlistsQuery.data || []).length
 
   const daypart = useMemo(() => getDaypart(), [])
-  const daypartTracks = useMemo(() => getDaypartTracks(), [])
-  const dailyMix = useMemo(() => getDailyMix(), [])
+  const daypartTracks = useMemo(() => getDaypartTracksFrom(homeTracks), [homeTracks])
+  const dailyMix = useMemo(() => getDailyMixFrom(homeTracks), [homeTracks])
 
   if (isLoading) {
     return (
@@ -337,7 +311,7 @@ export default function Home() {
         <p className="tagline">{t('app.tagline')}</p>
       </div>
 
-      <StreakHero />
+      <StreakHero tracksList={homeTracks} />
 
       <div className="home-tabs" role="tablist" aria-label={t('home.forYou')}>
         <button
@@ -381,7 +355,7 @@ export default function Home() {
             />
           ) : (
             <>
-              <SongOfTheDay />
+              <SongOfTheDay tracksList={homeTracks} />
 
               {daypartTracks.length > 0 && (
               <section className="section" aria-label={`${daypart.labelTa} · ${daypart.labelEn}`}>
@@ -405,7 +379,7 @@ export default function Home() {
                 <div className="section-head">
                   <div>
                     <h2 className="section-title">{t('home.dailyMix')}</h2>
-                    <p className="section-subtitle">{t('playlists.tracks', { n: dailyMix.length })}</p>
+                    <p className="section-subtitle">{tp('playlists.tracks', dailyMix.length)}</p>
                   </div>
                   <button
                     type="button"
@@ -435,9 +409,9 @@ export default function Home() {
                 ) : (
                   newReleases.map((album) => (
                     <article className="track-card" key={album.id}>
-                      <Link to={`/album/${album.id}`} style={{ all: 'unset', cursor: 'pointer', display: 'block' }}>
+                      <Link to={`/album/${album.id}`} className="card-link">
                         {album.cover ? (
-                          <img className="track-card__cover" src={album.cover} alt="" loading="lazy" />
+                          <img className="track-card__cover" src={album.cover} alt="" loading="lazy" width={800} height={800} />
                         ) : (
                           <span className="cover-placeholder track-card__cover" aria-hidden="true" style={{ fontSize: '3rem', aspectRatio: '1', width: '100%', height: 'auto' }}>N</span>
                         )}
@@ -488,7 +462,7 @@ export default function Home() {
                     </div>
                   </div>
                   <p style={{ color: 'var(--muted)', fontSize: '0.875rem', marginTop: 12 }}>
-                    {t('playlists.tracks', { n: featuredPlaylistCount })}
+                    {tp('playlists.tracks', featuredPlaylistCount)}
                   </p>
                 </section>
               )}

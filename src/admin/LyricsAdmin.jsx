@@ -1,6 +1,12 @@
 // Synced lyrics admin — per-track lines with timestamps (mm:ss).
 import { useMemo, useState } from 'react'
 import { tracks as catalogTracks } from '../data/catalog.js'
+import { useTracks, fetchLyricsForTrack } from '../lib/supabaseCatalog.js'
+import {
+  supabaseWritesEnabled,
+  saveLyricsToSupabase,
+  adminErrorMessage,
+} from '../lib/supabaseAdmin.js'
 import {
   getMergedTracks,
   loadSyncedLyrics,
@@ -25,10 +31,21 @@ function linesFromTrack(track) {
   }))
 }
 
+function formatTime(sec) {
+  if (!Number.isFinite(sec) || sec == null) return ''
+  return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(Math.floor(sec % 60)).padStart(2, '0')}`
+}
+
 export default function LyricsAdmin() {
   const { user } = useAuth()
   const { t } = useI18n()
-  const adminTracks = useMemo(() => getMergedTracks(catalogTracks).filter((tr) => tr.status !== 'deleted'), [])
+  // Supabase read layer (B1, all statuses for admin); static catalog +
+  // local overrides are the fallback.
+  const { data: sbTracks } = useTracks({ publishedOnly: false })
+  const adminTracks = useMemo(
+    () => getMergedTracks(sbTracks || catalogTracks).filter((tr) => tr.status !== 'deleted'),
+    [sbTracks],
+  )
   const [trackId, setTrackId] = useState('')
   const [lines, setLines] = useState([])
   const [loaded, setLoaded] = useState(false)
@@ -37,7 +54,7 @@ export default function LyricsAdmin() {
 
   const selectedTrack = adminTracks.find((tr) => tr.id === trackId) || null
 
-  const pickTrack = (id) => {
+  const pickTrack = async (id) => {
     setTrackId(id)
     setNotice('')
     setError('')
@@ -47,6 +64,26 @@ export default function LyricsAdmin() {
       return
     }
     const track = adminTracks.find((tr) => tr.id === id)
+    // Supabase path (B1): lyrics rows for the track's DB uuid.
+    if (supabaseWritesEnabled() && track?.dbId) {
+      try {
+        const lyrics = await fetchLyricsForTrack(track.dbId)
+        if (lyrics.synced) {
+          setLines(lyrics.synced.map((l) => ({ time: formatTime(l.t), ta: l.ta || '', en: l.en || '' })))
+        } else {
+          const count = Math.max(lyrics.ta.length, lyrics.en.length)
+          setLines(Array.from({ length: count }, (_, i) => ({
+            time: '',
+            ta: lyrics.ta[i] || '',
+            en: lyrics.en[i] || '',
+          })))
+        }
+        setLoaded(true)
+        return
+      } catch {
+        // Fall through to the local copy below.
+      }
+    }
     const saved = loadSyncedLyrics()[id]
     if (saved?.lines) {
       setLines(saved.lines.map((l) => ({ time: l.time || '', ta: l.ta || '', en: l.en || '' })))
@@ -91,6 +128,22 @@ export default function LyricsAdmin() {
     const cleaned = lines
       .map((l) => ({ time: l.time.trim(), ta: l.ta.trim(), en: l.en.trim() }))
       .filter((l) => l.ta || l.en)
+    // Supabase path (B1): upsert lyrics rows (ta + en) for the track's
+    // DB uuid. A failed write shows a clear message — no silent local
+    // fallback.
+    if (supabaseWritesEnabled() && selectedTrack?.dbId) {
+      try {
+        await saveLyricsToSupabase(selectedTrack.dbId, { lines: cleaned })
+      } catch (err) {
+        setError(adminErrorMessage(err, t))
+        return
+      }
+      logActivity({ actor: user?.email || 'Admin', action: 'Edited synced lyrics', detail: selectedTrack?.titleTa || selectedTrack?.titleEn || trackId })
+      setLines(cleaned)
+      setError('')
+      setNotice(t('admin.saved'))
+      return
+    }
     saveSyncedLyrics(trackId, cleaned)
     logActivity({ actor: user?.email || 'Admin', action: 'Edited synced lyrics', detail: selectedTrack?.titleTa || selectedTrack?.titleEn || trackId })
     await invalidateCaches(trackId)

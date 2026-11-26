@@ -1,6 +1,9 @@
 import { Link, useParams } from 'react-router-dom'
+import { useEffect } from 'react'
 import { useI18n } from '../lib/i18n.js'
-import { albums, tracks } from '../data/catalog.js'
+import { setPageMeta, resetPageMeta } from '../lib/pageMeta.js'
+import { albums as fallbackAlbums, tracks as fallbackTracks } from '../data/catalog.js'
+import { useAlbums, useTracks } from '../lib/supabaseCatalog.js'
 import TrackRow from '../components/TrackRow.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import { usePlayer } from '../player/PlayerContext.jsx'
@@ -9,10 +12,30 @@ import { usePlayer } from '../player/PlayerContext.jsx'
  * Route '/album/:id' — album header, track list in album order, play-all.
  */
 export default function Album() {
-  const { t } = useI18n()
+  const { t, tp } = useI18n()
   const { id } = useParams()
   const player = usePlayer()
+  // Supabase read layer (B1); static catalog is the fallback.
+  const { data: sbAlbums } = useAlbums()
+  const { data: sbTracks } = useTracks()
+  const albums = sbAlbums || fallbackAlbums
+  const tracks = sbTracks || fallbackTracks
   const album = albums.find((a) => String(a.id) === String(id))
+
+  // Per-route title + OG tags (S7). Cleanup restores site defaults.
+  useEffect(() => {
+    if (!album) return undefined
+    const name = album.titleTa || album.title || album.titleEn || ''
+    setPageMeta({
+      title: `${name} — ${album.artist || 'Nandha Music'}`,
+      description: `${name} — ${album.artist || 'Nandha Music'} | Nandha Music`,
+      // M1: OG/social gets the original full-size cover.
+      image: album.coverOg || album.cover,
+      url: `/album/${album.id}`,
+      type: 'music.album',
+    })
+    return resetPageMeta
+  }, [album])
 
   if (!album) {
     return (
@@ -41,7 +64,7 @@ export default function Album() {
     <div>
       <div className="detail-head">
         {album.cover ? (
-          <img className="detail-head__cover" src={album.cover} alt="" />
+          <img className="detail-head__cover" src={album.cover} alt="" width={800} height={800} fetchPriority="high" />
         ) : (
           <span className="cover-placeholder cover-placeholder--lg detail-head__cover" aria-hidden="true" style={{ fontSize: '4rem' }}>N</span>
         )}
@@ -51,7 +74,7 @@ export default function Album() {
           <p className="detail-head__meta">
             {album.artist ? <Link to={album.artistId ? `/artist/${album.artistId}` : '#'}>{album.artist}</Link> : 'Nandha Music'}
             {album.releaseDate ? ` · ${album.releaseDate}` : ''}
-            {albumTracks.length ? ` · ${t('album.tracks', { n: albumTracks.length })}` : ''}
+            {albumTracks.length ? ` · ${tp('album.tracks', albumTracks.length)}` : ''}
           </p>
           {album.description && <p style={{ color: 'var(--muted)', margin: '8px 0 0' }}>{album.description}</p>}
           <div className="detail-head__actions">

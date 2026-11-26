@@ -31,8 +31,7 @@ const API_TTL_MS = 5 * 60 * 1000 // 5 minutes
 const APP_SHELL = [
   '/',
   '/index.html',
-  '/favicon.svg',
-  '/icons.svg',
+  '/assets/nandha-logo.png',
 ]
 
 // --- helpers ------------------------------------------------------------
@@ -250,7 +249,7 @@ self.addEventListener('fetch', (event) => {
         } catch {
           // Offline + not cached: fall back to the app icon if it was a
           // cover-ish request, else rethrow.
-          const fallback = await cache.match('/favicon.svg')
+          const fallback = await cache.match('/assets/nandha-logo.png')
           if (fallback) return fallback
           throw new Error('offline')
         }

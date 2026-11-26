@@ -201,10 +201,14 @@ async function guardedRedisGet(key) {
 
 // ---------------------------------------------------------------------------
 // Write proxy — SET/DEL go through the redis-cache Edge Function, never
-// direct from the browser. When the function isn't deployed yet (today),
-// this returns false and callers fall back to memory/localStorage only.
+// direct from the browser. Gated on isRedisConfigured: with Redis
+// unconfigured (today) this returns false WITHOUT firing any request,
+// so a cache miss never calls the undeployed Edge Function (that used
+// to log a CORS error + 404 on every Home/Track load). Callers fall
+// back to memory/localStorage only.
 // ---------------------------------------------------------------------------
 async function invokeWriteProxy(body) {
+  if (!isRedisConfigured) return false;
   if (!supabase) return false;
   countCommand(); // conservative: the proxy spends 1 Upstash command
   try {
@@ -217,7 +221,7 @@ async function invokeWriteProxy(body) {
 }
 
 /** SET one key via the write proxy. Best-effort, never throws. */
-export async function redisSetViaProxy(key, value, ttlSeconds = 600) {
+async function redisSetViaProxy(key, value, ttlSeconds = 600) {
   return invokeWriteProxy({
     op: 'set',
     key: redisKeyFor(key),
@@ -330,6 +334,24 @@ export function cachedFetch(key, loader, options = {}) {
   });
   inflight.set(key, p);
   return p;
+}
+
+/**
+ * Drop cachedFetch entries (memory tier + in-flight coalescing) for
+ * one key, or all when no key is given. Called by cache.js
+ * invalidateCatalog after an admin write, so the next read re-runs
+ * the loader instead of serving a stale tier-1 hit. This touches
+ * NO gating state — the budget counter and circuit breaker are
+ * unchanged.
+ */
+export function invalidateCachedFetch(key) {
+  if (key) {
+    memoryCache.delete(key)
+    inflight.delete(key)
+    return
+  }
+  memoryCache.clear()
+  inflight.clear()
 }
 
 /** Read-only guard status (safe to expose for diagnostics / the admin UI). */

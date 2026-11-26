@@ -1,37 +1,30 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useI18n } from '../lib/i18n.js'
-import { searchTracks, tracks } from '../data/catalog.js'
+import { tracks as fallbackTracks } from '../data/catalog.js'
+import { useTracks, searchTracksIn } from '../lib/supabaseCatalog.js'
+import { recordNoResultSearch } from '../lib/adminStore.js'
 import TrackRow from '../components/TrackRow.jsx'
 import EmptyState, { Skeleton } from '../components/EmptyState.jsx'
 import Icon from '../components/Icons.jsx'
 
-const NO_RESULT_KEY = 'nandha-no-result-searches'
 const RESULT_CAP = 20
 const DEBOUNCE_MS = 300
 
-function logNoResult(query) {
-  try {
-    const raw = localStorage.getItem(NO_RESULT_KEY)
-    const list = raw ? JSON.parse(raw) : []
-    const arr = Array.isArray(list) ? list : []
-    arr.push({ query, at: new Date().toISOString() })
-    localStorage.setItem(NO_RESULT_KEY, JSON.stringify(arr.slice(-200)))
-  } catch {
-    // storage unavailable — skip analytics logging
-  }
-}
-
 /**
  * Route '/search'.
- * 300ms debounced input, searchTracks(query) from the catalog, 20-result
- * cap. Zero-result queries are logged to localStorage
- * ('nandha-no-result-searches') for admin analytics. Genre chips show
- * when the query is empty. Accepts ?q= and ?genre= deep links.
- * Results count is announced via aria-live.
+ * 300ms debounced input, searchTracksIn() over the Supabase catalog
+ * read layer (static catalog fallback), 20-result cap. Zero-result
+ * queries are logged via adminStore.recordNoResultSearch (L7: the old
+ * inline logger wrote a different shape, so admin Analytics counts
+ * stayed 0). Genre chips show when the query is empty. Accepts ?q= and
+ * ?genre= deep links. Results count is announced via aria-live.
  */
 export default function Search() {
   const { t } = useI18n()
+  // Supabase read layer (B1); static catalog is the fallback.
+  const { data: sbTracks } = useTracks()
+  const allTracks = sbTracks || fallbackTracks
   const [searchParams, setSearchParams] = useSearchParams()
   const initialQuery = searchParams.get('q') || searchParams.get('genre') || ''
   const [query, setQuery] = useState(initialQuery)
@@ -73,22 +66,22 @@ export default function Search() {
     const q = debounced.trim()
     if (!q) return []
     try {
-      const found = searchTracks(q) || []
+      const found = searchTracksIn(allTracks, q) || []
       return found.slice(0, RESULT_CAP)
     } catch {
       return []
     }
-  }, [debounced])
+  }, [debounced, allTracks])
 
   const genres = useMemo(
-    () => [...new Set((tracks || []).map((tr) => tr.genre).filter(Boolean))],
-    [],
+    () => [...new Set((allTracks || []).map((tr) => tr.genre).filter(Boolean))],
+    [allTracks],
   )
 
   // Log zero-result queries (once per settled query) for admin analytics.
   const noResults = debounced.trim() !== '' && !searching && results.length === 0
   useEffect(() => {
-    if (noResults) logNoResult(debounced.trim())
+    if (noResults) recordNoResultSearch(debounced.trim())
   }, [noResults, debounced])
 
   return (

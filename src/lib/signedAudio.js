@@ -46,7 +46,7 @@ export function isSignedTrack(track, quality = '128') {
 }
 
 /** Mint (or reuse a still-fresh) signed URL for a file name. */
-export async function getSignedAudioUrl(fileName) {
+async function getSignedAudioUrl(fileName) {
   const url = functionUrl()
   if (!url) throw new Error('supabase_not_configured')
   const cached = cache.get(fileName)

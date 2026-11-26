@@ -12,16 +12,20 @@ mobile data, and fully manageable by the label without a developer.
   (Tamil + English, case-insensitive), full player with 128 / 320 kbps
   quality switch, queue, liked songs.
 - **Catalog:** 1 real release at launch — *Vaazhvinil Orumurayenum*
-  (2026-12-10) — plus clearly-marked sample tracks so the UI can be
-  tested at 200-track scale before the real catalog arrives.
+  (2026-12-10). No sample tracks: the 199 placeholders that used to
+  pad the UI to 200-track scale were deleted 26 Nov 2026 (real data
+  only) — new songs arrive via the admin panel / Supabase, never from
+  generators.
 - **Lyrics:** Tamil + English lines per track; synced lyrics are a
   stretch goal, plain lines ship first.
 - **Admin panel:** full editable admin (tracks, albums, artists,
   playlists, lyrics, release status draft / scheduled / published).
 - **Accounts:** listener signup/login (Supabase Auth), likes, library.
 - **Performance (free tier):** 5-layer caching, play-count buffering,
-  R2 audio delivery — must handle 1,000 users and 200+ songs without
-  slowing down or exceeding free-tier limits.
+  signed Supabase Storage audio delivery — must handle 1,000 users
+  without slowing down or exceeding free-tier limits. (Cloudflare R2
+  was the original audio plan; it is NOT used — the R2 account needs
+  a card, which is blocked.)
 
 ## Roles
 
@@ -68,7 +72,7 @@ Roles live in `user_roles` and are enforced by Postgres RLS
 
 - Home feed loads in < 2 s on a mid-range phone (cached < 500 ms).
 - 200+ songs play without stutter; search returns in < 1 s.
-- Zero cost at 1,000 monthly users (all free tiers: Supabase, R2, Upstash).
+- Zero cost at 1,000 monthly users (all free tiers: Supabase, Upstash).
 - Admin can publish a new song end-to-end without code changes.
 
 ## Open items

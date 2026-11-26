@@ -6,10 +6,15 @@
   TanStack React Query 5.
 - **Supabase (free tier)** — Postgres + Auth + Row Level Security. Metadata
   only: artists, albums, tracks, lyrics, playlists, likes, play events.
-- **Cloudflare R2 (free tier)** — audio file storage + public delivery.
+- **Supabase Storage (free tier)** — audio file storage, delivered as
+  short-lived signed URLs minted per play by the `get-audio-url` Edge
+  Function (see `src/lib/signedAudio.js`). Cloudflare R2 was the
+  original plan but is NOT used — the R2 account needs a card, which
+  is blocked, so no R2 bucket exists and `VITE_AUDIO_BASE_URL` is unset.
 - **Upstash Redis (free tier, REST)** — optional shared cache (layer 3).
-- **No backend server.** The browser talks to Supabase (PostgREST/Auth)
-  and R2 directly; all secrets are env vars (`VITE_*`, see `src/lib/config.js`).
+- **No backend server.** The browser talks to Supabase (PostgREST/Auth/
+  Storage via signed URLs) directly; all secrets are env vars
+  (`VITE_*`, see `src/lib/config.js`).
 
 Brand: Amber Gold `#F59E0B`, Charcoal Slate `#1E293B`, Warm Sand `#FEF3C7`,
 Steel Grey `#64748B`, White `#FFFFFF`. Tamil text: `Noto Sans Tamil`
@@ -22,30 +27,31 @@ There are two paths, deliberately separate:
 ```
 Metadata path (small, structured, changes often)
   UI / React Query ──► Supabase PostgREST ──► Postgres (+ RLS)
-  Demo mode (no Supabase env): UI ──► src/data/catalog.js (local, 200 tracks)
+  Demo mode (no Supabase env): UI ──► src/data/catalog.js (local, 1 real track)
 
 Audio path (large, static, bandwidth-heavy)
-  Player ──► audioUrl(track, quality) ──► Cloudflare R2 public URL
-             (or /assets/*.mp3 in demo mode — served from /public/assets)
+  Player ──► resolvePlayableUrl(track, quality) ──► Supabase Edge
+             Function `get-audio-url` ──► short-lived signed Supabase
+             Storage URL (300 s; the one real mp3 also ships in
+             /public/assets as the local fallback)
   '128' kbps default (mobile data) · '320' kbps on Wi-Fi
 ```
 
 A track row in Postgres never contains audio bytes — only
-`audio_128_url` / `audio_320_url` pointing at R2. The player therefore
-never waits on the database for bytes, and the database never pays
-egress for audio.
+`audio_128_url` / `audio_320_url` pointing at Supabase Storage. The
+player therefore never waits on the database for bytes, and the
+database never pays egress for audio.
 
-## R2 vs Supabase storage — why the split
+## Supabase Storage vs R2 — why there is no split any more
 
-| | Supabase Storage (free) | Cloudflare R2 (free) |
-|---|---|---|
-| Storage | 1 GB | 10 GB |
-| Egress | metered / paid beyond free allowance | **$0 egress** |
-
-200 songs at ~9 MB each ≈ **1.8 GB** — already over Supabase free
-storage before a single user listens, and every stream would cost
-egress. R2 holds the whole catalog free and serves it free. Supabase
-keeps what it is good at: structured metadata, auth, and RLS.
+The original design split audio to Cloudflare R2 (10 GB free, $0
+egress) because 200 songs at ~9 MB each ≈ 1.8 GB would not fit
+Supabase free storage (1 GB). That plan is NOT live: the R2 account
+needs a card, which is blocked, so no R2 bucket exists. Reality
+today: 1 real track, whose mp3 ships in `/public/assets` and in
+Supabase Storage, delivered as a signed URL per play. If the catalog
+ever grows toward 200 songs, revisit storage then — R2 (or a paid
+Supabase tier) becomes the decision to make at that point, not now.
 
 ## 5-layer caching (src/lib/cache.js)
 
@@ -66,7 +72,7 @@ layer 4 is the React data layer, layer 5 is the source of truth.
 ```
 ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌────────────┐   ┌──────────┐
 │ Memory   │──►│localStor.│──►│  Redis   │──►│React Query │──►│ Supabase │
-│ Map+TTL  │   │ versioned│   │ (Upstash)│   │ staleTime  │   │  / R2    │
+│ Map+TTL  │   │ versioned│   │ (Upstash)│   │ staleTime  │   │ Storage  │
 └──────────┘   └──────────┘   └──────────┘   └────────────┘   └──────────┘
 ```
 
@@ -76,8 +82,9 @@ layer 4 is the React data layer, layer 5 is the source of truth.
   Redis, React Query).
 - `invalidateHome()` — home feed only.
 - `invalidateSearch()` — all cached search results.
-- `invalidateAlbum(id)` — album detail + track lists.
-- `invalidatePlaylist(id)` / `invalidateLibrary(userId)` — same pattern.
+- Album / playlist / library invalidation is handled by `invalidateCatalog()` — the
+  narrow `invalidateAlbum` / `invalidatePlaylist` / `invalidateLibrary` helpers were
+  removed (dead code, no callers).
 - All invalidation is best-effort across layers: a Redis failure never
   blocks the UI; React Query invalidation only runs when the app has
   bound its client via `bindQueryClient()` (see `src/lib/cache.js`).
@@ -98,11 +105,32 @@ per action** (`rateLimit(action)`). It protects the free tiers from
 accidental loops (e.g. a runaway search box); it is not a security
 boundary — real enforcement is RLS on the server.
 
+## Security headers (S7, 27 Nov 2026)
+
+`public/_headers` (served by Cloudflare Pages) sets CSP, HSTS,
+`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
+`Referrer-Policy` and `Permissions-Policy` on every route. CSP notes:
+
+- `script-src 'unsafe-inline'` is REQUIRED: `index.html` carries the
+  inline boot-guard script (shows a Reload button instead of a silent
+  blank page when React fails to mount). The script is first-party,
+  static, and touches no user data.
+- `style-src 'unsafe-inline'` is REQUIRED: the app sets inline
+  `style={{}}` attributes throughout (React inline styles).
+- `fonts.googleapis.com` / `fonts.gstatic.com`: Noto Sans Tamil +
+  Inter (Google Fonts stays as-is — self-hosting is out of scope).
+- `*.supabase.co`: Supabase PostgREST/Auth/Storage + the
+  `get-audio-url` Edge Function (signed audio URLs).
+- `*.upstash.io`: Upstash Redis REST (guarded reads via redisGuard.js).
+- `media-src` allows `blob:` (Media Session / audio element) and
+  `https://*.supabase.co` (signed audio).
+
 ## Demo mode
 
 When `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` are missing,
 `isDemoMode` is true: `supabase` is `null`, the UI reads
-`src/data/catalog.js` (1 real track + 199 clearly-marked samples),
+`src/data/catalog.js` (1 real track only — the 199 sample tracks were
+deleted 26 Nov 2026, real data only),
 audio plays from `/public/assets`, play counts stay local, and Redis
 calls are skipped. Everything renders and plays without any account.
 
@@ -113,7 +141,7 @@ calls are skipped. Everything renders and plays without any account.
 | `src/lib/config.js` | Env config, demo-mode flag, `audioUrl(track, quality)` |
 | `src/lib/supabase.js` | Supabase client (null in demo mode) |
 | `src/lib/cache.js` | 5-layer cache, invalidation, play buffering, rate limit |
-| `src/data/catalog.js` | Local catalog: 1 real + 199 sample tracks, search, lookups |
+| `src/data/catalog.js` | Local catalog: 1 real track only, search, lookups |
 | `supabase/migrations/001_schema.sql` | Postgres DDL + RLS |
 | `docs/architecture.md` | This document |
 | `docs/spec.md` | Product spec (PRD) |

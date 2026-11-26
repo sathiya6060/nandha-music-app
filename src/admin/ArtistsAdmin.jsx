@@ -1,6 +1,14 @@
 // Artists admin — list + editor (photo, bilingual bio, social links).
 import { useMemo, useState } from 'react'
 import { artists } from '../data/catalog.js'
+import { useArtists } from '../lib/supabaseCatalog.js'
+import {
+  supabaseWritesEnabled,
+  saveArtistToSupabase,
+  deleteArtistFromSupabase,
+  adminErrorMessage,
+  adminDeleteErrorMessage,
+} from '../lib/supabaseAdmin.js'
 import {
   getMergedArtists,
   saveAdminArtist,
@@ -41,16 +49,21 @@ export default function ArtistsAdmin() {
   const [form, setForm] = useState(EMPTY_ARTIST)
   const [photoPreview, setPhotoPreview] = useState('')
   const [photoDataUrl, setPhotoDataUrl] = useState('')
+  const [photoFile, setPhotoFile] = useState(null)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
 
-  const mergedArtists = useMemo(() => getMergedArtists(artists), [version])
+  // Supabase read layer (B1); static catalog + local overrides are
+  // the fallback.
+  const { data: sbArtists } = useArtists()
+  const mergedArtists = useMemo(() => getMergedArtists(sbArtists || artists), [version, sbArtists])
 
   const startNew = () => {
     setEditing('new')
     setForm(EMPTY_ARTIST)
     setPhotoPreview('')
     setPhotoDataUrl('')
+    setPhotoFile(null)
     setError('')
   }
 
@@ -71,12 +84,14 @@ export default function ArtistsAdmin() {
     })
     setPhotoPreview(artist.photo || artist.image || '')
     setPhotoDataUrl('')
+    setPhotoFile(null)
     setError('')
   }
 
   const onPhotoChange = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
+    setPhotoFile(file)
     if (photoPreview && photoPreview.startsWith('blob:')) URL.revokeObjectURL(photoPreview)
     setPhotoPreview(URL.createObjectURL(file))
     try {
@@ -93,6 +108,45 @@ export default function ArtistsAdmin() {
       return
     }
     const base = editing === 'new' ? {} : mergedArtists.find((a) => a.id === editing) || {}
+    const socials = {
+      instagram: form.instagram.trim(),
+      youtube: form.youtube.trim(),
+      facebook: form.facebook.trim(),
+      threads: form.threads.trim(),
+      spotify: form.spotify.trim(),
+      website: form.website.trim(),
+    }
+    // Supabase path (B1): row -> artists table, photo -> "covers"
+    // bucket. The artists table has NO photo column, so the uploaded
+    // photo URL is kept as a local override (merged over the DB row).
+    // A failed write shows a clear message — no silent local fallback.
+    if (supabaseWritesEnabled()) {
+      try {
+        const { id, photoUrl } = await saveArtistToSupabase(
+          {
+            ...base,
+            id: editing === 'new' ? undefined : editing,
+            name: form.name.trim(),
+            nameTa: form.nameTa.trim(),
+            bioTa: form.bioTa.trim(),
+            bioEn: form.bioEn.trim(),
+            socials,
+          },
+          { photoFile },
+        )
+        if (photoUrl) saveAdminArtist({ id, photo: photoUrl })
+      } catch (err) {
+        setError(adminErrorMessage(err, t))
+        return
+      }
+      logActivity({ actor: user?.email || 'Admin', action: editing === 'new' ? 'Created artist' : 'Updated artist', detail: form.name || form.nameTa })
+      await invalidateCaches()
+      setNotice(t('admin.saved'))
+      setEditing(null)
+      setPhotoFile(null)
+      setVersion((v) => v + 1)
+      return
+    }
     const saved = saveAdminArtist({
       ...base,
       id: editing === 'new' ? undefined : editing,
@@ -121,6 +175,19 @@ export default function ArtistsAdmin() {
   const handleDelete = async (artist) => {
     const name = artist.name || artist.nameTa || artist.id
     if (!window.confirm(t('admin.confirmDelete', { title: name }))) return
+    setError('')
+    if (supabaseWritesEnabled()) {
+      try {
+        await deleteArtistFromSupabase(artist)
+      } catch (err) {
+        setError(adminDeleteErrorMessage(err, t))
+        return
+      }
+      logActivity({ actor: user?.email || 'Admin', action: 'Deleted artist', detail: name })
+      setNotice(t('admin.saved'))
+      setVersion((v) => v + 1)
+      return
+    }
     deleteAdminArtist(artist.id)
     logActivity({ actor: user?.email || 'Admin', action: 'Deleted artist', detail: name })
     await invalidateCaches()

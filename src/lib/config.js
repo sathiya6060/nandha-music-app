@@ -71,7 +71,6 @@ export const config = {
  */
 export const isDemoMode = config.demoMode === true;
 
-export const isSupabaseConfigured = !isDemoMode;
 export const isRedisConfigured =
   config.upstashRedisUrl !== '' && config.upstashRedisToken !== '';
 const isR2Configured = config.audioBaseUrl !== '';

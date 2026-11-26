@@ -1,6 +1,14 @@
 // Albums admin — list + create/edit with track ordering.
 import { useMemo, useState } from 'react'
 import { tracks as catalogTracks, albums as catalogAlbums } from '../data/catalog.js'
+import { useTracks, useAlbums } from '../lib/supabaseCatalog.js'
+import {
+  supabaseWritesEnabled,
+  saveAlbumToSupabase,
+  deleteAlbumFromSupabase,
+  adminErrorMessage,
+  adminDeleteErrorMessage,
+} from '../lib/supabaseAdmin.js'
 import {
   getMergedTracks,
   getMergedAlbums,
@@ -17,19 +25,27 @@ const EMPTY_ALBUM = { titleTa: '', titleEn: '', releaseDate: '', trackIds: [] }
 export default function AlbumsAdmin() {
   const { user } = useAuth()
   const { t } = useI18n()
-  const adminTracks = useMemo(() => getMergedTracks(catalogTracks), [])
+  // Supabase read layer (B1, all statuses for admin); static catalog +
+  // local overrides are the fallback.
+  const { data: sbTracks } = useTracks({ publishedOnly: false })
+  const { data: sbAlbums } = useAlbums()
+  const adminTracks = useMemo(() => getMergedTracks(sbTracks || catalogTracks), [sbTracks])
   const [version, setVersion] = useState(0)
   const [editing, setEditing] = useState(null) // album id or 'new'
   const [form, setForm] = useState(EMPTY_ALBUM)
+  const [coverFile, setCoverFile] = useState(null)
   const [coverPreview, setCoverPreview] = useState('')
   const [notice, setNotice] = useState('')
+  const [error, setError] = useState('')
 
-  const mergedAlbums = useMemo(() => getMergedAlbums(catalogAlbums), [version])
+  const mergedAlbums = useMemo(() => getMergedAlbums(sbAlbums || catalogAlbums), [version, sbAlbums])
 
   const startNew = () => {
     setEditing('new')
     setForm(EMPTY_ALBUM)
+    setCoverFile(null)
     setCoverPreview('')
+    setError('')
   }
 
   const startEdit = (album) => {
@@ -67,13 +83,47 @@ export default function AlbumsAdmin() {
   const onCoverChange = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
+    setCoverFile(file)
     if (coverPreview && coverPreview.startsWith('blob:')) URL.revokeObjectURL(coverPreview)
     setCoverPreview(URL.createObjectURL(file))
   }
 
   const handleSave = async (e) => {
     e.preventDefault()
+    setError('')
     const base = editing === 'new' ? {} : mergedAlbums.find((a) => a.id === editing) || {}
+    // Supabase path (B1): cover -> "covers" bucket, row + track
+    // membership -> tables. A failed write shows a clear message
+    // and does NOT fall back to localStorage.
+    if (supabaseWritesEnabled()) {
+      try {
+        const savedAlbum = await saveAlbumToSupabase(
+          {
+            ...base,
+            id: editing === 'new' ? undefined : editing,
+            titleTa: form.titleTa.trim(),
+            titleEn: form.titleEn.trim(),
+            releaseDate: form.releaseDate || null,
+            cover: coverPreview && !coverPreview.startsWith('blob:') ? coverPreview : base.cover || null,
+          },
+          { coverFile, trackIds: form.trackIds },
+        )
+        // M4: tracks dropped from membership (unresolvable ids) are
+        // reported, not silently lost.
+        const droppedNote = savedAlbum.droppedTrackIds?.length > 0
+          ? ` ${t('admin.membershipDropped', { count: savedAlbum.droppedTrackIds.length })}`
+          : ''
+        setNotice(t('admin.saved') + droppedNote)
+      } catch (err) {
+        setError(adminErrorMessage(err, t))
+        return
+      }
+      logActivity({ actor: user?.email || 'Admin', action: editing === 'new' ? 'Created album' : 'Updated album', detail: form.titleTa || form.titleEn })
+      setEditing(null)
+      setCoverFile(null)
+      setVersion((v) => v + 1)
+      return
+    }
     const saved = saveAdminAlbum({
       ...base,
       id: editing === 'new' ? undefined : editing,
@@ -93,6 +143,19 @@ export default function AlbumsAdmin() {
   const handleDelete = async (album) => {
     const title = album.titleTa || album.titleEn || album.id
     if (!window.confirm(t('admin.confirmDelete', { title }))) return
+    setError('')
+    if (supabaseWritesEnabled()) {
+      try {
+        await deleteAlbumFromSupabase(album)
+      } catch (err) {
+        setError(adminDeleteErrorMessage(err, t))
+        return
+      }
+      logActivity({ actor: user?.email || 'Admin', action: 'Deleted album', detail: title })
+      setNotice(t('admin.saved'))
+      setVersion((v) => v + 1)
+      return
+    }
     deleteAdminAlbum(album.id)
     logActivity({ actor: user?.email || 'Admin', action: 'Deleted album', detail: title })
     await invalidateCaches()
@@ -120,6 +183,7 @@ export default function AlbumsAdmin() {
       </div>
 
       {notice && <div className="admin-notice" role="status" aria-live="polite">{notice}</div>}
+      {error && <div className="admin-notice admin-notice-warn" role="alert" aria-live="polite">{error}</div>}
 
       {editing !== null && (
         <form className="admin-form admin-panel" onSubmit={handleSave}>

@@ -408,6 +408,8 @@ export default function MobilePlayer() {
                   className="mobile-player-canvas-img"
                   src={track.cover}
                   alt={`Cover art for ${track.titleEn || track.titleTa}`}
+                  width={800}
+                  height={800}
                 />
               ) : (
                 <span className="mobile-player-cover-fallback" aria-hidden="true">N</span>

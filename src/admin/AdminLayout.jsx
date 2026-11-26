@@ -5,9 +5,11 @@
 // itself never renders admin chrome for non-admins.
 // Wrapped in LanguageProvider so the admin is self-contained for i18n;
 // AuthProvider must still wrap this component from the app root.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, Navigate, Outlet, Link } from 'react-router-dom'
 import { useAuth, DEMO_ROLES } from '../lib/auth.jsx'
+import { getAdminRedirect } from '../lib/adminGate.js'
+import { getAdminRoleWarning, onAdminRoleWarning } from '../lib/supabaseAdmin.js'
 import { LanguageProvider, useI18n, LOCALES } from '../lib/i18n.js'
 import './admin.css'
 
@@ -43,6 +45,12 @@ function AdminLayoutInner() {
   // Mobile nav (Fix 1): the sidebar is hidden below 720px and opens via
   // the hamburger in the topbar; picking a section closes it again.
   const [navOpen, setNavOpen] = useState(false)
+  // M4: visible "admin role not set up" indicator. Raised when an
+  // admin Supabase call fails with an RLS/permission error; cleared
+  // by the next successful admin write (i.e. once the user_roles row
+  // exists, it disappears by itself).
+  const [roleWarning, setRoleWarning] = useState(getAdminRoleWarning())
+  useEffect(() => onAdminRoleWarning(setRoleWarning), [])
 
   if (loading) {
     return (
@@ -56,8 +64,10 @@ function AdminLayoutInner() {
 
   // Not signed in → the (unlinked) login page. Signed in but not admin
   // → home. No admin chrome ever renders for a non-admin.
-  if (!user) return <Navigate to="/login" replace />
-  if (!isAdmin) return <Navigate to="/" replace />
+  // (Decision lives in src/lib/adminGate.js — unit-tested, see
+  // adminGate.test.js.)
+  const redirect = getAdminRedirect({ user, isAdmin, loading })
+  if (redirect) return <Navigate to={redirect} replace />
 
   return (
     <div className={`admin-shell${navOpen ? ' admin-shell--nav-open' : ''}`}>
@@ -148,6 +158,11 @@ function AdminLayoutInner() {
         </header>
 
         <main className="admin-content">
+          {roleWarning && (
+            <div className="admin-notice admin-notice-warn" role="alert">
+              {t('admin.roleNotSetup')} — {t('admin.roleWarningHint')}
+            </div>
+          )}
           <Outlet />
         </main>
       </div>

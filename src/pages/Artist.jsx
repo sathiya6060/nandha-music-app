@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useI18n } from '../lib/i18n.js'
-import { albums, artists, tracks } from '../data/catalog.js'
+import { albums as fallbackAlbums, artists as fallbackArtists, tracks as fallbackTracks } from '../data/catalog.js'
+import { useAlbums, useArtists, useTracks } from '../lib/supabaseCatalog.js'
 import TrackRow from '../components/TrackRow.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import { getFollowedArtistIds, FOLLOWED_KEY } from './Library.jsx'
 import { usePlayer } from '../player/PlayerContext.jsx'
+import { setPageMeta, resetPageMeta } from '../lib/pageMeta.js'
 
 function toggleFollow(artistId) {
   const followed = getFollowedArtistIds()
@@ -22,14 +24,34 @@ function toggleFollow(artistId) {
  * bio), top tracks, albums, social links, Press Kit button to /epk.
  */
 export default function Artist() {
-  const { t } = useI18n()
+  const { t, tp } = useI18n()
   const { id } = useParams()
   const player = usePlayer()
+  // Supabase read layer (B1); static catalog is the fallback.
+  const { data: sbArtists } = useArtists()
+  const { data: sbAlbums } = useAlbums()
+  const { data: sbTracks } = useTracks()
+  const artists = sbArtists || fallbackArtists
+  const albums = sbAlbums || fallbackAlbums
+  const tracks = sbTracks || fallbackTracks
   const artist = artists.find((a) => String(a.id) === String(id))
   const [following, setFollowing] = useState(() => (artist ? getFollowedArtistIds().has(artist.id) : false))
 
   useEffect(() => {
     setFollowing(artist ? getFollowedArtistIds().has(artist.id) : false)
+  }, [artist])
+
+  // Per-route title + OG tags (S7). Cleanup restores site defaults.
+  useEffect(() => {
+    if (!artist) return undefined
+    setPageMeta({
+      title: `${artist.name} | Nandha Music`,
+      description: `${artist.name} — ${artist.bioEn || artist.bioTa || 'Nandha Music'} | Nandha Music`,
+      image: artist.photo,
+      url: `/artist/${artist.id}`,
+      type: 'profile',
+    })
+    return resetPageMeta
   }, [artist])
 
   if (!artist) {
@@ -72,7 +94,7 @@ export default function Artist() {
         <div style={{ minWidth: 0 }}>
           <p className="badge" style={{ marginBottom: 8 }}>{t('common.artist')}</p>
           <h1 className="detail-head__title">{artist.name}</h1>
-          <p className="detail-head__meta">{t('playlists.tracks', { n: artistTracks.length })}</p>
+          <p className="detail-head__meta">{tp('playlists.tracks', artistTracks.length)}</p>
           <div className="detail-head__actions">
             <button type="button" className="btn btn-primary" onClick={playTop} disabled={artistTracks.length === 0}>
               {t('common.playAll')}
@@ -118,9 +140,9 @@ export default function Artist() {
           <div className="grid-cards">
             {artistAlbums.map((album) => (
               <article className="track-card" key={album.id}>
-                <Link to={`/album/${album.id}`} style={{ all: 'unset', cursor: 'pointer', display: 'block' }}>
+                <Link to={`/album/${album.id}`} className="card-link">
                   {album.cover ? (
-                    <img className="track-card__cover" src={album.cover} alt="" loading="lazy" />
+                    <img className="track-card__cover" src={album.cover} alt="" loading="lazy" width={800} height={800} />
                   ) : (
                     <span className="cover-placeholder track-card__cover" aria-hidden="true" style={{ fontSize: '3rem', aspectRatio: '1', width: '100%', height: 'auto' }}>N</span>
                   )}

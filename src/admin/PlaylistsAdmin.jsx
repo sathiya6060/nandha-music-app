@@ -1,6 +1,14 @@
 // Curated playlists admin — CRUD with track add/remove + reorder.
 import { useMemo, useState } from 'react'
 import { tracks as catalogTracks, playlists as catalogPlaylists } from '../data/catalog.js'
+import { useTracks, usePlaylists } from '../lib/supabaseCatalog.js'
+import {
+  supabaseWritesEnabled,
+  savePlaylistToSupabase,
+  deletePlaylistFromSupabase,
+  adminErrorMessage,
+  adminDeleteErrorMessage,
+} from '../lib/supabaseAdmin.js'
 import {
   getMergedTracks,
   getMergedPlaylists,
@@ -17,19 +25,28 @@ const EMPTY_PLAYLIST = { name: '', description: '', trackIds: [] }
 export default function PlaylistsAdmin() {
   const { user } = useAuth()
   const { t } = useI18n()
-  const adminTracks = useMemo(() => getMergedTracks(catalogTracks).filter((tr) => tr.status !== 'deleted'), [])
+  // Supabase read layer (B1, admin sees all playlists); static catalog
+  // + local overrides are the fallback.
+  const { data: sbTracks } = useTracks({ publishedOnly: false })
+  const { data: sbPlaylists } = usePlaylists({ admin: true })
+  const adminTracks = useMemo(
+    () => getMergedTracks(sbTracks || catalogTracks).filter((tr) => tr.status !== 'deleted'),
+    [sbTracks],
+  )
   const [version, setVersion] = useState(0)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_PLAYLIST)
+  const [coverFile, setCoverFile] = useState(null)
   const [coverPreview, setCoverPreview] = useState('')
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
 
-  const mergedPlaylists = useMemo(() => getMergedPlaylists(catalogPlaylists), [version])
+  const mergedPlaylists = useMemo(() => getMergedPlaylists(sbPlaylists || catalogPlaylists), [version, sbPlaylists])
 
   const startNew = () => {
     setEditing('new')
     setForm(EMPTY_PLAYLIST)
+    setCoverFile(null)
     setCoverPreview('')
     setError('')
   }
@@ -67,6 +84,7 @@ export default function PlaylistsAdmin() {
   const onCoverChange = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
+    setCoverFile(file)
     if (coverPreview && coverPreview.startsWith('blob:')) URL.revokeObjectURL(coverPreview)
     setCoverPreview(URL.createObjectURL(file))
   }
@@ -78,6 +96,41 @@ export default function PlaylistsAdmin() {
       return
     }
     const base = editing === 'new' ? {} : mergedPlaylists.find((p) => p.id === editing) || {}
+    // Supabase path (B1): cover -> "covers" bucket, row + track order
+    // -> tables. A failed write shows a clear message — no silent
+    // local fallback.
+    if (supabaseWritesEnabled()) {
+      try {
+        const savedPlaylist = await savePlaylistToSupabase(
+          {
+            ...base,
+            id: editing === 'new' ? undefined : editing,
+            name: form.name.trim(),
+            titleEn: form.name.trim(),
+            description: form.description.trim(),
+            descriptionEn: form.description.trim(),
+            descriptionTa: form.description.trim(),
+            cover: coverPreview && !coverPreview.startsWith('blob:') ? coverPreview : base.cover || null,
+          },
+          { coverFile, trackIds: form.trackIds },
+        )
+        // M4: tracks dropped from membership (unresolvable ids) are
+        // reported, not silently lost.
+        const droppedNote = savedPlaylist.droppedTrackIds?.length > 0
+          ? ` ${t('admin.membershipDropped', { count: savedPlaylist.droppedTrackIds.length })}`
+          : ''
+        setNotice(t('admin.saved') + droppedNote)
+      } catch (err) {
+        setError(adminErrorMessage(err, t))
+        return
+      }
+      logActivity({ actor: user?.email || 'Admin', action: editing === 'new' ? 'Created playlist' : 'Updated playlist', detail: form.name })
+      setError('')
+      setEditing(null)
+      setCoverFile(null)
+      setVersion((v) => v + 1)
+      return
+    }
     const saved = saveAdminPlaylist({
       ...base,
       id: editing === 'new' ? undefined : editing,
@@ -100,6 +153,19 @@ export default function PlaylistsAdmin() {
   const handleDelete = async (playlist) => {
     const name = playlist.name || playlist.titleTa || playlist.titleEn || playlist.id
     if (!window.confirm(t('admin.confirmDelete', { title: name }))) return
+    setError('')
+    if (supabaseWritesEnabled()) {
+      try {
+        await deletePlaylistFromSupabase(playlist)
+      } catch (err) {
+        setError(adminDeleteErrorMessage(err, t))
+        return
+      }
+      logActivity({ actor: user?.email || 'Admin', action: 'Deleted playlist', detail: name })
+      setNotice(t('admin.saved'))
+      setVersion((v) => v + 1)
+      return
+    }
     deleteAdminPlaylist(playlist.id)
     logActivity({ actor: user?.email || 'Admin', action: 'Deleted playlist', detail: name })
     await invalidateCaches()

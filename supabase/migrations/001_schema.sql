@@ -315,6 +315,33 @@ create policy "liked_tracks: owner all"
 -- -- Play events: anyone signed in may insert (buffered counts); only
 -- -- admins may read the raw rows (aggregates are served via views/RPC).
 create policy "play_events: authenticated insert"
-  on public.play_events for insert with check (auth.uid() is not null or true);
+  on public.play_events for insert with check (auth.uid() is not null);
 create policy "play_events: admin read"
   on public.play_events for select using (public.is_admin());
+
+-- ============================================================================
+-- Table GRANTs (H1 — OpenCodeReview, 27 Nov 2026)
+-- ----------------------------------------------------------------------------
+-- The RLS policies above are NOT enough on their own: Postgres also
+-- requires table privileges, and the migration originally shipped NONE.
+-- Without these GRANTs PostgREST answers 42501 ("permission denied for
+-- table tracks") for anon AND authenticated, and the app silently falls
+-- back to the static catalog — B1 (Supabase-backed catalog) does not
+-- work live at all. Run this section once in the Supabase SQL Editor
+-- (it is idempotent — re-running is safe). Do NOT grant anything on
+-- public.user_roles to anon: the client never reads it (is_admin() is
+-- SECURITY DEFINER and reads it as the function owner).
+-- ============================================================================
+grant select
+  on table public.tracks, public.albums, public.artists, public.lyrics,
+    public.playlists, public.playlist_tracks, public.profiles
+  to anon, authenticated;
+
+grant select, insert, update, delete
+  on table public.tracks, public.albums, public.artists, public.lyrics,
+    public.playlists, public.playlist_tracks, public.profiles,
+    public.play_events, public.liked_tracks
+  to authenticated;
+
+-- play_events.id is an identity column: inserts need sequence usage.
+grant usage, select on sequence public.play_events_id_seq to authenticated;

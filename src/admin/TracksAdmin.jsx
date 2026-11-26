@@ -3,6 +3,14 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { tracks as catalogTracks, albums as catalogAlbums } from '../data/catalog.js'
+import { useTracks, useAlbums } from '../lib/supabaseCatalog.js'
+import {
+  supabaseWritesEnabled,
+  saveTrackToSupabase,
+  deleteTrackFromSupabase,
+  adminErrorMessage,
+  adminDeleteErrorMessage,
+} from '../lib/supabaseAdmin.js'
 import {
   getMergedTracks,
   saveAdminTrack,
@@ -39,11 +47,17 @@ export default function TracksAdmin() {
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState(new Set())
   const [notice, setNotice] = useState('')
+  const [error, setError] = useState('')
 
   const statusLabel = (s) => t(STATUS_LABEL_KEYS[normalizeStatus(s)] || 'admin.statusDraft')
   const genreLabel = (g) => (GENRE_LABEL_KEYS[g] ? t(GENRE_LABEL_KEYS[g]) : g || '—')
 
-  const adminTracks = useMemo(() => getMergedTracks(catalogTracks), [version])
+  // Supabase read layer (B1, all statuses for admin); static catalog +
+  // local overrides are the fallback.
+  const { data: sbTracks } = useTracks({ publishedOnly: false })
+  const { data: sbAlbums } = useAlbums()
+  const adminTracks = useMemo(() => getMergedTracks(sbTracks || catalogTracks), [version, sbTracks])
+  const albumOptions = sbAlbums || catalogAlbums
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
     return adminTracks.filter((tr) => {
@@ -86,6 +100,44 @@ export default function TracksAdmin() {
 
   const bulkSetStatus = async (status) => {
     if (selected.size === 0) return
+    setError('')
+    // Supabase path (B1): 'unlisted' is stored as 'draft' (DB check
+    // allows draft/scheduled/published only). A failed write stops
+    // the batch with a clear message — no silent local fallback.
+    if (supabaseWritesEnabled()) {
+      let done = 0
+      let skipped = 0
+      for (const id of selected) {
+        const track = adminTracks.find((tr) => tr.id === id)
+        // L5: tracks without a DB row are skipped — count them and say
+        // so instead of silently reporting a smaller number.
+        if (!track || !track.dbId) {
+          skipped += 1
+          continue
+        }
+        try {
+          await saveTrackToSupabase({ ...track, status })
+          done += 1
+        } catch (err) {
+          setError(adminErrorMessage(err, t))
+          break
+        }
+      }
+      if (done > 0) {
+        logActivity({
+          actor: user?.email || 'Admin',
+          action: `Bulk ${status === 'published' ? 'published' : 'unpublished'} tracks`,
+          detail: `${done} track(s) → ${status}`,
+        })
+        const skippedNote = skipped > 0 ? ` ${t('admin.bulkStatusSkipped', { count: skipped })}` : ''
+        setNotice(t('admin.bulkStatusSet', { count: done, status: statusLabel(status) }) + skippedNote)
+      } else if (skipped > 0) {
+        setError(t('admin.bulkStatusSkipped', { count: skipped }))
+      }
+      setSelected(new Set())
+      setVersion((v) => v + 1)
+      return
+    }
     for (const id of selected) {
       const track = adminTracks.find((tr) => tr.id === id)
       if (!track) continue
@@ -105,6 +157,21 @@ export default function TracksAdmin() {
   const handleDelete = async (track) => {
     const title = track.titleTa || track.titleEn || track.id
     if (!window.confirm(t('admin.confirmDelete', { title }))) return
+    setError('')
+    // Supabase rows are hard-deleted (no 'deleted' status in the DB);
+    // local-only tracks keep the old soft-delete path.
+    if (supabaseWritesEnabled() && track.dbId) {
+      try {
+        await deleteTrackFromSupabase(track)
+      } catch (err) {
+        setError(adminDeleteErrorMessage(err, t))
+        return
+      }
+      logActivity({ actor: user?.email || 'Admin', action: 'Deleted track', detail: title })
+      setNotice(t('admin.trackDeleted', { title }))
+      setVersion((v) => v + 1)
+      return
+    }
     deleteAdminTrack(track.id)
     logActivity({ actor: user?.email || 'Admin', action: 'Deleted track', detail: title })
     await invalidateCaches(track.id)
@@ -143,6 +210,7 @@ export default function TracksAdmin() {
           </button>
         </div>
       )}
+      {error && <div className="admin-notice admin-notice-warn" role="alert" aria-live="polite">{error}</div>}
 
       <div className="admin-toolbar">
         <input
@@ -158,7 +226,7 @@ export default function TracksAdmin() {
         />
         <select className="admin-input" value={albumFilter} onChange={(e) => { setAlbumFilter(e.target.value); setPage(1) }} aria-label={t('admin.allAlbums')}>
           <option value="all">{t('admin.allAlbums')}</option>
-          {catalogAlbums.map((a) => (
+          {albumOptions.map((a) => (
             <option key={a.id} value={a.id}>
               {a.titleTa || a.titleEn || a.id}
             </option>

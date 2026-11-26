@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment secrets (S8, 27 Nov 2026): the real .env holds live
+# Supabase keys — it must never be committed, even by accident
+# (one careless `git add .` in this dir would leak them).
+.env*
+!.env.example

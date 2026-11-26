@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useI18n } from '../lib/i18n.js'
-import { artists, tracks } from '../data/catalog.js'
+import { artists as fallbackArtists, tracks as fallbackTracks } from '../data/catalog.js'
+import { useArtists, useTracks } from '../lib/supabaseCatalog.js'
 import { getLikedIds } from '../components/TrackRow.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 
@@ -34,7 +35,12 @@ export function getFollowedArtistIds() {
  * Also the v1 Profile destination (bottom-nav Profile tab links here).
  */
 export default function Library() {
-  const { t } = useI18n()
+  const { t, tp } = useI18n()
+  // Supabase read layer (B1); static catalog is the fallback.
+  const { data: sbTracks } = useTracks()
+  const { data: sbArtists } = useArtists()
+  const allTracks = sbTracks || fallbackTracks
+  const allArtists = sbArtists || fallbackArtists
   const [userPlaylists, setUserPlaylists] = useState(() => getUserPlaylists())
   const [likedCount, setLikedCount] = useState(() => getLikedIds().size)
   const [followedIds, setFollowedIds] = useState(() => getFollowedArtistIds())
@@ -57,8 +63,8 @@ export default function Library() {
     }
   }, [])
 
-  const likedTracks = tracks.filter((tr) => getLikedIds().has(tr.id)).slice(0, 3)
-  const followedArtists = artists.filter((a) => followedIds.has(a.id))
+  const likedTracks = allTracks.filter((tr) => getLikedIds().has(tr.id)).slice(0, 3)
+  const followedArtists = allArtists.filter((a) => followedIds.has(a.id))
   const hasAnything = userPlaylists.length > 0 || likedCount > 0 || followedArtists.length > 0
 
   if (!hasAnything) {
@@ -86,7 +92,7 @@ export default function Library() {
         <div className="section-head">
           <div>
             <h2 className="section-title">{t('liked.title')}</h2>
-            <p className="section-subtitle">{t('playlists.tracks', { n: likedCount })}</p>
+            <p className="section-subtitle">{tp('playlists.tracks', likedCount)}</p>
           </div>
           {likedCount > 0 && <Link className="section-link" to="/liked">{t('common.seeAll')} →</Link>}
         </div>
@@ -111,7 +117,7 @@ export default function Library() {
         <div className="section-head">
           <div>
             <h2 className="section-title">{t('playlists.title')}</h2>
-            <p className="section-subtitle">{t('playlists.tracks', { n: userPlaylists.length })}</p>
+            <p className="section-subtitle">{tp('playlists.tracks', userPlaylists.length)}</p>
           </div>
           <Link className="section-link" to="/playlists">{t('common.seeAll')} →</Link>
         </div>
@@ -121,10 +127,10 @@ export default function Library() {
           <div className="grid-cards">
             {userPlaylists.map((p) => (
               <article className="track-card" key={p.id}>
-                <Link to={`/playlist/${p.id}`} style={{ all: 'unset', cursor: 'pointer', display: 'block' }}>
+                <Link to={`/playlist/${p.id}`} className="card-link">
                   <span className="cover-placeholder track-card__cover" aria-hidden="true" style={{ fontSize: '3rem', aspectRatio: '1', width: '100%', height: 'auto' }}>N</span>
                   <h3 className="track-card__title">{p.title}</h3>
-                  <p className="track-card__artist">{t('playlists.tracks', { n: (p.trackIds || []).length })}</p>
+                  <p className="track-card__artist">{tp('playlists.tracks', (p.trackIds || []).length)}</p>
                 </Link>
               </article>
             ))}

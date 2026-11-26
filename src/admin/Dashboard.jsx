@@ -2,6 +2,7 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { tracks, albums, artists } from '../data/catalog.js'
+import { useTracks, useAlbums, useArtists } from '../lib/supabaseCatalog.js'
 import { getMergedTracks, getActivityLog, loadUsers } from '../lib/adminStore.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useI18n } from '../lib/i18n.js'
@@ -24,7 +25,14 @@ function formatBytes(bytes) {
 export default function Dashboard() {
   const { user } = useAuth()
   const { t, lang } = useI18n()
-  const mergedTracks = useMemo(() => getMergedTracks(tracks), [])
+  // Supabase read layer (B1, all statuses for admin); static catalog +
+  // local overrides are the fallback.
+  const { data: sbTracks } = useTracks({ publishedOnly: false })
+  const { data: sbAlbums } = useAlbums()
+  const { data: sbArtists } = useArtists()
+  const albumList = sbAlbums || albums
+  const artistList = sbArtists || artists
+  const mergedTracks = useMemo(() => getMergedTracks(sbTracks || tracks), [sbTracks])
   const activity = useMemo(() => getActivityLog(), [])
   const users = useMemo(() => loadUsers(), [])
 
@@ -54,13 +62,13 @@ export default function Dashboard() {
     return {
       totalPlays,
       totalTracks: mergedTracks.length,
-      totalAlbums: albums.length,
-      totalArtists: artists.length,
+      totalAlbums: albumList.length,
+      totalArtists: artistList.length,
       totalUsers: users.length,
       usedBytes,
       storagePct: Math.min(100, (usedBytes / FREE_STORAGE_LIMIT_BYTES) * 100),
     }
-  }, [mergedTracks, users.length])
+  }, [mergedTracks, users.length, albumList.length, artistList.length])
 
   const topTracks = useMemo(
     () =>

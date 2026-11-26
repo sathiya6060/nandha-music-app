@@ -9,6 +9,8 @@ import {
 } from 'react'
 import { useMediaSession } from './useMediaSession.js'
 import { useAuth } from '../lib/auth.jsx'
+import { recordPlay } from '../lib/cache.js'
+import { audioUrl } from '../lib/config.js'
 import {
   resolvePlayableUrl,
   isSignedTrack,
@@ -16,34 +18,32 @@ import {
   SIGNED_TRACK_FILE,
 } from '../lib/signedAudio.js'
 
-// ---------------------------------------------------------------------------
-// Optional parallel-module integrations (catalog.js / cache.js / config.js
-// are being written by other agents). They are loaded dynamically so the
-// player still builds and runs if they land late; behaviour is identical
-// once they exist.
-//   - recordPlay(trackId)            from '../lib/cache.js'
-//   - audioUrl(track, quality)      from '../lib/config.js'
-//   - getTrack(id) etc.             from '../data/catalog.js' (not needed
-//     here — the player only ever receives full track objects)
-// ---------------------------------------------------------------------------
-let recordPlayFn = null
-let audioUrlHelper = null
+// Static imports (S9, 27 Nov 2026): cache.js and config.js used to be
+// loaded with dynamic import() here, but both are statically imported
+// elsewhere in the bundle, so the dynamic imports split nothing —
+// Vite reported them as INEFFECTIVE_DYNAMIC_IMPORT. They are now
+// plain static imports; recordPlay / audioUrl are called directly.
+export const PREVIEW_SECONDS = 5
 
-import('../lib/cache.js')
-  .then((m) => {
-    if (typeof m.recordPlay === 'function') recordPlayFn = m.recordPlay
-  })
-  .catch(() => {
-    /* cache.js not present yet — play-counts are skipped silently */
-  })
+/** Pure guest-gate predicate, exported for tests (see guestGate.test.js). */
+export function guestPreviewEnded(currentTime, isGuest) {
+  return Boolean(isGuest) && currentTime >= PREVIEW_SECONDS
+}
 
-import('../lib/config.js')
-  .then((m) => {
-    if (typeof m.audioUrl === 'function') audioUrlHelper = m.audioUrl
-  })
-  .catch(() => {
-    /* config.js not present yet — fall back to track.audio128/audio320 */
-  })
+/** The player state after stopPlayback(): empty queue, no track,
+ *  paused, closed. Exported for tests (see stopPlayback.test.js);
+ *  stopPlayback() applies exactly these values. */
+export function stoppedPlayerState() {
+  return {
+    queue: [],
+    queueIndex: 0,
+    isPlaying: false,
+    currentTime: 0,
+    duration: 0,
+    isPlayerOpen: false,
+    previewEnded: false,
+  }
+}
 
 const PlayerContext = createContext(null)
 
@@ -55,8 +55,7 @@ const LS_NOW_PLAYING = 'nandha-now-playing-id'
 // Guest preview limit (user rule, 26 Nov 2026): without sign-in only the
 // first 5 seconds of a song play; signed-in users get the full song.
 // Enforced in the <audio> timeupdate handler + seekTo (see below).
-const PREVIEW_SECONDS = 5
-
+// (PREVIEW_SECONDS is exported at the top of this file for tests.)
 const UNPLAYABLE_NOTICE = 'Could not play this track — try again'
 
 function readJSON(key, fallback) {
@@ -105,13 +104,11 @@ function readQueue() {
 /** Resolve the playable audio URL for a track at a given quality. */
 function resolveAudioUrl(track, quality = '128') {
   if (!track) return null
-  if (audioUrlHelper) {
-    try {
-      const url = audioUrlHelper(track, quality)
-      if (url) return url
-    } catch {
-      /* fall through to the raw fields */
-    }
+  try {
+    const url = audioUrl(track, quality)
+    if (url) return url
+  } catch {
+    /* fall through to the raw fields */
   }
   const url = quality === '320' ? track.audio320 || track.audio128 : track.audio128 || track.audio320
   return url || null
@@ -169,7 +166,7 @@ export function PlayerProvider({ children }) {
   const loadSeqRef = useRef(0) // guards stale signed-URL resolutions
   const signedRetryRef = useRef(null) // track id already retried once after an expiry error
 
-  const initialQueue = useMemo(readQueue, [])
+  const initialQueue = useMemo(() => readQueue(), [])
   const [queue, setQueue] = useState(initialQueue.queue)
   const [queueIndex, setQueueIndex] = useState(initialQueue.queueIndex)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -722,16 +719,20 @@ export function PlayerProvider({ children }) {
       prefetchRef.current = null
     }
     dropSignedAudioUrl(SIGNED_TRACK_FILE)
-    setQueue([])
-    setQueueIndex(0)
-    queueRef.current = []
-    queueIndexRef.current = 0
-    previewEndedRef.current = false
-    setPreviewEnded(false)
-    setIsPlaying(false)
-    setCurrentTime(0)
-    setDuration(0)
-    setIsPlayerOpen(false)
+    // The state reset below is exactly stoppedPlayerState() — keep the
+    // two in sync (the test asserts the helper; the headless smoke test
+    // asserts the live behaviour: audio cleared + bar hidden).
+    const stopped = stoppedPlayerState()
+    setQueue(stopped.queue)
+    setQueueIndex(stopped.queueIndex)
+    queueRef.current = stopped.queue
+    queueIndexRef.current = stopped.queueIndex
+    previewEndedRef.current = stopped.previewEnded
+    setPreviewEnded(stopped.previewEnded)
+    setIsPlaying(stopped.isPlaying)
+    setCurrentTime(stopped.currentTime)
+    setDuration(stopped.duration)
+    setIsPlayerOpen(stopped.isPlayerOpen)
     playCountedRef.current = null
     prefetchedForRef.current = null
     try {
@@ -758,7 +759,7 @@ export function PlayerProvider({ children }) {
       // Guest preview gate — the 5s enforcement point: as soon as a
       // guest's playback reaches 5.0s, pause and show the sign-in
       // prompt. Signed-in users are unaffected (guestRef is false).
-      if (guestRef.current && !previewEndedRef.current && t >= PREVIEW_SECONDS) {
+      if (!previewEndedRef.current && guestPreviewEnded(t, guestRef.current)) {
         previewEndedRef.current = true
         setPreviewEnded(true)
         audio.pause()
@@ -770,12 +771,11 @@ export function PlayerProvider({ children }) {
       if (
         current &&
         playCountedRef.current !== current.id &&
-        t >= 30 &&
-        recordPlayFn
+        t >= 30
       ) {
         playCountedRef.current = current.id
         try {
-          recordPlayFn(current.id)
+          recordPlay(current.id)
         } catch {
           /* never let analytics break playback */
         }
@@ -827,10 +827,10 @@ export function PlayerProvider({ children }) {
 
     const onEnded = () => {
       const current = trackRef.current
-      if (current && playCountedRef.current !== current.id && recordPlayFn) {
+      if (current && playCountedRef.current !== current.id) {
         playCountedRef.current = current.id
         try {
-          recordPlayFn(current.id)
+          recordPlay(current.id)
         } catch {
           /* ignore */
         }
@@ -1031,4 +1031,3 @@ export function usePlayer() {
 }
 
 export { formatTime }
-export default PlayerContext

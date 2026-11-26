@@ -19,12 +19,12 @@ export default function TrackCard({ track }) {
     <article className="track-card">
       <button
         type="button"
+        className="track-card__play-btn"
         onClick={handlePlay}
         aria-label={`${t('common.play')}: ${title} — ${track.artist || 'Nandha Music'}`}
-        style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%' }}
       >
         {track.cover ? (
-          <img className="track-card__cover" src={track.cover} alt="" loading="lazy" />
+          <img className="track-card__cover" src={track.cover} alt="" loading="lazy" width={800} height={800} />
         ) : (
           <span
             className="cover-placeholder track-card__cover"

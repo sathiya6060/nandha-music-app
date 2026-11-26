@@ -99,7 +99,7 @@ export default function TrackRow({ track, index, queue, onPlay }) {
         aria-label={`${t('common.play')}: ${title}`}
       >
         {track.cover ? (
-          <img className="track-row__cover" src={track.cover} alt="" loading="lazy" />
+          <img className="track-row__cover" src={track.cover} alt="" loading="lazy" width={800} height={800} />
         ) : (
           <span className="cover-placeholder track-row__cover" aria-hidden="true">N</span>
         )}

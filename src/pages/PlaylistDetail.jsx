@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { useI18n } from '../lib/i18n.js'
-import { playlists, tracks } from '../data/catalog.js'
+import { useI18n, localizedTitle, localizedDescription } from '../lib/i18n.js'
+import { playlists as fallbackPlaylists, tracks as fallbackTracks } from '../data/catalog.js'
+import { usePlaylists, useTracks } from '../lib/supabaseCatalog.js'
 import { getUserPlaylists, USER_PLAYLISTS_KEY } from './Library.jsx'
 import TrackRow from '../components/TrackRow.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import Icon from '../components/Icons.jsx'
 import { usePlayer } from '../player/PlayerContext.jsx'
+import { setPageMeta, resetPageMeta } from '../lib/pageMeta.js'
 
-function findPlaylist(id) {
-  const curated = playlists.find((p) => String(p.id) === String(id))
+function findPlaylist(id, curatedList) {
+  const curated = curatedList.find((p) => String(p.id) === String(id))
   if (curated) return { ...curated, isUser: false }
   const user = getUserPlaylists().find((p) => String(p.id) === String(id))
   return user ? { ...user, isUser: true } : null
@@ -21,9 +23,9 @@ function playlistTrackIds(p) {
   return []
 }
 
-function tracksInOrder(orderedIds, orderOverride) {
+function tracksInOrder(orderedIds, orderOverride, allTracks) {
   const ids = orderOverride || orderedIds
-  const byId = new Map(tracks.map((tr) => [String(tr.id), tr]))
+  const byId = new Map(allTracks.map((tr) => [String(tr.id), tr]))
   return ids.map((id) => byId.get(String(id))).filter(Boolean)
 }
 
@@ -33,26 +35,47 @@ function tracksInOrder(orderedIds, orderOverride) {
  * share button (copies the page URL).
  */
 export default function PlaylistDetail() {
-  const { t } = useI18n()
+  const { t, tp, lang } = useI18n()
   const { id } = useParams()
   const player = usePlayer()
-  const [playlist, setPlaylist] = useState(() => findPlaylist(id))
+  // Supabase read layer (B1); static catalog is the fallback.
+  const { data: sbPlaylists } = usePlaylists()
+  const { data: sbTracks } = useTracks()
+  const curatedPlaylists = sbPlaylists || fallbackPlaylists
+  const allTracks = sbTracks || fallbackTracks
+  const [playlist, setPlaylist] = useState(() => findPlaylist(id, curatedPlaylists))
   const [order, setOrder] = useState(null) // user reordering (array of ids)
   const [shareMsg, setShareMsg] = useState('')
 
   useEffect(() => {
-    setPlaylist(findPlaylist(id))
+    setPlaylist(findPlaylist(id, curatedPlaylists))
     setOrder(null)
-  }, [id])
+  }, [id, curatedPlaylists])
 
   const orderedIds = useMemo(
     () => (playlist ? playlistTrackIds(playlist) : []),
     [playlist],
   )
   const orderedTracks = useMemo(
-    () => tracksInOrder(orderedIds, order),
-    [orderedIds, order],
+    () => tracksInOrder(orderedIds, order, allTracks),
+    [orderedIds, order, allTracks],
   )
+
+  const firstCovers = orderedTracks.slice(0, 4).map((tr) => tr.cover).filter(Boolean)
+
+  // Per-route title + OG tags (S7). Cleanup restores site defaults.
+  useEffect(() => {
+    if (!playlist) return undefined
+    setPageMeta({
+      title: localizedTitle(playlist, lang),
+      description: localizedDescription(playlist, lang) || `${localizedTitle(playlist, lang)} | Nandha Music`,
+      // M1: OG/social gets the original full-size cover.
+      image: playlist.coverOg || playlist.cover || firstCovers[0],
+      url: `/playlist/${playlist.id}`,
+    })
+    return resetPageMeta
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playlist, lang])
 
   if (!playlist) {
     return (
@@ -108,13 +131,11 @@ export default function PlaylistDetail() {
     }
   }
 
-  const firstCovers = orderedTracks.slice(0, 4).map((tr) => tr.cover).filter(Boolean)
-
   return (
     <div>
       <div className="detail-head">
         {playlist.cover ? (
-          <img className="detail-head__cover" src={playlist.cover} alt="" />
+          <img className="detail-head__cover" src={playlist.cover} alt="" width={800} height={800} fetchPriority="high" />
         ) : firstCovers.length > 0 ? (
           <span
             className="cover-placeholder cover-placeholder--lg detail-head__cover"
@@ -122,7 +143,7 @@ export default function PlaylistDetail() {
             style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', overflow: 'hidden', padding: 0 }}
           >
             {firstCovers.map((c, i) => (
-              <img key={i} src={c} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <img key={i} src={c} alt="" width={400} height={400} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ))}
             {firstCovers.length < 4 && <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '3rem' }}>N</span>}
           </span>
@@ -131,9 +152,9 @@ export default function PlaylistDetail() {
         )}
         <div style={{ minWidth: 0 }}>
           <p className="badge" style={{ marginBottom: 8 }}>{t('playlists.title')}</p>
-          <h1 className="detail-head__title">{playlist.title}</h1>
-          <p className="detail-head__meta">{playlist.description || ''}</p>
-          <p className="detail-head__meta">{t('playlists.tracks', { n: orderedTracks.length })}</p>
+          <h1 className="detail-head__title">{localizedTitle(playlist, lang)}</h1>
+          <p className="detail-head__meta">{localizedDescription(playlist, lang)}</p>
+          <p className="detail-head__meta">{tp('playlists.tracks', orderedTracks.length)}</p>
           <div className="detail-head__actions">
             <button type="button" className="btn btn-primary" onClick={playAll} disabled={orderedTracks.length === 0}>
               {t('common.playAll')}

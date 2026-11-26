@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useI18n } from '../lib/i18n.js'
-import { playlists } from '../data/catalog.js'
+import { useI18n, localizedTitle } from '../lib/i18n.js'
+import { playlists as fallbackPlaylists } from '../data/catalog.js'
+import { usePlaylists } from '../lib/supabaseCatalog.js'
 import { getUserPlaylists, USER_PLAYLISTS_KEY } from './Library.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 
@@ -20,7 +21,10 @@ function saveUserPlaylists(list) {
  * creating a playlist (no window.prompt).
  */
 export default function Playlists() {
-  const { t } = useI18n()
+  const { t, tp, lang } = useI18n()
+  // Supabase read layer (B1); static catalog is the fallback.
+  const { data: sbPlaylists } = usePlaylists()
+  const playlists = sbPlaylists || fallbackPlaylists
   const [userPlaylists, setUserPlaylists] = useState(() => getUserPlaylists())
   const [name, setName] = useState('')
   const [error, setError] = useState('')
@@ -56,14 +60,14 @@ export default function Playlists() {
     const count = (p.trackIds || p.tracks || []).length
     return (
       <article className="track-card" key={p.id}>
-        <Link to={`/playlist/${p.id}`} style={{ all: 'unset', cursor: 'pointer', display: 'block' }}>
+        <Link to={`/playlist/${p.id}`} className="card-link">
           {p.cover ? (
             <img className="track-card__cover" src={p.cover} alt="" loading="lazy" />
           ) : (
             <span className="cover-placeholder track-card__cover" aria-hidden="true" style={{ fontSize: '3rem', aspectRatio: '1', width: '100%', height: 'auto' }}>N</span>
           )}
-          <h3 className="track-card__title">{p.title}</h3>
-          <p className="track-card__artist">{t('playlists.tracks', { n: count })}</p>
+          <h3 className="track-card__title">{localizedTitle(p, lang)}</h3>
+          <p className="track-card__artist">{tp('playlists.tracks', count)}</p>
         </Link>
       </article>
     )

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useI18n } from '../lib/i18n.js'
-import { tracks } from '../data/catalog.js'
+import { tracks as fallbackTracks } from '../data/catalog.js'
+import { useTracks } from '../lib/supabaseCatalog.js'
 import { getLikedIds } from '../components/TrackRow.jsx'
 import TrackRow from '../components/TrackRow.jsx'
 import EmptyState from '../components/EmptyState.jsx'
@@ -11,17 +12,20 @@ import { usePlayer } from '../player/PlayerContext.jsx'
  * Route '/liked' — tracks in the localStorage liked set ('nandha-liked').
  */
 export default function Liked() {
-  const { t } = useI18n()
+  const { t, tp } = useI18n()
   const player = usePlayer()
+  // Supabase read layer (B1); static catalog is the fallback.
+  const { data: sbTracks } = useTracks()
+  const allTracks = sbTracks || fallbackTracks
   const [likedTracks, setLikedTracks] = useState(() => {
     const ids = getLikedIds()
-    return tracks.filter((tr) => ids.has(tr.id))
+    return allTracks.filter((tr) => ids.has(tr.id))
   })
 
   useEffect(() => {
     function sync() {
       const ids = getLikedIds()
-      setLikedTracks(tracks.filter((tr) => ids.has(tr.id)))
+      setLikedTracks(allTracks.filter((tr) => ids.has(tr.id)))
     }
     window.addEventListener('nandha-liked-changed', sync)
     window.addEventListener('storage', sync)
@@ -29,7 +33,7 @@ export default function Liked() {
       window.removeEventListener('nandha-liked-changed', sync)
       window.removeEventListener('storage', sync)
     }
-  }, [])
+  }, [allTracks])
 
   function playAll() {
     if (likedTracks.length > 0) player?.play?.(likedTracks[0], likedTracks)
@@ -54,7 +58,7 @@ export default function Liked() {
     <div>
       <div className="page-head">
         <h1 className="page-head__title">{t('liked.title')}</h1>
-        <p className="page-head__sub">{t('playlists.tracks', { n: likedTracks.length })}</p>
+        <p className="page-head__sub">{tp('playlists.tracks', likedTracks.length)}</p>
       </div>
       <div className="detail-head__actions" style={{ marginTop: 0, marginBottom: 16 }}>
         <button type="button" className="btn btn-primary" onClick={playAll}>

@@ -1,8 +1,10 @@
 // Admin override store — localStorage-backed persistence for demo mode.
 // All admin writes go through here. Overrides are merged over the static
 // catalog data (src/data/catalog.js) so the shipped catalog is never edited.
-// Every mutating helper also fires cache invalidation (best-effort: the
-// cache module may not exist yet, so the dynamic import is swallowed).
+// Every mutating helper also fires cache invalidation (static import —
+// S9: the dynamic import() used to be here, but cache.js is statically
+// imported elsewhere, so it split nothing).
+import { invalidateTrack, invalidateHome, invalidateSearch } from './cache.js'
 
 const KEYS = {
   tracks: 'nandha-admin-tracks',
@@ -65,17 +67,16 @@ function newId(prefix = 'admin') {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
 }
 
-/** Best-effort cache invalidation. Safe when src/lib/cache.js is absent. */
+/** Best-effort cache invalidation. */
 export async function invalidateCaches(trackId) {
   try {
-    const cache = await import('./cache.js')
-    if (trackId && typeof cache.invalidateTrack === 'function') {
-      await cache.invalidateTrack(trackId)
+    if (trackId && typeof invalidateTrack === 'function') {
+      await invalidateTrack(trackId)
     }
-    if (typeof cache.invalidateHome === 'function') await cache.invalidateHome()
-    if (typeof cache.invalidateSearch === 'function') await cache.invalidateSearch()
+    if (typeof invalidateHome === 'function') await invalidateHome()
+    if (typeof invalidateSearch === 'function') await invalidateSearch()
   } catch {
-    // cache.js not present yet — admin writes still persist locally.
+    // Invalidation never blocks an admin write.
   }
 }
 

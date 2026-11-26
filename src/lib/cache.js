@@ -6,7 +6,7 @@
  *   2. localStorage cache for lists (versioned, survives reload)
  *   3. Upstash Redis via REST (shared across devices; no-op when unconfigured)
  *   4. React Query defaults (`queryClientOptions`) — staleTime per query type
- *   5. Supabase / R2 origin (the source of truth; reached only on a miss)
+ *   5. Supabase origin (the source of truth; reached only on a miss)
  *
  * Every layer fails gracefully: a missing/unconfigured layer is skipped,
  * never throws, and the caller still gets data from the next layer down.
@@ -17,7 +17,7 @@
  * (src/lib/redisGuard.js -> redis-cache Edge Function), never direct
  * from the browser. Reads go through the guard's tiered cachedFetch.
  */
-import { redisDelViaProxy } from './redisGuard.js';
+import { redisDelViaProxy, invalidateCachedFetch } from './redisGuard.js';
 import { supabase } from './supabase.js';
 
 // ---------------------------------------------------------------------------
@@ -99,7 +99,7 @@ function lsClear(prefix = '') {
 // API directly for writes, and never holds the full-access token.
 
 /** DEL one or more keys from Redis via the write proxy. Best-effort, never throws. */
-export async function redisDel(...keys) {
+async function redisDel(...keys) {
   if (keys.length === 0) return;
   await redisDelViaProxy(...keys);
 }
@@ -186,31 +186,31 @@ export async function invalidateSearch() {
   invalidateQueryClient((q) => q.queryKey[0] === 'search');
 }
 
-export async function invalidateAlbum(id) {
-  memoryDelete(memoryKeyFor(cacheKeys.album(id)));
-  memoryDelete(memoryKeyFor(cacheKeys.tracks()));
-  lsDelete(`album:${id}`);
-  lsDelete('tracks');
-  await redisDel(`album:${id}`, 'tracks');
-  invalidateQueryClient(
-    (q) => (q.queryKey[0] === 'album' && q.queryKey[1] === id) || q.queryKey[0] === 'tracks',
+/**
+ * Invalidate the whole Supabase catalog (Phase 1 / B1): called after
+ * every successful admin write so public pages refresh. Clears the
+ * memory + localStorage tiers, the Redis keys, and every React Query
+ * key the catalog hooks use (track/tracks/album/albums/artist/artists/
+ * playlist/playlists/home/search/library).
+ */
+export async function invalidateCatalog(trackId) {
+  memoryClear('');
+  lsClear('');
+  // Also drop the redisGuard tier-1 (memory) cachedFetch entries —
+  // otherwise a React Query refetch after an admin write would serve
+  // the stale 'home' / 'track:<id>' value for up to its TTL.
+  invalidateCachedFetch();
+  await redisDel('home', 'tracks', 'search');
+  if (trackId) {
+    memoryDelete(memoryKeyFor(cacheKeys.track(trackId)));
+    lsDelete(`track:${trackId}`);
+    await redisDel(`track:${trackId}`);
+  }
+  invalidateQueryClient((q) =>
+    ['track', 'tracks', 'album', 'albums', 'artist', 'artists', 'playlist', 'playlists', 'home', 'search', 'library'].includes(
+      q.queryKey[0],
+    ),
   );
-}
-
-export async function invalidatePlaylist(id) {
-  memoryDelete(memoryKeyFor(cacheKeys.playlist(id)));
-  lsDelete(`playlist:${id}`);
-  await redisDel(`playlist:${id}`);
-  invalidateQueryClient(
-    (q) => q.queryKey[0] === 'playlist' && q.queryKey[1] === id,
-  );
-}
-
-export async function invalidateLibrary(userId = 'me') {
-  memoryDelete(memoryKeyFor(cacheKeys.library(userId)));
-  lsDelete(`library:${userId}`);
-  await redisDel(`library:${userId}`);
-  invalidateQueryClient((q) => q.queryKey[0] === 'library');
 }
 
 // ---------------------------------------------------------------------------
@@ -253,21 +253,45 @@ export function recordPlay(trackId) {
   ensureVisibilityFlush();
 }
 
-/** Flush buffered play counts to Supabase `play_events`. Best-effort. */
+/** Flush buffered play counts to Supabase `play_events`. Best-effort.
+ * play_events.track_id is a DB uuid FK, but the player records the
+ * UI track id (the slug) — resolve slugs to uuids first. Rows that
+ * cannot be resolved (e.g. a local-only track) are dropped, not
+ * re-queued forever: re-queueing them would retry a FK violation
+ * on every flush. */
 export async function flushPlays() {
   if (playBuffer.size === 0) return { flushed: 0 };
   const entries = [...playBuffer.entries()];
   playBuffer.clear();
   if (!supabase) return { flushed: 0, skipped: 'demo-mode' };
   try {
-    const rows = entries.map(([track_id, count]) => ({
-      track_id,
-      count,
-      played_at: new Date().toISOString(),
-    }));
+    // NOTE (S9, 27 Nov 2026): this dynamic import() is INTENTIONALLY
+    // kept, even though Vite flags it INEFFECTIVE_DYNAMIC_IMPORT.
+    // A static import would create a cycle (cache.js -> supabaseCatalog.js
+    // -> cache.js) and supabaseCatalog.js reads queryClientOptions at
+    // MODULE TOP LEVEL (QUERY_DEFAULTS, spread into every useQuery) —
+    // if cache.js initialised first, that read would see `undefined`
+    // and every query would silently lose its staleTime defaults.
+    // The dynamic import runs at flush time, long after both modules
+    // have initialised, so the live binding is correct. Do not
+    // "fix" this one without moving QUERY_DEFAULTS out of module scope.
+    const { resolveTrackDbIds } = await import('./supabaseCatalog.js');
+    const dbIds = await resolveTrackDbIds(entries.map(([trackId]) => trackId));
+    const rows = entries
+      .filter(([trackId]) => dbIds.get(trackId))
+      .map(([track_id, count]) => ({
+        track_id: dbIds.get(track_id),
+        count,
+        played_at: new Date().toISOString(),
+      }));
+    const dropped = entries.filter(([trackId]) => !dbIds.get(trackId));
+    if (dropped.length > 0) {
+      console.warn('[cache] dropping play counts with no DB track id:', dropped.map(([id]) => id));
+    }
+    if (rows.length === 0) return { flushed: 0, skipped: 'no-db-id' };
     const { error } = await supabase.from('play_events').insert(rows);
     if (error) throw error;
-    return { flushed: entries.length };
+    return { flushed: rows.length };
   } catch (err) {
     // Put the counts back so the next flush retries them.
     entries.forEach(([track_id, count]) => {

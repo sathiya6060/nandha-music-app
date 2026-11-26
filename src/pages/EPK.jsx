@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useI18n } from '../lib/i18n.js'
-import { tracks } from '../data/catalog.js'
+import { tracks as fallbackTracks } from '../data/catalog.js'
+import { useTracks } from '../lib/supabaseCatalog.js'
 import TrackRow from '../components/TrackRow.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import Icon from '../components/Icons.jsx'
@@ -82,6 +83,9 @@ export default function EPK() {
   const { t } = useI18n()
   const player = usePlayer()
   const [downloaded, setDownloaded] = useState(false)
+  // Supabase read layer (B1); static catalog is the fallback.
+  const { data: sbTracks } = useTracks()
+  const tracks = sbTracks || fallbackTracks
 
   const bestTracks = useMemo(() => {
     const sorted = [...(tracks || [])].sort((a, b) => (b.plays || 0) - (a.plays || 0))
@@ -90,11 +94,11 @@ export default function EPK() {
     const vaazh = sorted.find((tr) => /vaazhvinil/i.test(`${tr.titleEn || ''} ${tr.titleTa || ''}`))
     if (vaazh && !top.some((tr) => tr.id === vaazh.id)) top.unshift(vaazh)
     return top.slice(0, 5)
-  }, [])
+  }, [tracks])
 
   const currentRelease = useMemo(
     () => (tracks || []).find((tr) => /vaazhvinil/i.test(`${tr.titleEn || ''} ${tr.titleTa || ''}`)),
-    [],
+    [tracks],
   )
 
   function downloadPressKit() {
@@ -178,7 +182,7 @@ export default function EPK() {
         </div>
         <div className="grid-cards">
           <figure style={{ margin: 0 }}>
-            <img className="epk-photo" src={VAAZHVINIL_COVER} alt="Vaazhvinil Orumurayenum cover art" loading="lazy" />
+            <img className="epk-photo" src={VAAZHVINIL_COVER} alt="Vaazhvinil Orumurayenum cover art" loading="lazy" width={3000} height={3000} />
             <figcaption style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: 6 }}>Vaazhvinil Orumurayenum — cover art</figcaption>
           </figure>
           <figure style={{ margin: 0 }}>

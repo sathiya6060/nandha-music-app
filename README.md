@@ -8,8 +8,10 @@ Mobile-first — the mobile player and bottom navigation are the top priority.
 ## What is built (v1)
 
 - **Auth** — email + Google login (Supabase Auth); roles admin / artist /
-  listener with Supabase RLS (admin-only writes). Demo mode when no keys are
-  set: pick a role in the admin demo bar, no real account needed.
+  listener with Supabase RLS (admin-only writes). Demo mode ONLY when
+  `VITE_DEMO_MODE=true` is set — every demo sign-in is a listener;
+  admin is never granted in demo (M2). No sign-in is needed to listen:
+  guests get a 5-second preview per track.
 - **Home** — Popular Tracks, New Releases, Browse by Genre, time-of-day
   sections (Morning Devotional 5–10, Afternoon Melody, Evening Love 6–9,
   Night Calm), rule-based **Your Daily Mix**, **Song of the Day**, Bhakti
@@ -43,7 +45,7 @@ Mobile-first — the mobile player and bottom navigation are the top priority.
 - **Share + SEO** — og:image (Vaazhvinil cover), meta/Twitter tags,
   `public/sitemap.xml`, PWA manifest + service worker (installable,
   offline pinned audio max 50 tracks LRU).
-- **i18n** — Tamil (default) + English + Hindi, all 297 keys in each
+- **i18n** — Tamil (default) + English + Hindi, all 322 keys in each
   locale. Add a language = one file in `src/locales/` + one line in
   `src/lib/i18n.js`. Language switcher in the top bar.
 - **Accessibility** — WCAG 2.2 AA target: semantic HTML, one h1 per page,
@@ -62,9 +64,9 @@ npm run build    # production build → dist/ (verified passing)
 npm run preview  # serve dist/ locally, e.g. http://localhost:4173
 ```
 
-No keys are needed to run it: without Supabase/R2/Upstash keys the app
-runs in **demo mode** (real track + 199 clearly-marked sample tracks,
-localStorage-backed likes/playlists/admin edits).
+No keys are needed to run it: without Supabase keys the app
+runs with the local catalog fallback (1 real track only — no sample
+tracks; the 199 placeholders were deleted 26 Nov 2026).
 
 ## Free-tier setup (what Sathiya must create — no credentials in this repo)
 
@@ -74,16 +76,17 @@ localStorage-backed likes/playlists/admin edits).
    `VITE_SUPABASE_ANON_KEY`). Free limits: 500 MB DB, 1 GB storage,
    5 GB egress, 50K monthly users. Note: free projects pause after
    7 days idle — keep a tiny scheduled ping or expect a cold start.
-2. **Cloudflare R2** (free): create a bucket, upload audio files
-   (128 kbps + 320 kbps per track), make the bucket public via an
-   `r2.dev` domain → set `VITE_AUDIO_BASE_URL`. Free: 10 GB storage,
-   **zero egress fees**. This is where audio lives, because 200 songs
-   at 320 kbps ≈ 1.8 GB — it does NOT fit Supabase free storage (1 GB)
-   or egress (5 GB).
-3. **Firebase Hosting** (free): `firebase init hosting`, `firebase deploy`
-   with `dist/` as the public folder. Replace the placeholder domain
-   `nandha-music.web.app` in `public/sitemap.xml` and the EPK share URLs
-   with the real hosting domain.
+2. **Audio — signed Supabase Storage URLs (no R2):** the real mp3
+   lives in Supabase Storage; the `get-audio-url` Edge Function mints
+   a short-lived signed URL per play (see `src/lib/signedAudio.js`).
+   Cloudflare R2 was the original plan but is NOT used — the R2
+   account needs a card, which is blocked, so `VITE_AUDIO_BASE_URL`
+   stays unset. The one real mp3 also ships in `public/assets` as the
+   local fallback.
+3. **Cloudflare Pages (live host):** the app is deployed on
+   Cloudflare Pages at `https://nandha-music.pages.dev` (see
+   `docs/rollback.md` for redeploy/rollback). `public/sitemap.xml`
+   already uses that domain.
 4. **Upstash Redis** (free, optional): create a REST database → set
    `VITE_UPSTASH_REDIS_REST_URL` + `VITE_UPSTASH_REDIS_REST_TOKEN`.
    Without it the app falls back to in-memory + localStorage caching.
@@ -100,8 +103,9 @@ User (mobile PWA / desktop)
        ├─ Metadata path: Supabase Postgres (+ RLS) ──► React Query SWR
        │     └─ Upstash Redis (server cache: home 10 min, search 5 min,
        │        play-count flush every 5 min, rate limiting)
-       ├─ Audio path: Cloudflare R2 ──► CDN, HTTP Range (~512 KB chunks)
-       │     (audio NEVER touches the API servers)
+       ├─ Audio path: Supabase Storage ──► signed URL per play
+       │     (Edge Function `get-audio-url`, 300 s; audio NEVER touches
+       │     the API servers, and never plays from a public URL)
        ├─ Covers/app shell: Cloudflare CDN + service-worker cache-first
        └─ Client cache: React Query stale-while-revalidate + Cache API
           (pinned audio only, max 50, LRU, 7-day TTL)
@@ -124,13 +128,12 @@ serves a stale image; never purge the whole CDN.
   cover `public/assets/vaazhvinil-cover.jpg` (v7 final). Its 4 lyric
   lines are SAMPLE lines (flagged `isSampleLyrics: true`) — the full
   lyrics come from the admin once the release is live.
-- **Sample:** 199 tracks labelled `isSample: true` ("Sample Track N —
-  Coming Soon", no audio/cover) so pagination, virtual scroll, search,
-  Discover and the player queue can be verified with 200+ rows. They
-  show a brand placeholder and cannot play.
+- **Sample:** none. The 199 `isSample` placeholder tracks were
+  deleted 26 Nov 2026 (real data only) — new songs come from the
+  admin panel / Supabase, never from generators.
 - **Still needed from Sathiya:** the other 39 songs' MP3s + lyrics
-  (on his phone), then upload via the admin panel or R2; Supabase /
-  R2 / Firebase / Upstash free-project keys (see setup above).
+  (on his phone), then upload via the admin panel; Supabase /
+  Upstash free-project keys (see setup above).
 
 ## Brand
 
@@ -162,13 +165,15 @@ Noto Sans Tamil Bold. Tagline: YOUR BEAT. YOUR ECHO.
   flow — verified by build + unit assertions only. A live-browser pass
   (and axe-core run — chromedriver download timed out in this VM) is
   still needed before launch.
-- **Main JS chunk is 614 KB** (React + router + React Query + Supabase
+- **Main JS chunk is ~659 KB** (React + router + React Query + Supabase
   client) — Vite warns above 500 KB. Lazy-loading the Supabase client
-  is the P1 fix; first load is still fast (gzip 175 KB) with lazy
+  is the P1 fix; first load is still fast (gzip ~188 KB) with lazy
   images and code-split routes.
-- **`play_events` RLS allows anonymous inserts** so guest plays can be
-  buffered — it only permits inserting count rows, but confirm this
-  trade-off before going live.
+- **`play_events` RLS allows authenticated inserts only**
+  (`with check (auth.uid() is not null)`, fixed live 26 Nov 2026 and
+  in `supabase/migrations/001_schema.sql`) so signed-in plays can be
+  buffered — it only permits inserting count rows, and only admins
+  may read the raw rows.
 - **Aarti alarm** fires only while the app/tab is open (Notification
   API). True background alarms need a push server (P2).
 - **Sitemap domain is a placeholder** (`nandha-music.web.app`) — replace
