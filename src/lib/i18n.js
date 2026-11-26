@@ -57,9 +57,3 @@ export function useI18n() {
   if (!ctx) return { lang: DEFAULT_LANG, setLang: () => {}, t: (k, v) => interpolate(en[k] ?? k, v), locales: Object.keys(LOCALES) };
   return ctx;
 }
-
-// Non-hook helper for code outside React (e.g. service worker messages).
-export function translate(lang, key, vars) {
-  const strings = LOCALES[lang]?.strings || {};
-  return interpolate(strings[key] ?? en[key] ?? key, vars);
-}

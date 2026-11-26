@@ -38,7 +38,7 @@ function mulberry32(seed) {
 // ---------------------------------------------------------------------------
 export const REAL_TRACK_ID = 'vaazhvinil-orumurayenum';
 
-export const realTrack = {
+const realTrack = {
   id: REAL_TRACK_ID,
   titleTa: 'வாழ்வினில் ஒருமுறையேனும்',
   titleEn: 'Vaazhvinil Orumurayenum',
@@ -151,38 +151,9 @@ export const playlists = [
 // Lookups
 // ---------------------------------------------------------------------------
 const trackById = new Map(tracks.map((t) => [t.id, t]));
-const albumById = new Map(albums.map((a) => [a.id, a]));
-const artistById = new Map(artists.map((a) => [a.id, a]));
-const playlistById = new Map(playlists.map((p) => [p.id, p]));
 
 export function getTrack(id) {
   return trackById.get(id) ?? null;
-}
-
-export function getAlbum(id) {
-  return albumById.get(id) ?? null;
-}
-
-export function getArtist(id) {
-  return artistById.get(id) ?? null;
-}
-
-export function getPlaylist(id) {
-  return playlistById.get(id) ?? null;
-}
-
-export function getAlbumTracks(albumId) {
-  return tracks.filter((t) => t.albumId === albumId);
-}
-
-export function getArtistTracks(artistId) {
-  return tracks.filter((t) => t.artistId === artistId);
-}
-
-export function getPlaylistTracks(playlistId) {
-  const playlist = playlistById.get(playlistId);
-  if (!playlist) return [];
-  return playlist.trackIds.map((id) => trackById.get(id)).filter(Boolean);
 }
 
 // ---------------------------------------------------------------------------
@@ -203,25 +174,6 @@ export function searchTracks(query, { limit = 20 } = {}) {
   }
   return results;
 }
-
-// ---------------------------------------------------------------------------
-// Debounce — 300 ms. `debouncedSearch(query, callback)` searches after the
-// user stops typing; `createDebounced(fn, delay)` is the generic helper.
-// ---------------------------------------------------------------------------
-export function createDebounced(fn, delay = 300) {
-  let timer = null;
-  return (...args) => {
-    if (timer !== null) clearTimeout(timer);
-    timer = setTimeout(() => {
-      timer = null;
-      fn(...args);
-    }, delay);
-  };
-}
-
-export const debouncedSearch = createDebounced((query, callback) => {
-  callback(searchTracks(query));
-}, 300);
 
 // ---------------------------------------------------------------------------
 // Time-of-day home + Daily Mix + Song of the Day (rule-based, no AI/ML).

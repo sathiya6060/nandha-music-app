@@ -15,12 +15,12 @@
  * shows today's aarti time.
  */
 
-export const STREAK_KEY = 'nandha-streak'
-export const ALARM_KEY = 'nandha-aarti-alarm'
-export const AARTI_FIRED_KEY = 'nandha-aarti-fired'
+const STREAK_KEY = 'nandha-streak'
+const ALARM_KEY = 'nandha-aarti-alarm'
+const AARTI_FIRED_KEY = 'nandha-aarti-fired'
 
 export const DEFAULT_ALARM_TIME = '06:00'
-export const LAMP_DAYS = 7
+const LAMP_DAYS = 7
 
 function dayKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -39,7 +39,7 @@ function daysBetween(aKey, bKey) {
   return Math.round((b - a) / 86400000)
 }
 
-export function loadStreak() {
+function loadStreak() {
   try {
     const raw = localStorage.getItem(STREAK_KEY)
     const parsed = raw ? JSON.parse(raw) : null
@@ -57,7 +57,7 @@ export function loadStreak() {
   return { count: 0, lastDate: null, forgivenUsedThisWeek: false, weekKey: null }
 }
 
-export function saveStreak(streak) {
+function saveStreak(streak) {
   try {
     localStorage.setItem(STREAK_KEY, JSON.stringify(streak))
   } catch {
@@ -138,7 +138,7 @@ export function saveAlarm(alarm) {
 }
 
 /** "HH:MM" -> minutes since midnight. */
-export function alarmMinutes(time) {
+function alarmMinutes(time) {
   const [h, m] = String(time || DEFAULT_ALARM_TIME).split(':').map(Number)
   return (Number.isFinite(h) ? h : 6) * 60 + (Number.isFinite(m) ? m : 0)
 }

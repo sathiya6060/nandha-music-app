@@ -21,17 +21,6 @@
  * Copy `.env.example` (when present) to `.env.local` and fill in values.
  */
 
-export const brand = {
-  amberGold: '#F59E0B',
-  charcoalSlate: '#1E293B',
-  warmSand: '#FEF3C7',
-  steelGrey: '#64748B',
-  white: '#FFFFFF',
-  // Tamil text font stack. Noto Sans Tamil itself is loaded in index.html
-  // by the integrator; this is only the fallback chain.
-  fontFamily: "'Noto Sans Tamil', system-ui, -apple-system, 'Segoe UI', sans-serif",
-};
-
 const env = import.meta.env ?? {};
 
 function readEnv(name) {
@@ -46,8 +35,6 @@ export const config = {
   audioBaseUrl: readEnv('VITE_AUDIO_BASE_URL').replace(/\/+$/, ''),
   upstashRedisUrl: readEnv('VITE_UPSTASH_REDIS_REST_URL').replace(/\/+$/, ''),
   upstashRedisToken: readEnv('VITE_UPSTASH_REDIS_REST_TOKEN'),
-  /** App environment label, e.g. 'development' | 'production'. */
-  appEnv: readEnv('VITE_APP_ENV') || env.MODE || 'development',
   /** Explicit demo-mode flag (M2): only 'true' enables demo mode. */
   demoMode: readEnv('VITE_DEMO_MODE').toLowerCase() === 'true',
 };
@@ -96,5 +83,3 @@ export function localAudioUrl(track, quality = '128') {
   if (!track) return null;
   return quality === '320' ? track.audio320 ?? null : track.audio128 ?? null;
 }
-
-export default config;

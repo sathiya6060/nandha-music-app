@@ -16,7 +16,7 @@ import './player.css'
  * render as a plain list: no active line, no auto-scroll — that only
  * applies when lines carry timestamps (synced).
  */
-export function normaliseLines(track) {
+function normaliseLines(track) {
   const ta = track?.lyricsTa
   const en = track?.lyricsEn
   const out = { synced: false, lines: [] }

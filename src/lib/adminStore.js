@@ -356,5 +356,3 @@ export function recordNoResultSearch(query) {
   writeJson(KEYS.noResultSearches, list)
   return list
 }
-
-export { KEYS as ADMIN_STORAGE_KEYS }

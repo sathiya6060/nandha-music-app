@@ -960,7 +960,6 @@ export function PlayerProvider({ children }) {
       notice,
       previewEnded,
       isGuest,
-      previewLimitSec: PREVIEW_SECONDS,
       play,
       playPause,
       next,
@@ -1029,15 +1028,6 @@ export function usePlayer() {
     throw new Error('usePlayer must be used inside <PlayerProvider>')
   }
   return ctx
-}
-
-/** Internal escape hatch — returns the shared <audio> element's ref. */
-export function useAudioElement() {
-  const ctx = useContext(PlayerContext)
-  if (!ctx) {
-    throw new Error('useAudioElement must be used inside <PlayerProvider>')
-  }
-  return ctx.audioRef
 }
 
 export { formatTime }
