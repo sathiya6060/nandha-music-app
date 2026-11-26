@@ -58,7 +58,6 @@ export default function QueuePanel({ onClose }) {
       <ul className="queue-list">
         {queue.map((item, i) => {
           const isCurrent = i === queueIndex
-          const isSample = item.isSample || (!item.audio128 && !item.audio320)
           return (
             <li
               key={`${item.id}-${i}`}
@@ -88,9 +87,6 @@ export default function QueuePanel({ onClose }) {
                     {item.titleEn && item.titleTa ? ` · ${item.titleEn}` : ''}
                   </span>
                 </span>
-                {isSample && (
-                  <span className="queue-sample-badge">Sample — no audio</span>
-                )}
               </button>
               <button
                 type="button"

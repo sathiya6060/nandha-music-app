@@ -3,8 +3,14 @@
 // The real track lives in a PRIVATE Supabase Storage bucket. The browser
 // never sees a permanent audio URL: the player asks the get-audio-url
 // Edge Function for a signed URL (300 s expiry) when playback starts, and
-// refetches once if the URL expires mid-play. The permanent /assets mp3
-// is gone from the Pages bundle, so there is no public file to share.
+// refetches once if the URL expires mid-play.
+//
+// L3 (26 Nov 2026): the 1-second SILENT mp3 at /assets/vaazhvinil-
+// orumurayenum.mp3 IS still in the Pages bundle — deliberately. The old
+// public URL for that path used to serve the full song (cached at the
+// edge for 7 days); the silent file is what keeps that URL harmless.
+// Do NOT delete it in future builds — removing it would let the stale
+// edge cache serve the song again.
 //
 // The anon key sent here is the public publishable key (safe in the
 // client by design) — it only passes the Edge Function's JWT check.

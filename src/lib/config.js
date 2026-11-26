@@ -10,10 +10,15 @@
  *                                   e.g. https://audio.nandhamusic.example
  *   VITE_UPSTASH_REDIS_REST_URL     Upstash Redis REST URL (optional)
  *   VITE_UPSTASH_REDIS_REST_TOKEN   Upstash Redis REST token (optional)
+ *   VITE_DEMO_MODE                  'true' = demo mode (see below).
  *
+ * DEMO MODE (26 Nov 2026, OpenCodeReview M2): demo mode runs ONLY when
+ * the explicit VITE_DEMO_MODE=true flag is set. Missing Supabase URL/key
+ * alone does NOT enable demo mode — without Supabase and without the
+ * flag the app is misconfigured and sign-in fails closed (see
+ * src/lib/auth.jsx). In demo mode the role is always 'listener'; admin
+ * is never granted (the allowlist does not apply in demo).
  * Copy `.env.example` (when present) to `.env.local` and fill in values.
- * Without Supabase URL/key the app runs in demo mode against the local
- * catalog in `src/data/catalog.js` — no network calls, no login.
  */
 
 export const brand = {
@@ -43,10 +48,18 @@ export const config = {
   upstashRedisToken: readEnv('VITE_UPSTASH_REDIS_REST_TOKEN'),
   /** App environment label, e.g. 'development' | 'production'. */
   appEnv: readEnv('VITE_APP_ENV') || env.MODE || 'development',
+  /** Explicit demo-mode flag (M2): only 'true' enables demo mode. */
+  demoMode: readEnv('VITE_DEMO_MODE').toLowerCase() === 'true',
 };
 
-/** True when Supabase is NOT configured — the app serves the local demo catalog. */
-export const isDemoMode = config.supabaseUrl === '' || config.supabaseAnonKey === '';
+/**
+ * True ONLY when the explicit VITE_DEMO_MODE=true flag is set (M2).
+ * Missing Supabase vars alone do NOT enable demo mode — without
+ * Supabase and without the flag, the app is misconfigured and auth
+ * fails closed (see src/lib/auth.jsx). The catalog in
+ * src/data/catalog.js is still the local data source in demo.
+ */
+export const isDemoMode = config.demoMode === true;
 
 export const isSupabaseConfigured = !isDemoMode;
 export const isRedisConfigured =

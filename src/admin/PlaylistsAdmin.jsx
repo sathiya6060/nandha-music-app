@@ -1,6 +1,6 @@
 // Curated playlists admin — CRUD with track add/remove + reorder.
 import { useMemo, useState } from 'react'
-import { allTracks as catalogTracks, allPlaylists as catalogPlaylists } from '../data/catalog.js'
+import { tracks as catalogTracks, playlists as catalogPlaylists } from '../data/catalog.js'
 import {
   getMergedTracks,
   getMergedPlaylists,
@@ -17,7 +17,7 @@ const EMPTY_PLAYLIST = { name: '', description: '', trackIds: [] }
 export default function PlaylistsAdmin() {
   const { user } = useAuth()
   const { t } = useI18n()
-  const allTracks = useMemo(() => getMergedTracks(catalogTracks).filter((tr) => tr.status !== 'deleted'), [])
+  const adminTracks = useMemo(() => getMergedTracks(catalogTracks).filter((tr) => tr.status !== 'deleted'), [])
   const [version, setVersion] = useState(0)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_PLAYLIST)
@@ -107,8 +107,8 @@ export default function PlaylistsAdmin() {
     setVersion((v) => v + 1)
   }
 
-  const orderedTracks = form.trackIds.map((id) => allTracks.find((tr) => tr.id === id)).filter(Boolean)
-  const unselectedTracks = allTracks.filter((tr) => !form.trackIds.includes(tr.id))
+  const orderedTracks = form.trackIds.map((id) => adminTracks.find((tr) => tr.id === id)).filter(Boolean)
+  const unselectedTracks = adminTracks.filter((tr) => !form.trackIds.includes(tr.id))
 
   return (
     <div className="admin-page">

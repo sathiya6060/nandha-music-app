@@ -1,14 +1,19 @@
 /**
  * Nandha Music — Supabase client.
  *
- * Created from env config only (see src/lib/config.js). In demo mode
- * (no VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY) `supabase` is null and
- * callers must fall back to the local catalog — never crash on it.
+ * Created from env config only (see src/lib/config.js). When the
+ * Supabase URL/key are absent `supabase` is null and callers must fall
+ * back to the local catalog — never crash on it. Note (M2): this is
+ * decided by the actual vars, NOT by the demo-mode flag — demo mode is
+ * a separate explicit flag, and a missing backend must never be
+ * mistaken for a configured one.
  */
 import { createClient } from '@supabase/supabase-js';
-import { config, isDemoMode } from './config.js';
+import { config } from './config.js';
 
-export const isSupabaseConfigured = !isDemoMode;
+/** True only when a real Supabase URL + anon key are present. */
+export const isSupabaseConfigured =
+  config.supabaseUrl !== '' && config.supabaseAnonKey !== '';
 
 /** Supabase client, or null in demo mode. */
 export const supabase = isSupabaseConfigured

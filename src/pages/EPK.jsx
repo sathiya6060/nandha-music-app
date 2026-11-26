@@ -37,13 +37,13 @@ function buildPressKitText(bestTracks) {
     '',
     'ABOUT (ENGLISH)',
     'Nandha Music is an independent Tamil music label for melody, love and',
-    'devotional songs — a new song every week. The label blends classic Tamil',
+    'devotional songs — new songs as they release. The label blends classic Tamil',
     'melody with modern production, from romantic melodies to devotional songs',
     'for Lord Shiva and the Siddhars.',
     '',
     'ABOUT (TAMIL)',
     'நந்தா மியூசிக் — மெலடி, காதல் மற்றும் பக்திப் பாடல்களுக்கான ஒரு தமிழ்',
-    'இசை நிறுவனம். ஒவ்வொரு வாரமும் புதிய பாடல்.',
+    'இசை நிறுவனம். புதிய பாடல்கள் வெளியாகும்போது.',
     '',
     'CURRENT RELEASE',
     'Vaazhvinil Orumurayenum — Single',
@@ -57,7 +57,7 @@ function buildPressKitText(bestTracks) {
     'HIGHLIGHTS (as stated by the label)',
     '- 40-song catalog (devotional, love & melody)',
     '- Released via RouteNote to Spotify, JioSaavn and more',
-    '- Goal: 1,000 app users and growing daily listeners',
+    '- Goal: 1,000 app users',
     '',
     'SOCIAL & STREAMING',
     ...SOCIAL_LINKS.map((s) => `${s.label}: ${s.url}`),
@@ -125,12 +125,12 @@ export default function EPK() {
           <div>
             <p lang="ta" style={{ margin: '0 0 10px', fontSize: '1.05rem' }}>
               நந்தா மியூசிக் — மெலடி, காதல் மற்றும் பக்திப் பாடல்களுக்கான ஒரு தமிழ் இசை
-              நிறுவனம். ஒவ்வொரு வாரமும் புதிய பாடல். சித்தர் பாடல்கள், சிவன் பாடல்கள்,
+              நிறுவனம். புதிய பாடல்கள் வெளியாகும்போது. சித்தர் பாடல்கள், சிவன் பாடல்கள்,
               காதல் மெலடிகள் — இசையில் உணர்வும் பக்தியும்.
             </p>
             <p style={{ margin: 0, color: 'var(--muted)' }}>
               Nandha Music is an independent Tamil music label for melody, love and devotional
-              songs — a new song every week. From romantic melodies to devotional songs for
+              songs — new songs as they release. From romantic melodies to devotional songs for
               Lord Shiva and the Siddhars, the label blends classic Tamil melody with modern
               production.
             </p>
@@ -236,8 +236,8 @@ export default function EPK() {
           <ul style={{ margin: 0, paddingLeft: 20 }}>
             <li>40-song catalog — devotional, love &amp; melody (as stated by the label)</li>
             <li>Released via RouteNote to Spotify, JioSaavn and more (as stated by the label)</li>
-            <li>Goal: 1,000 app users and growing daily listeners (as stated by the label)</li>
-            <li>New song every week across Instagram, Facebook, YouTube &amp; Threads</li>
+            <li>Goal: 1,000 app users (as stated by the label)</li>
+            <li>New songs as they release — Instagram, Facebook, YouTube &amp; Threads</li>
           </ul>
         </div>
       </section>

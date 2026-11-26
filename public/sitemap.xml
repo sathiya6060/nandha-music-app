@@ -1,11 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://nandha-music.web.app/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>
-  <url><loc>https://nandha-music.web.app/search</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://nandha-music.web.app/library</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
-  <url><loc>https://nandha-music.web.app/liked</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
-  <url><loc>https://nandha-music.web.app/playlists</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
-  <url><loc>https://nandha-music.web.app/epk</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://nandha-music.web.app/artist/nandha-music</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://nandha-music.web.app/album/annamalaiyar</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://nandha-music.pages.dev/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>
+  <url><loc>https://nandha-music.pages.dev/search</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://nandha-music.pages.dev/library</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://nandha-music.pages.dev/liked</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://nandha-music.pages.dev/playlists</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://nandha-music.pages.dev/epk</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://nandha-music.pages.dev/artist/nandha-music</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://nandha-music.pages.dev/album/annamalaiyar</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://nandha-music.pages.dev/track/vaazhvinil-orumurayenum</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://nandha-music.pages.dev/discover</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://nandha-music.pages.dev/privacy</loc><changefreq>monthly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://nandha-music.pages.dev/terms</loc><changefreq>monthly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://nandha-music.pages.dev/cookies</loc><changefreq>monthly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://nandha-music.pages.dev/refund</loc><changefreq>monthly</changefreq><priority>0.3</priority></url>
 </urlset>

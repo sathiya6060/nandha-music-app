@@ -13,6 +13,12 @@
 :root {
   /* Primitive — approved brand palette, exact hex (do not change) */
   --gold: #F59E0B;
+  /* Text-safe shade of brand gold (Amber 800) — Amber Gold #F59E0B on
+     white is ~2.1:1, so it must never be body/link text on a light
+     surface. --gold-deep is ~5.9:1 on white and ~5.3:1 on Warm Sand
+     (WCAG AA). Brand gold itself stays for fills, large graphics,
+     icons on dark surfaces, and buttons with dark text. */
+  --gold-deep: #92400E;
   --slate: #1E293B;
   --sand: #FEF3C7;
   --steel: #64748B;
@@ -68,7 +74,7 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-a { color: var(--gold); text-decoration: none; }
+a { color: var(--gold-deep); text-decoration: none; }
 a:hover { text-decoration: underline; }
 img { max-width: 100%; display: block; }
 button { font-family: inherit; cursor: pointer; }
@@ -96,7 +102,7 @@ input[type="search"]::-webkit-search-decoration {
 /* Brand tagline — gold, bold, letterspaced. Shown on Home + EPK. */
 .tagline {
   margin: 6px 0 0;
-  color: var(--gold);
+  color: var(--gold-deep);
   font-weight: 800;
   font-size: 0.8rem;
   letter-spacing: 0.14em;
@@ -123,7 +129,7 @@ input[type="search"]::-webkit-search-decoration {
 .form-error {
   width: 100%;
   margin: 4px 0 0;
-  color: var(--gold);
+  color: var(--gold-deep);
   font-size: 0.875rem;
   font-weight: 600;
 }
@@ -252,7 +258,7 @@ input[type="search"]::-webkit-search-decoration {
   flex-shrink: 0;
   font-size: 0.875rem;
   font-weight: 600;
-  color: var(--gold);
+  color: var(--gold-deep);
   white-space: nowrap;
 }
 
@@ -288,10 +294,11 @@ input[type="search"]::-webkit-search-decoration {
   background: transparent;
   color: var(--text);
   text-align: left;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 .track-row:hover { background: var(--surface); }
 .track-row.is-current { background: var(--surface); border-color: var(--border); }
-.track-row.is-current .track-row__title { color: var(--gold); }
+.track-row.is-current .track-row__title { color: var(--gold-deep); }
 
 .track-row__index {
   display: none;
@@ -384,11 +391,11 @@ input[type="search"]::-webkit-search-decoration {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.track-row__title-btn:hover { color: var(--gold); }
+.track-row__title-btn:hover { color: var(--gold-deep); }
 .track-row__title-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .track-row__play:hover { background: var(--gold); color: var(--slate); border-color: var(--gold); }
 .track-row__like { background: transparent; }
-.track-row__like.is-liked { color: var(--gold); border-color: var(--gold); }
+.track-row__like.is-liked { color: var(--gold-deep); border-color: var(--gold-deep); }
 
 .track-card {
   width: 160px;
@@ -398,8 +405,14 @@ input[type="search"]::-webkit-search-decoration {
   border: 1px solid var(--border);
   color: var(--text);
   text-align: left;
+  transition: background-color 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
-.track-card:hover { background: var(--surface-2); }
+.track-card:hover {
+  background: var(--surface-2);
+  border-color: rgba(245, 158, 11, 0.45);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+  transform: translateY(-2px);
+}
 .track-card__cover {
   width: 100%;
   aspect-ratio: 1;
@@ -454,6 +467,7 @@ input[type="search"]::-webkit-search-decoration {
   font-size: 0.95rem;
   font-weight: 600;
   text-decoration: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.2s ease, filter 0.15s ease;
 }
 .btn:hover { text-decoration: none; background: var(--surface-3); }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -462,8 +476,9 @@ input[type="search"]::-webkit-search-decoration {
   background: var(--btn-primary-bg);
   border-color: var(--gold);
   color: var(--btn-primary-text);
+  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.28);
 }
-.btn-primary:hover { filter: brightness(1.08); }
+.btn-primary:hover { filter: brightness(1.08); box-shadow: 0 4px 16px rgba(245, 158, 11, 0.38); }
 
 .btn-ghost { background: transparent; }
 
@@ -480,7 +495,7 @@ input[type="search"]::-webkit-search-decoration {
   font-size: 1rem;
 }
 .input::placeholder { color: var(--muted); }
-.input:focus { border-color: var(--gold); outline: none; }
+.input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18); }
 
 .search-box {
   display: flex;
@@ -503,7 +518,6 @@ input[type="search"]::-webkit-search-decoration {
   color: var(--text-strong);
   font-size: 1rem;
   padding: 10px 0;
-  outline: none;
 }
 .search-box input::placeholder { color: var(--muted); }
 
@@ -519,8 +533,9 @@ input[type="search"]::-webkit-search-decoration {
   font-weight: 600;
   white-space: nowrap;
   text-decoration: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
-.chip:hover { text-decoration: none; border-color: var(--gold); color: var(--gold); }
+.chip:hover { text-decoration: none; border-color: var(--gold); color: var(--gold-deep); }
 .chip.is-active { background: var(--gold); border-color: var(--gold); color: #1E293B; }
 
 .chip-row {
@@ -535,7 +550,7 @@ input[type="search"]::-webkit-search-decoration {
   padding: 2px 8px;
   border-radius: 999px;
   background: rgba(245, 158, 11, 0.16);
-  color: var(--gold);
+  color: var(--gold-deep);
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -600,9 +615,10 @@ input[type="search"]::-webkit-search-decoration {
   font-weight: 600;
   font-size: 0.95rem;
   text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 .sidebar__link:hover { color: var(--text-strong); background: var(--surface); text-decoration: none; }
-.sidebar__link.is-active { color: var(--gold); background: rgba(245, 158, 11, 0.12); }
+.sidebar__link.is-active { color: var(--gold-deep); background: rgba(245, 158, 11, 0.12); }
 .sidebar__section-label {
   margin: 16px 12px 6px;
   font-size: 0.7rem;
@@ -641,6 +657,7 @@ input[type="search"]::-webkit-search-decoration {
   text-decoration: none;
   min-height: 44px;
   min-width: 44px;
+  transition: color 0.15s ease;
 }
 .bottom-nav__link:hover { text-decoration: none; color: var(--text-strong); }
 .bottom-nav__link.is-active { color: var(--gold); }
@@ -672,6 +689,7 @@ input[type="search"]::-webkit-search-decoration {
   border-radius: var(--radius-lg);
   background: linear-gradient(135deg, var(--surface) 0%, rgba(245, 158, 11, 0.14) 100%);
   border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
 }
 .hero-card__title { margin: 0; font-size: 1.35rem; font-weight: 800; color: var(--text-strong); }
 .hero-card__text { margin: 6px 0 0; color: var(--muted); }
@@ -782,6 +800,7 @@ input[type="search"]::-webkit-search-decoration {
   border-radius: var(--radius-lg);
   background: linear-gradient(135deg, var(--surface) 0%, rgba(245, 158, 11, 0.14) 100%);
   border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
 }
 .streak-hero__top { display: flex; gap: 16px; align-items: center; }
 .streak-hero__top > * { min-width: 0; }
@@ -1033,4 +1052,122 @@ input[type="search"]::-webkit-search-decoration {
   font-size: 0.875rem;
   font-weight: 700;
   cursor: pointer;
+}
+
+/* ---------- Public footer (Fix 11) ---------- */
+/* Slim footer at the end of every public page (inside .app-main-wrap,
+   after <main>), so it sits above the fixed bottom nav / mini-player in
+   normal flow and never covers content. */
+.app-footer {
+  padding: 20px 16px 8px;
+  text-align: center;
+  border-top: 1px solid var(--border);
+}
+.app-footer__copy {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.app-footer__links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 16px;
+  font-size: 0.8rem;
+}
+.app-footer__links a {
+  padding: 4px 0;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ---------- Cookie consent banner (Fix 9) ---------- */
+/* Fixed above the bottom nav + mini-player; never blocks the app — both
+   choices dismiss it, and declining changes nothing about how the app
+   works (there are no marketing cookies to switch off). */
+.consent-banner {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--chrome-bottom) + 12px + env(safe-area-inset-bottom, 0px));
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+.consent-banner__text {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.consent-banner__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+@media (min-width: 640px) {
+  .consent-banner {
+    flex-direction: row;
+    align-items: center;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: min(680px, calc(100vw - 24px));
+  }
+  .consent-banner__text { flex: 1; }
+  .consent-banner__actions { flex-shrink: 0; }
+}
+
+/* ---------- Legal pages (Fix 8) ---------- */
+.legal-page { max-width: 720px; }
+.legal-governing {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.legal-tamil {
+  margin: 0 0 20px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.legal-tamil h2 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+}
+.legal-tamil p { margin: 0; line-height: 1.7; }
+.legal-body h2 {
+  margin: 24px 0 8px;
+  font-size: 1.1rem;
+}
+.legal-body p, .legal-body li { line-height: 1.65; }
+.legal-body ul { padding-left: 20px; }
+.legal-contact { margin: 24px 0 16px; }
+.legal-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 0.875rem;
+}
+.legal-nav a { padding: 6px 0; min-height: 32px; display: inline-flex; align-items: center; }
+
+/* ---------- Login consent note (Fix 9) ---------- */
+.auth-consent {
+  margin: 16px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--muted);
 }

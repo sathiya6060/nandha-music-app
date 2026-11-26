@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react'
 import { useMediaSession } from './useMediaSession.js'
+import { useAuth } from '../lib/auth.jsx'
 import {
   resolvePlayableUrl,
   isSignedTrack,
@@ -51,7 +52,12 @@ const LS_QUALITY = 'nandha-player-quality'
 const LS_QUEUE = 'nandha-player-queue'
 const LS_NOW_PLAYING = 'nandha-now-playing-id'
 
-const SAMPLE_NOTICE = 'Sample track — full audio coming soon'
+// Guest preview limit (user rule, 26 Nov 2026): without sign-in only the
+// first 5 seconds of a song play; signed-in users get the full song.
+// Enforced in the <audio> timeupdate handler + seekTo (see below).
+export const PREVIEW_SECONDS = 5
+
+const UNPLAYABLE_NOTICE = 'Could not play this track — try again'
 
 function readJSON(key, fallback) {
   try {
@@ -113,7 +119,6 @@ export function resolveAudioUrl(track, quality = '128') {
 
 export function isPlayable(track, quality = '128') {
   if (!track) return false
-  if (track.isSample) return false
   return Boolean(resolveAudioUrl(track, quality))
 }
 
@@ -139,6 +144,17 @@ function formatTime(s) {
 }
 
 export function PlayerProvider({ children }) {
+  // Guest preview gate (Fix 3): signed-in state comes from AuthProvider,
+  // which wraps PlayerProvider in App.jsx. `user` is null while the
+  // session is still restoring, so a signed-in listener is briefly
+  // treated as a guest — the sign-in effect below clears the prompt
+  // as soon as the session lands.
+  const { user } = useAuth()
+  const isGuest = !user
+  const [previewEnded, setPreviewEnded] = useState(false)
+  const guestRef = useRef(isGuest)
+  const previewEndedRef = useRef(false)
+
   const audioRef = useRef(null)
   const prefetchRef = useRef(null)
   const noticeTimerRef = useRef(null)
@@ -187,6 +203,24 @@ export function PlayerProvider({ children }) {
   useEffect(() => {
     trackRef.current = track
   }, [track])
+
+  // Keep the preview-gate refs in sync (audio handlers read refs, not
+  // stale closures, so the gate works without re-subscribing handlers).
+  useEffect(() => {
+    guestRef.current = isGuest
+  }, [isGuest])
+  useEffect(() => {
+    previewEndedRef.current = previewEnded
+  }, [previewEnded])
+
+  // Signing in lifts the preview gate: clear the ended prompt so the
+  // listener can resume from where the preview stopped.
+  useEffect(() => {
+    if (user) {
+      previewEndedRef.current = false
+      setPreviewEnded(false)
+    }
+  }, [user])
 
   const showNotice = useCallback((message) => {
     setNotice(message)
@@ -311,7 +345,7 @@ export function PlayerProvider({ children }) {
   )
 
   /** Load (but do not necessarily play) the track at `index`. Returns false
-   *  when the track is a sample / has no audio — caller then skips on.
+   *  when the track has no audio — caller then skips on.
    *  `opts.startAt` (seconds) starts playback part-way in — used for
    *  Discover-feed hook playback; 0 (default) starts at the beginning. */
   const loadTrackAt = useCallback(
@@ -329,13 +363,16 @@ export function PlayerProvider({ children }) {
       )
       playCountedRef.current = null
       prefetchedForRef.current = null
+      // A new track starts a fresh guest preview.
+      previewEndedRef.current = false
+      setPreviewEnded(false)
       if (prefetchRef.current) {
         prefetchRef.current.src = ''
         prefetchRef.current = null
       }
 
       if (!isPlayable(nextTrack, qualityRef.current)) {
-        showNotice(SAMPLE_NOTICE)
+        showNotice(UNPLAYABLE_NOTICE)
         audio.removeAttribute('src')
         audio.load()
         setIsPlaying(false)
@@ -358,7 +395,7 @@ export function PlayerProvider({ children }) {
   )
 
   /** Advance to the next playable track from `fromIndex`. Returns true if
-   *  one was loaded. `visited` guards against looping a queue of samples. */
+   *  one was loaded. The loop guard covers a queue of unplayable tracks. */
   const skipToNextPlayable = useCallback(
     (fromIndex, { autoplay = true } = {}) => {
       const list = queueRef.current
@@ -370,7 +407,7 @@ export function PlayerProvider({ children }) {
         }
       }
       // No playable track in the whole queue.
-      showNotice(SAMPLE_NOTICE)
+      showNotice(UNPLAYABLE_NOTICE)
       setIsPlaying(false)
       return false
     },
@@ -395,7 +432,7 @@ export function PlayerProvider({ children }) {
     if (list.length === 0) return
     const idx = pickNextIndex(queueIndexRef.current)
     if (!loadTrackAt(idx)) {
-      // Landed on a sample — keep walking forward to a playable track.
+      // Landed on an unplayable track — keep walking forward.
       skipToNextPlayable(idx)
     }
   }, [loadTrackAt, pickNextIndex, skipToNextPlayable])
@@ -405,9 +442,12 @@ export function PlayerProvider({ children }) {
     const list = queueRef.current
     if (list.length === 0) return
     // If more than 3s in, restart the current track (standard behaviour).
+    // For a guest this also re-opens the 5s preview from the start.
     if (audio && audio.currentTime > 3) {
       audio.currentTime = 0
       setCurrentTime(0)
+      previewEndedRef.current = false
+      setPreviewEnded(false)
       return
     }
     const idx =
@@ -421,17 +461,21 @@ export function PlayerProvider({ children }) {
           return
         }
       }
-      showNotice(SAMPLE_NOTICE)
+      showNotice(UNPLAYABLE_NOTICE)
     }
   }, [loadTrackAt, showNotice])
 
   /** Play a track. `opts.fromDiscover` starts at the track's hook
    *  (track.hookStartSec, default 0) instead of the beginning.
+   *  M4: for a guest, a hook at/past the 5s preview limit is forced to
+   *  0 — otherwise the gate pauses immediately and the guest hears
+   *  nothing. Signed-in users keep hook playback unchanged.
    *  Existing 1- and 2-arg calls are unchanged. */
   const play = useCallback(
     (trackToPlay, queueList, opts = {}) => {
       if (!trackToPlay) return
-      const hookAt = hookStartFor(trackToPlay, opts)
+      let hookAt = hookStartFor(trackToPlay, opts)
+      if (guestRef.current && hookAt >= PREVIEW_SECONDS) hookAt = 0
       if (queueList && Array.isArray(queueList) && queueList.length > 0) {
         queueRef.current = queueList
         setQueue(queueList)
@@ -465,11 +509,19 @@ export function PlayerProvider({ children }) {
     if (!audio || !current) return
     if (audio.paused) {
       if (!isPlayable(current, qualityRef.current)) {
-        showNotice(SAMPLE_NOTICE)
+        showNotice(UNPLAYABLE_NOTICE)
         skipToNextPlayable(queueIndexRef.current)
         return
       }
-      // (Re)attach src if it was cleared (e.g. after a sample skip).
+      // A guest whose preview ended restarts the 5s preview from 0
+      // (tapping play again after the prompt must not resume past 5s).
+      if (guestRef.current && previewEndedRef.current) {
+        previewEndedRef.current = false
+        setPreviewEnded(false)
+        audio.currentTime = 0
+        setCurrentTime(0)
+      }
+      // (Re)attach src if it was cleared (e.g. after a skip).
       // The signed URL is minted async; attachSrc starts playback itself.
       if (!audio.src) {
         loadSeqRef.current += 1
@@ -494,7 +546,22 @@ export function PlayerProvider({ children }) {
       : Number.isFinite(trackRef.current?.durationSec)
         ? trackRef.current.durationSec
         : 0
-    const clamped = Math.min(Math.max(0, seconds), dur || 0)
+    let clamped = Math.min(Math.max(0, seconds), dur || 0)
+    // Guest preview gate: seeking past 5s clamps to 5s, pauses, and shows
+    // the sign-in prompt. Seeking back inside the preview window re-opens
+    // the preview. Signed-in users seek freely.
+    if (guestRef.current) {
+      if (clamped >= PREVIEW_SECONDS) {
+        clamped = PREVIEW_SECONDS
+        previewEndedRef.current = true
+        setPreviewEnded(true)
+        audio.pause()
+        setIsPlaying(false)
+      } else {
+        previewEndedRef.current = false
+        setPreviewEnded(false)
+      }
+    }
     audio.currentTime = clamped
     setCurrentTime(clamped)
   }, [])
@@ -526,7 +593,10 @@ export function PlayerProvider({ children }) {
     const current = trackRef.current
     if (!audio || !current || !isPlayable(current, nextQ)) return
     const wasPlaying = !audio.paused
-    const resumeAt = audio.currentTime || 0
+    // Guests never resume past the 5s preview limit.
+    const resumeAt = guestRef.current
+      ? Math.min(audio.currentTime || 0, PREVIEW_SECONDS)
+      : audio.currentTime || 0
     const seq = loadSeqRef.current + 1
     loadSeqRef.current = seq
     resolvePlayableUrl(current, nextQ).then((url) => {
@@ -620,6 +690,8 @@ export function PlayerProvider({ children }) {
     setQueueIndex(0)
     queueRef.current = []
     queueIndexRef.current = 0
+    previewEndedRef.current = false
+    setPreviewEnded(false)
     setIsPlaying(false)
     setCurrentTime(0)
     setDuration(0)
@@ -654,6 +726,8 @@ export function PlayerProvider({ children }) {
     setQueueIndex(0)
     queueRef.current = []
     queueIndexRef.current = 0
+    previewEndedRef.current = false
+    setPreviewEnded(false)
     setIsPlaying(false)
     setCurrentTime(0)
     setDuration(0)
@@ -680,6 +754,16 @@ export function PlayerProvider({ children }) {
       const dur = audio.duration
       const total = Number.isFinite(dur) ? dur : trackRef.current?.durationSec || 0
       if (total > 0) setDuration(total)
+
+      // Guest preview gate — the 5s enforcement point: as soon as a
+      // guest's playback reaches 5.0s, pause and show the sign-in
+      // prompt. Signed-in users are unaffected (guestRef is false).
+      if (guestRef.current && !previewEndedRef.current && t >= PREVIEW_SECONDS) {
+        previewEndedRef.current = true
+        setPreviewEnded(true)
+        audio.pause()
+        setIsPlaying(false)
+      }
 
       // Play-count: past 30s, or on completion (see onEnded). Once per track.
       const current = trackRef.current
@@ -781,7 +865,10 @@ export function PlayerProvider({ children }) {
         signedRetryRef.current !== current.id
       ) {
         signedRetryRef.current = current.id
-        const resumeAt = audio.currentTime || 0
+        // Guests never resume past the 5s preview limit.
+        const resumeAt = guestRef.current
+          ? Math.min(audio.currentTime || 0, PREVIEW_SECONDS)
+          : audio.currentTime || 0
         dropSignedAudioUrl(SIGNED_TRACK_FILE)
         loadSeqRef.current += 1
         const seq = loadSeqRef.current
@@ -836,7 +923,7 @@ export function PlayerProvider({ children }) {
   }, [next, pickNextIndex, showNotice, skipToNextPlayable])
 
   // Restore a persisted queue on mount: show the last track paused, but
-  // never autoplay a sample or start audio without a user gesture.
+  // never autoplay or start audio without a user gesture.
   useEffect(() => {
     const audio = audioRef.current
     const list = queueRef.current
@@ -871,6 +958,9 @@ export function PlayerProvider({ children }) {
       repeat,
       isPlayerOpen,
       notice,
+      previewEnded,
+      isGuest,
+      previewLimitSec: PREVIEW_SECONDS,
       play,
       playPause,
       next,
@@ -903,6 +993,8 @@ export function PlayerProvider({ children }) {
       repeat,
       isPlayerOpen,
       notice,
+      previewEnded,
+      isGuest,
       play,
       playPause,
       next,

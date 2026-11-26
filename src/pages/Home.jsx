@@ -275,19 +275,19 @@ export default function Home() {
   const isLoading = tracksQuery.isLoading || albumsQuery.isLoading || artistsQuery.isLoading || playlistsQuery.isLoading
   const isError = tracksQuery.isError || albumsQuery.isError || artistsQuery.isError || playlistsQuery.isError
 
-  const allTracks = tracksQuery.data || []
+  const homeTracks = tracksQuery.data || []
   const player = usePlayer()
   const popularTracks = useMemo(
-    () => [...allTracks].sort((a, b) => (b.plays || 0) - (a.plays || 0)).slice(0, 8),
-    [allTracks],
+    () => [...homeTracks].sort((a, b) => (b.plays || 0) - (a.plays || 0)).slice(0, 8),
+    [homeTracks],
   )
   const newReleases = useMemo(
     () => [...(albumsQuery.data || [])].sort(byReleaseDateDesc).slice(0, 6),
     [albumsQuery.data],
   )
   const genres = useMemo(
-    () => [...new Set(allTracks.map((tr) => tr.genre).filter(Boolean))].slice(0, 12),
-    [allTracks],
+    () => [...new Set(homeTracks.map((tr) => tr.genre).filter(Boolean))].slice(0, 12),
+    [homeTracks],
   )
   const featuredArtist = useMemo(() => {
     const list = artistsQuery.data || []
@@ -368,7 +368,7 @@ export default function Home() {
         </div>
       ) : (
         <div role="tabpanel" id="home-panel" aria-labelledby="home-tab">
-          {allTracks.length === 0 ? (
+          {homeTracks.length === 0 ? (
             <EmptyState
               title={t('common.noResults')}
               message={t('home.emptyCatalog')}

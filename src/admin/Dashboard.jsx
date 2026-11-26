@@ -1,7 +1,7 @@
 // Admin dashboard — headline stats, top tracks, recent activity.
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { allTracks, allAlbums, allArtists } from '../data/catalog.js'
+import { tracks, albums, artists } from '../data/catalog.js'
 import { getMergedTracks, getActivityLog, loadUsers } from '../lib/adminStore.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useI18n } from '../lib/i18n.js'
@@ -24,7 +24,7 @@ function formatBytes(bytes) {
 export default function Dashboard() {
   const { user } = useAuth()
   const { t, lang } = useI18n()
-  const mergedTracks = useMemo(() => getMergedTracks(allTracks), [])
+  const mergedTracks = useMemo(() => getMergedTracks(tracks), [])
   const activity = useMemo(() => getActivityLog(), [])
   const users = useMemo(() => loadUsers(), [])
 
@@ -54,8 +54,8 @@ export default function Dashboard() {
     return {
       totalPlays,
       totalTracks: mergedTracks.length,
-      totalAlbums: allAlbums.length,
-      totalArtists: allArtists.length,
+      totalAlbums: albums.length,
+      totalArtists: artists.length,
       totalUsers: users.length,
       usedBytes,
       storagePct: Math.min(100, (usedBytes / FREE_STORAGE_LIMIT_BYTES) * 100),
@@ -129,7 +129,8 @@ export default function Dashboard() {
           {topTracks.length === 0 ? (
             <p className="admin-muted">{t('admin.noTracksFound')}</p>
           ) : (
-            <table className="admin-table">
+            <div className="admin-table-wrap">
+              <table className="admin-table">
               <thead>
                 <tr>
                   <th scope="col">#</th>
@@ -155,7 +156,8 @@ export default function Dashboard() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           )}
           <Link to="/admin/tracks" className="admin-link">
             {t('admin.viewAllTracks')}

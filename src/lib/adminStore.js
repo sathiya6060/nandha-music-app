@@ -264,20 +264,13 @@ export function getSyncedLyrics(trackId) {
   return all[trackId]?.lines || null
 }
 
-// ---------------------------------------------------------------- users (demo)
-export const SAMPLE_USERS = [
-  { id: 'user-1', name: 'Sathiya', email: 'sathiya@nandhamusic.app', role: 'admin', blocked: false, joinedAt: '2026-11-20', plays: 1284 },
-  { id: 'user-2', name: 'Siddha Guruji', email: 'guruji@nandhamusic.app', role: 'artist', blocked: false, joinedAt: '2026-11-21', plays: 0 },
-  { id: 'user-3', name: 'Anitha', email: 'anitha@example.com', role: 'listener', blocked: false, joinedAt: '2026-11-22', plays: 342 },
-  { id: 'user-4', name: 'Karthik', email: 'karthik@example.com', role: 'listener', blocked: false, joinedAt: '2026-11-24', plays: 187 },
-  { id: 'user-5', name: 'Meena', email: 'meena@example.com', role: 'listener', blocked: true, joinedAt: '2026-11-25', plays: 96 },
-]
-
+// ---------------------------------------------------------------- users
+// No seeded users: the list starts empty and fills only with real
+// accounts (26 Nov 2026 — dummy data removed per user instruction).
 export function loadUsers() {
   const stored = readJson(KEYS.users, null)
   if (stored) return stored
-  writeJson(KEYS.users, SAMPLE_USERS)
-  return SAMPLE_USERS
+  return []
 }
 
 export function saveUsers(users) {
@@ -286,17 +279,12 @@ export function saveUsers(users) {
 }
 
 // ---------------------------------------------------------------- activity log
-const SEED_ACTIVITY = [
-  { id: 'act-seed-1', at: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(), actor: 'Sathiya', action: 'Published track', detail: 'Vaazhvinil Orumurayenum' },
-  { id: 'act-seed-2', at: new Date(Date.now() - 1000 * 60 * 60 * 26).toISOString(), actor: 'Sathiya', action: 'Updated site settings', detail: 'Announcement banner text' },
-  { id: 'act-seed-3', at: new Date(Date.now() - 1000 * 60 * 60 * 49).toISOString(), actor: 'Siddha Guruji', action: 'Edited lyrics', detail: 'Marakka Mudiyuma — synced lines' },
-]
-
+// No seeded activity: the log starts empty and fills only with real
+// admin actions (26 Nov 2026 — dummy data removed per user instruction).
 export function getActivityLog() {
   const stored = readJson(KEYS.activity, null)
   if (stored) return stored
-  writeJson(KEYS.activity, SEED_ACTIVITY)
-  return SEED_ACTIVITY
+  return []
 }
 
 /** entry: { actor, action, detail } — at/id filled in automatically. */

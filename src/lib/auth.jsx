@@ -1,12 +1,16 @@
-// Auth — Supabase Auth when configured, otherwise DEMO MODE.
-// Demo mode: role is stored in localStorage ('nandha-demo-role') and any
-// email signs in; the role is derived from the email address.
-// ADMIN ACCESS: only the allowlisted email below is ever an admin — in
-// BOTH Supabase mode and demo mode. No other email, substring or stored
-// role can grant admin. The UI must clearly label demo mode so it is
-// never mistaken for real auth.
+// Auth — Supabase Auth when configured, demo mode ONLY with the
+// explicit VITE_DEMO_MODE=true flag, and fail-closed when neither is
+// available. (M2, OpenCodeReview 26 Nov 2026: missing Supabase vars
+// alone used to silently enable demo mode, and any password + the
+// public brand email yielded admin. Both are fixed: demo needs the
+// flag, and demo NEVER grants admin — every demo sign-in is a
+// listener. The admin allowlist applies in Supabase mode only. When
+// Supabase is absent and the flag is off, sign-in is unavailable and
+// the login page shows a configuration error instead of silently
+// falling back to demo.)
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase.js'
+import { isDemoMode } from './config.js'
 
 const DEMO_ROLE_KEY = 'nandha-demo-role'
 const DEMO_USER = { id: 'demo-user', email: 'demo@nandhamusic.app', name: 'Demo User' }
@@ -14,6 +18,9 @@ const DEMO_USER = { id: 'demo-user', email: 'demo@nandhamusic.app', name: 'Demo 
 /** The ONLY account that may access /admin. Case-insensitive. */
 export const ADMIN_EMAILS = ['officialnandhamusic@gmail.com']
 
+// Kept for the admin demo-role switcher UI; in demo mode setDemoRole
+// clamps every request to 'listener', so 'admin'/'artist' here never
+// grant anything (M2).
 export const DEMO_ROLES = ['admin', 'artist', 'listener']
 
 function isAdminEmail(email) {
@@ -21,18 +28,20 @@ function isAdminEmail(email) {
 }
 
 /**
- * Clamp a requested role: 'admin' survives only for the allowlisted
- * email. Anything else falls back to 'listener' (artist is unaffected).
+ * Demo mode grants ONE role only: 'listener' (M2). The admin allowlist
+ * does not apply in demo — any email, including the public brand
+ * email, signs in as a listener at most.
  */
-function clampRole(role, email) {
-  if (role === 'admin' && !isAdminEmail(email)) return 'listener'
-  return role
+function clampDemoRole() {
+  return 'listener'
 }
 
 function roleFromSupabaseUser(sbUser) {
   if (!sbUser) return 'listener'
   if (isAdminEmail(sbUser.email)) return 'admin'
-  const metaRole = sbUser.app_metadata?.role || sbUser.user_metadata?.role
+  // L1: app_metadata only. user_metadata is user-writable, so it must
+  // never decide a role.
+  const metaRole = sbUser.app_metadata?.role
   return metaRole === 'artist' ? 'artist' : 'listener'
 }
 
@@ -50,69 +59,79 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [role, setRole] = useState('listener')
   const [loading, setLoading] = useState(true)
-  const [isDemo, setIsDemo] = useState(!isSupabaseConfigured())
+  // Demo mode only with the explicit flag (M2) — never from missing
+  // Supabase vars alone.
+  const [isDemo, setIsDemo] = useState(isDemoMode)
+  // True when neither Supabase nor demo mode is available (M2c):
+  // sign-in is then unavailable and the login page must say so.
+  const [configError, setConfigError] = useState(false)
 
-  // Demo-mode role persisted in localStorage — clamped on read so a
-  // stale stored 'admin' never grants admin without the allowlisted email.
-  const [demoRole, setDemoRoleState] = useState(() => {
-    try {
-      const stored = localStorage.getItem(DEMO_ROLE_KEY) || 'listener'
-      return clampRole(stored, DEMO_USER.email)
-    } catch {
-      return 'listener'
-    }
-  })
+  // Demo mode is listener-only (M2): whatever a previous session
+  // stored (including a stale 'admin') is ignored — the role is
+  // 'listener'. The stored key is kept for compat and always holds
+  // 'listener' now.
+  const [demoRole, setDemoRoleState] = useState('listener')
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) {
-      // DEMO MODE — no backend: signed-in demo user with the stored role,
-      // clamped so a stale stored 'admin' never grants admin without the
-      // allowlisted email.
-      setIsDemo(true)
-      const safeRole = clampRole(demoRole, DEMO_USER.email)
-      setUser({ ...DEMO_USER, role: safeRole })
-      setRole(safeRole)
-      setLoading(false)
-      return undefined
-    }
+    if (isSupabaseConfigured()) {
+      setIsDemo(false)
+      setConfigError(false)
+      let mounted = true
+      supabase.auth
+        .getSession()
+        .then(({ data }) => {
+          if (!mounted) return
+          const sbUser = data?.session?.user || null
+          setUser(sbUser)
+          setRole(roleFromSupabaseUser(sbUser))
+          setLoading(false)
+        })
+        .catch(() => {
+          if (mounted) setLoading(false)
+        })
 
-    setIsDemo(false)
-    let mounted = true
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        if (!mounted) return
-        const sbUser = data?.session?.user || null
+      const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+        const sbUser = session?.user || null
         setUser(sbUser)
         setRole(roleFromSupabaseUser(sbUser))
         setLoading(false)
       })
-      .catch(() => {
-        if (mounted) setLoading(false)
-      })
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      const sbUser = session?.user || null
-      setUser(sbUser)
-      setRole(roleFromSupabaseUser(sbUser))
-      setLoading(false)
-    })
-    return () => {
-      mounted = false
-      listener?.subscription?.unsubscribe()
+      return () => {
+        mounted = false
+        listener?.subscription?.unsubscribe()
+      }
     }
+
+    if (isDemoMode) {
+      // DEMO MODE (explicit flag only) — no backend: a signed-in demo
+      // user, always a listener (M2b). Never an admin, for any email.
+      setIsDemo(true)
+      setConfigError(false)
+      setUser({ ...DEMO_USER, role: 'listener' })
+      setRole('listener')
+      setLoading(false)
+      return undefined
+    }
+
+    // MISCONFIGURED (M2c) — no Supabase and no demo flag: fail closed.
+    // No silent demo fallback, no signed-in user, no admin.
+    setIsDemo(false)
+    setConfigError(true)
+    setUser(null)
+    setRole('listener')
+    setLoading(false)
+    return undefined
   }, [demoRole])
 
   /**
-   * Demo-mode role switch (admin demo bar). 'admin' is accepted only
-   * when the current demo user's email is allowlisted; otherwise the
-   * request is clamped to 'listener'. `emailForCheck` lets sign-in pass
-   * the just-entered email instead of the previous user's.
+   * Demo-mode role switch (admin demo bar). Demo mode is listener-only
+   * (M2): any requested role — including 'admin' — is clamped to
+   * 'listener', so the switcher can never grant admin. The requested
+   * value is validated against DEMO_ROLES but otherwise ignored.
    */
-  const setDemoRole = (nextRole, emailForCheck) => {
-    if (!DEMO_ROLES.includes(nextRole)) return
-    const email = emailForCheck ?? user?.email ?? DEMO_USER.email
-    const safeRole = clampRole(nextRole, email)
+  const setDemoRole = (nextRole) => {
+    if (nextRole && !DEMO_ROLES.includes(nextRole)) return
+    const safeRole = clampDemoRole()
     try {
       localStorage.setItem(DEMO_ROLE_KEY, safeRole)
     } catch {
@@ -125,13 +144,16 @@ export function AuthProvider({ children }) {
 
   const signInEmail = async (email, password) => {
     if (!isSupabaseConfigured()) {
-      // DEMO MODE: admin only for the allowlisted email; everyone else
-      // signs in as a listener.
-      const nextRole = isAdminEmail(email) ? 'admin' : 'listener'
-      setDemoRole(nextRole, email)
-      const demoUser = { ...DEMO_USER, email: email || DEMO_USER.email, role: nextRole }
-      setUser(demoUser)
-      return { user: demoUser, error: null }
+      if (isDemoMode) {
+        // DEMO MODE: everyone signs in as a listener (M2b) — the admin
+        // allowlist does not apply in demo, for any email or password.
+        const demoUser = { ...DEMO_USER, email: email || DEMO_USER.email, role: 'listener' }
+        setDemoRole('listener')
+        setUser(demoUser)
+        return { user: demoUser, error: null }
+      }
+      // MISCONFIGURED (M2c): no backend, no demo flag — refuse sign-in.
+      return { user: null, error: { message: 'config_error' } }
     }
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (!error && data?.user) {
@@ -143,7 +165,8 @@ export function AuthProvider({ children }) {
 
   const signUpEmail = async (email, password) => {
     if (!isSupabaseConfigured()) {
-      // DEMO MODE: creating an account is the same as signing in.
+      // DEMO MODE: creating an account is the same as signing in —
+      // listener-only (M2b). Misconfigured: signInEmail refuses.
       return signInEmail(email, password)
     }
     const { data, error } = await supabase.auth.signUp({ email, password })
@@ -158,10 +181,14 @@ export function AuthProvider({ children }) {
 
   const signInGoogle = async () => {
     if (!isSupabaseConfigured()) {
-      // DEMO MODE: Google sign-in keeps the stored demo role.
-      const demoUser = { ...DEMO_USER, role: demoRole }
-      setUser(demoUser)
-      return { user: demoUser, error: null }
+      if (isDemoMode) {
+        // DEMO MODE: Google sign-in signs in as a listener (M2b).
+        const demoUser = { ...DEMO_USER, role: 'listener' }
+        setUser(demoUser)
+        return { user: demoUser, error: null }
+      }
+      // MISCONFIGURED (M2c): no backend, no demo flag — refuse sign-in.
+      return { user: null, error: { message: 'config_error' } }
     }
     const { data, error } = await supabase.auth.signInWithOAuth({ provider: 'google' })
     return { user: data?.user || null, error }
@@ -189,6 +216,7 @@ export function AuthProvider({ children }) {
       isArtist: role === 'artist',
       isDemo,
       demoRole,
+      configError,
       signInEmail,
       signUpEmail,
       signInGoogle,
@@ -198,7 +226,7 @@ export function AuthProvider({ children }) {
     }),
     // signIn*/signOut/setDemoRole are stable closures over state setters
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, role, isDemo, demoRole, loading],
+    [user, role, isDemo, demoRole, configError, loading],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

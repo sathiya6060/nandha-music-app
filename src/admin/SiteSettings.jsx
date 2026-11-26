@@ -1,7 +1,7 @@
 // Site settings / EPK — bio, announcement, Artist Pick, press photos, contact,
 // plus Song of the Day (admin override for catalog.js getSongOfTheDay).
 import { useMemo, useState } from 'react'
-import { allTracks as catalogTracks, getSongOfTheDay, REAL_TRACK_ID } from '../data/catalog.js'
+import { tracks as catalogTracks, getSongOfTheDay, REAL_TRACK_ID } from '../data/catalog.js'
 import {
   getMergedTracks,
   loadSiteSettings,
@@ -17,7 +17,7 @@ import { useI18n } from '../lib/i18n.js'
 export default function SiteSettings() {
   const { user } = useAuth()
   const { t, lang } = useI18n()
-  const allTracks = useMemo(() => getMergedTracks(catalogTracks).filter((tr) => tr.status !== 'deleted'), [])
+  const adminTracks = useMemo(() => getMergedTracks(catalogTracks).filter((tr) => tr.status !== 'deleted'), [])
   const [form, setForm] = useState(() => loadSiteSettings())
   const [pressPhotoInput, setPressPhotoInput] = useState('')
   const [notice, setNotice] = useState('')
@@ -26,10 +26,10 @@ export default function SiteSettings() {
   // Song of the Day pick: devotional tracks first; default Vaazhvinil Orumurayenum.
   const sotdOptions = useMemo(
     () =>
-      [...allTracks].sort(
+      [...adminTracks].sort(
         (a, b) => (a.genre === 'Devotional' ? 0 : 1) - (b.genre === 'Devotional' ? 0 : 1),
       ),
-    [allTracks],
+    [adminTracks],
   )
   const [sotdTrackId, setSotdTrackId] = useState(() => {
     const override = loadSongOfDay()
@@ -97,8 +97,8 @@ export default function SiteSettings() {
     setSotdVersion((v) => v + 1)
   }
 
-  const artistPick = allTracks.find((tr) => tr.id === form.artistPickTrackId)
-  const sotdTrack = allTracks.find((tr) => tr.id === sotdTrackId)
+  const artistPick = adminTracks.find((tr) => tr.id === form.artistPickTrackId)
+  const sotdTrack = adminTracks.find((tr) => tr.id === sotdTrackId)
 
   return (
     <div className="admin-page">
@@ -131,7 +131,7 @@ export default function SiteSettings() {
           <span>{t('admin.artistPick')}</span>
           <select className="admin-input" value={form.artistPickTrackId || ''} onChange={(e) => set('artistPickTrackId', e.target.value)}>
             <option value="">{t('common.none')}</option>
-            {allTracks.map((tr) => (
+            {adminTracks.map((tr) => (
               <option key={tr.id} value={tr.id}>
                 {tr.titleTa || tr.titleEn} — {tr.artist || ''}
               </option>

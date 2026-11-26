@@ -1,12 +1,16 @@
 /**
  * Nandha Music — catalog data layer (local / demo source of truth).
  *
- * ONE real track only: 'Vaazhvinil Orumurayenum' (release 2026-12-10).
+ * REAL DATA ONLY. There is ONE real track: 'Vaazhvinil Orumurayenum'
+ * (release 2026-12-10), one real album ('Annamalaiyar'), two real
+ * artists (Nandha Music, Siddha Guruji) and one real playlist
+ * ('Best of Nandha', containing only the real track).
  *
- * USER-FACING exports (`tracks`, `albums`, `artists`, `playlists` and
- * every getter) contain ONLY real content — samples never reach the UI.
- * The full demo lists live in `allTracks` / `allAlbums` / `allArtists` /
- * `allPlaylists` (plus `sampleTracks`) for the admin panel and tests.
+ * NOTE (26 Nov 2026, user instruction: "don't hide dummy data, only
+ * real data"): the 199 sample tracks, sample albums/artists/playlists
+ * and every `isSample` flag that used to live in this file were
+ * DELETED, not hidden. Do not re-add placeholder content here — new
+ * songs come from the admin panel / Supabase, never from generators.
  *
  * When Supabase is configured, the app layer queries the `tracks` /
  * `albums` / `artists` / `playlists` tables (see
@@ -15,7 +19,8 @@
  */
 
 // ---------------------------------------------------------------------------
-// Deterministic PRNG (mulberry32, fixed seed) — no randomness at runtime.
+// Deterministic PRNG (mulberry32, fixed seed) — used ONLY by getDailyMix
+// to rotate the (1-track) mix by day-of-year. No other randomness here.
 // ---------------------------------------------------------------------------
 function mulberry32(seed) {
   let a = seed >>> 0;
@@ -27,9 +32,6 @@ function mulberry32(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-const rand = mulberry32(20261126);
-const pick = (arr) => arr[Math.floor(rand() * arr.length)];
-const intBetween = (min, max) => min + Math.floor(rand() * (max - min + 1));
 
 // ---------------------------------------------------------------------------
 // The ONE real track
@@ -52,8 +54,10 @@ export const realTrack = {
   audio128: '/assets/vaazhvinil-orumurayenum.mp3',
   audio320: '/assets/vaazhvinil-orumurayenum.mp3',
   status: 'published',
-  plays: 1250,
-  isSample: false,
+  // Plays are counted from real play events only. The song releases
+  // 10 Dec 2026, so the count starts at 0 — never a made-up number
+  // (26 Nov 2026: fake-play-count cleanup).
+  plays: 0,
   releaseDate: '2026-12-10',
   // Discover-feed hook: the opening 30 seconds carry the hook line.
   hookStartSec: 0,
@@ -62,11 +66,8 @@ export const realTrack = {
   storyTa: 'திருவண்ணாமலை கிரிவலம் பற்றிய பாடல். வாழ்வில் ஒருமுறையேனும் அண்ணாமலை மலையைச் சுற்றி வர வேண்டும் என்ற பக்தியின் குரல்.',
   storyEn: 'A song about the Girivalam at Thiruvannamalai — the devotee’s wish to walk around the sacred Arunachala hill at least once in this life.',
   storyCredit: 'Composer & writer: Siddha Guruji',
-  /**
-   * SAMPLE LINES ONLY — 4 short generic devotional lines on the
-   * Girivalam / Annamalaiyar theme, NOT the song's full lyrics.
-   * Real lyrics are added by the admin once the release is live.
-   */
+  // Opening lines of the song (the full lyrics are added by the admin
+  // once the release is live).
   lyricsTa: [
     'அண்ணாமலையாரே அருள் தாரும்',
     'கிரிவலம் வரும் அடியார் மனம் மகிழும்',
@@ -79,21 +80,19 @@ export const realTrack = {
     'Arunachala flame, grant us light',
     'At least once in this life, grant us your darshan',
   ],
-  isSampleLyrics: true,
 };
 
 // ---------------------------------------------------------------------------
-// Artists (2 real + 4 sample — user-facing export keeps only the real ones)
+// Artists — real only
 // ---------------------------------------------------------------------------
-export const allArtists = [
+export const artists = [
   {
     id: 'nandha-music',
     name: 'Nandha Music',
     nameTa: 'நந்தா மியூசிக்',
     bioEn:
-      'Official Tamil music label — love, devotional and melody songs. New song every week.',
-    bioTa: 'அதிகாரப்பூர்வ தமிழ் இசை நிறுவனம் — காதல், பக்தி மற்றும் மெலடி பாடல்கள். ஒவ்வொரு வாரமும் புதிய பாடல்.',
-    isSample: false,
+      'Official Tamil music label — love, devotional and melody songs.',
+    bioTa: 'அதிகாரப்பூர்வ தமிழ் இசை நிறுவனம் — காதல், பக்தி மற்றும் மெலடி பாடல்கள்.',
     socials: {
       spotify: 'https://open.spotify.com/artist/nandha-music',
       youtube: 'https://youtube.com/@officialnandhamusic',
@@ -108,68 +107,14 @@ export const allArtists = [
     nameTa: 'சித்த குருஜி',
     bioEn: 'Composer and writer for Nandha Music songs.',
     bioTa: 'நந்தா மியூசிக் பாடல்களின் இசையமைப்பாளர் மற்றும் பாடலாசிரியர்.',
-    isSample: false,
-    socials: {},
-  },
-  {
-    id: 'sample-artist-1',
-    name: 'Sample Artist 1',
-    nameTa: 'மாதிரி கலைஞர் 1',
-    bioEn: 'Sample artist — placeholder for the catalog demo.',
-    bioTa: 'மாதிரி கலைஞர் — பட்டியல் மாதிரிக்கான இடம்.',
-    isSample: true,
-    socials: {},
-  },
-  {
-    id: 'sample-artist-2',
-    name: 'Sample Artist 2',
-    nameTa: 'மாதிரி கலைஞர் 2',
-    bioEn: 'Sample artist — placeholder for the catalog demo.',
-    bioTa: 'மாதிரி கலைஞர் — பட்டியல் மாதிரிக்கான இடம்.',
-    isSample: true,
-    socials: {},
-  },
-  {
-    id: 'sample-artist-3',
-    name: 'Sample Artist 3',
-    nameTa: 'மாதிரி கலைஞர் 3',
-    bioEn: 'Sample artist — placeholder for the catalog demo.',
-    bioTa: 'மாதிரி கலைஞர் — பட்டியல் மாதிரிக்கான இடம்.',
-    isSample: true,
-    socials: {},
-  },
-  {
-    id: 'sample-artist-4',
-    name: 'Sample Artist 4',
-    nameTa: 'மாதிரி கலைஞர் 4',
-    bioEn: 'Sample artist — placeholder for the catalog demo.',
-    bioTa: 'மாதிரி கலைஞர் — பட்டியல் மாதிரிக்கான இடம்.',
-    isSample: true,
     socials: {},
   },
 ];
 
-/** User-facing artists: real artists only. */
-export const artists = allArtists.filter((a) => !a.isSample);
-
 // ---------------------------------------------------------------------------
-// Albums (1 real + 11 sample)
+// Albums — real only
 // ---------------------------------------------------------------------------
-const SAMPLE_ALBUM_DEFS = [
-  { id: 'sivan-songs-vol-1', titleEn: 'Sivan Songs Vol. 1', titleTa: 'சிவன் பாடல்கள் தொகுதி 1', genre: 'Sivan' },
-  { id: 'sivan-songs-vol-2', titleEn: 'Sivan Songs Vol. 2', titleTa: 'சிவன் பாடல்கள் தொகுதி 2', genre: 'Sivan' },
-  { id: 'siddhar-songs', titleEn: 'Siddhar Songs', titleTa: 'சித்தர் பாடல்கள்', genre: 'Siddhar' },
-  { id: 'nandeeswarar-songs', titleEn: 'Nandeeswarar Songs', titleTa: 'நந்தீஸ்வரர் பாடல்கள்', genre: 'Siddhar' },
-  { id: 'love-melodies-vol-1', titleEn: 'Love Melodies Vol. 1', titleTa: 'காதல் மெலடிகள் தொகுதி 1', genre: 'Love' },
-  { id: 'love-melodies-vol-2', titleEn: 'Love Melodies Vol. 2', titleTa: 'காதல் மெலடிகள் தொகுதி 2', genre: 'Love' },
-  { id: 'melody-classics', titleEn: 'Melody Classics', titleTa: 'மெலடி பாடல்கள்', genre: 'Melody' },
-  { id: 'devotional-morning', titleEn: 'Devotional Morning', titleTa: 'பக்தி காலை', genre: 'Devotional' },
-  { id: 'girivalam-songs', titleEn: 'Girivalam Songs', titleTa: 'கிரிவலம் பாடல்கள்', genre: 'Devotional' },
-  { id: 'melody-nights', titleEn: 'Melody Nights', titleTa: 'மெலடி இரவுகள்', genre: 'Melody' },
-  { id: 'love-and-longing', titleEn: 'Love and Longing', titleTa: 'காதலும் ஏக்கமும்', genre: 'Love' },
-];
-
-export const allAlbums = [
+export const albums = [
   {
     id: 'annamalaiyar',
     titleEn: 'Annamalaiyar',
@@ -179,103 +124,18 @@ export const allAlbums = [
     genre: 'Devotional',
     cover: '/assets/vaazhvinil-cover.jpg',
     releaseDate: '2026-12-10',
-    isSample: false,
   },
-  ...SAMPLE_ALBUM_DEFS.map((def, i) => ({
-    id: def.id,
-    titleEn: def.titleEn,
-    titleTa: def.titleTa,
-    artist: pick(['Nandha Music', 'Siddha Guruji']),
-    artistId: pick(['nandha-music', 'siddha-guruji']),
-    genre: def.genre,
-    // Sample albums have no cover art — UI shows a brand-coloured placeholder.
-    cover: null,
-    releaseDate: `2025-${String(intBetween(1, 12)).padStart(2, '0')}-${String(intBetween(1, 28)).padStart(2, '0')}`,
-    isSample: true,
-    _order: i,
-  })),
 ];
 
-/** User-facing albums: real albums only. */
-export const albums = allAlbums.filter((a) => !a.isSample);
-
 // ---------------------------------------------------------------------------
-// Sample tracks — 199, deterministic
+// Tracks — the ONE real track only
 // ---------------------------------------------------------------------------
-const SAMPLE_ARTISTS = [
-  { artist: 'Nandha Music', artistId: 'nandha-music' },
-  { artist: 'Siddha Guruji', artistId: 'siddha-guruji' },
-  { artist: 'Sample Artist 1', artistId: 'sample-artist-1' },
-  { artist: 'Sample Artist 2', artistId: 'sample-artist-2' },
-  { artist: 'Sample Artist 3', artistId: 'sample-artist-3' },
-  { artist: 'Sample Artist 4', artistId: 'sample-artist-4' },
-];
-const GENRES = ['Devotional', 'Love', 'Melody', 'Siddhar', 'Sivan'];
-
-function buildSampleTracks() {
-  const list = [];
-  for (let n = 1; n <= 199; n += 1) {
-    const album = SAMPLE_ALBUM_DEFS[(n - 1) % SAMPLE_ALBUM_DEFS.length];
-    const who = SAMPLE_ARTISTS[(n - 1) % SAMPLE_ARTISTS.length];
-    // Genre follows the album most of the time, so album pages feel coherent.
-    const genre = n % 4 === 0 ? pick(GENRES) : album.genre;
-    // A few admin-demo rows are not published yet.
-    const status = n % 47 === 0 ? 'draft' : n % 53 === 0 ? 'scheduled' : 'published';
-    list.push({
-      id: `sample-track-${n}`,
-      titleTa: `மாதிரி பாடல் ${n}`,
-      titleEn: `Sample Track ${n} — Coming Soon`,
-      artist: who.artist,
-      artistId: who.artistId,
-      composer: 'Siddha Guruji',
-      album: album.titleEn,
-      albumId: album.id,
-      genre,
-      language: 'Tamil',
-      durationSec: intBetween(150, 280),
-      // Sample tracks have NO cover and NO audio — UI shows a placeholder
-      // and disables playback. Only the real track reuses its cover.
-      cover: null,
-      audio128: null,
-      audio320: null,
-      status,
-      plays: intBetween(0, 900),
-      isSample: true,
-      releaseDate: `2025-${String(intBetween(1, 12)).padStart(2, '0')}-${String(intBetween(1, 28)).padStart(2, '0')}`,
-      lyricsTa: [],
-      lyricsEn: [],
-      isSampleLyrics: true,
-      hookStartSec: 0,
-      hookDurationSec: 30,
-      storyTa: '',
-      storyEn: '',
-      storyCredit: '',
-    });
-  }
-  return list;
-}
-
-export const sampleTracks = buildSampleTracks();
-
-/** Full 200-track list (real + samples) — admin/tests only. */
-export const allTracks = [realTrack, ...sampleTracks];
-
-/** User-facing tracks: the ONE real track only. No samples, no dummy songs. */
 export const tracks = [realTrack];
 
 // ---------------------------------------------------------------------------
-// Playlists (3 curated, ordered track-id arrays)
+// Playlists — real only (lists containing the real track)
 // ---------------------------------------------------------------------------
-const sivanTrackIds = allTracks
-  .filter((t) => t.genre === 'Sivan' || t.genre === 'Siddhar')
-  .slice(0, 20)
-  .map((t) => t.id);
-const loveTrackIds = allTracks
-  .filter((t) => t.genre === 'Love' || t.genre === 'Melody')
-  .slice(0, 20)
-  .map((t) => t.id);
-
-export const allPlaylists = [
+export const playlists = [
   {
     id: 'best-of-nandha',
     titleEn: 'Best of Nandha',
@@ -283,38 +143,9 @@ export const allPlaylists = [
     descriptionEn: 'The best of Nandha Music — starting with Vaazhvinil Orumurayenum.',
     descriptionTa: 'நந்தா மியூசிக்கின் சிறந்த பாடல்கள்.',
     cover: '/assets/vaazhvinil-cover.jpg',
-    isSample: false,
-    trackIds: [REAL_TRACK_ID, ...sampleTracks.slice(0, 14).map((t) => t.id)],
-  },
-  {
-    id: 'sivan-songs',
-    titleEn: 'Sivan Songs',
-    titleTa: 'சிவன் பாடல்கள்',
-    descriptionEn: 'Devotional songs for Lord Shiva, Siddhar and Nandeeswarar.',
-    descriptionTa: 'சிவன், சித்தர், நந்தீஸ்வரர் பக்தி பாடல்கள்.',
-    cover: null,
-    isSample: true,
-    trackIds: sivanTrackIds,
-  },
-  {
-    id: 'love-melodies',
-    titleEn: 'Love Melodies',
-    titleTa: 'காதல் மெலடிகள்',
-    descriptionEn: 'Love and melody songs for quiet evenings.',
-    descriptionTa: 'காதல் மற்றும் மெலடி பாடல்கள்.',
-    cover: null,
-    isSample: true,
-    trackIds: loveTrackIds,
+    trackIds: [REAL_TRACK_ID],
   },
 ];
-
-/**
- * User-facing playlists: only playlists containing at least one real
- * track. ('Best of Nandha' survives; the sample-only lists do not.)
- */
-export const playlists = allPlaylists.filter((p) =>
-  (p.trackIds || []).includes(REAL_TRACK_ID),
-);
 
 // ---------------------------------------------------------------------------
 // Lookups

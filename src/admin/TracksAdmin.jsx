@@ -2,7 +2,7 @@
 // Status values are lowercase in the catalog; labels come from locales.
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { allTracks as catalogTracks, allAlbums as catalogAlbums } from '../data/catalog.js'
+import { tracks as catalogTracks, albums as catalogAlbums } from '../data/catalog.js'
 import {
   getMergedTracks,
   saveAdminTrack,
@@ -43,10 +43,10 @@ export default function TracksAdmin() {
   const statusLabel = (s) => t(STATUS_LABEL_KEYS[normalizeStatus(s)] || 'admin.statusDraft')
   const genreLabel = (g) => (GENRE_LABEL_KEYS[g] ? t(GENRE_LABEL_KEYS[g]) : g || '—')
 
-  const allTracks = useMemo(() => getMergedTracks(catalogTracks), [version])
+  const adminTracks = useMemo(() => getMergedTracks(catalogTracks), [version])
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return allTracks.filter((tr) => {
+    return adminTracks.filter((tr) => {
       if (!showDeleted && tr.status === 'deleted') return false
       if (showDeleted && tr.status !== 'deleted') return false
       if (albumFilter !== 'all' && tr.albumId !== albumFilter && tr.album !== albumFilter) return false
@@ -57,7 +57,7 @@ export default function TracksAdmin() {
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q))
     })
-  }, [allTracks, search, albumFilter, genreFilter, statusFilter, showDeleted])
+  }, [adminTracks, search, albumFilter, genreFilter, statusFilter, showDeleted])
 
   const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount)
@@ -87,7 +87,7 @@ export default function TracksAdmin() {
   const bulkSetStatus = async (status) => {
     if (selected.size === 0) return
     for (const id of selected) {
-      const track = allTracks.find((tr) => tr.id === id)
+      const track = adminTracks.find((tr) => tr.id === id)
       if (!track) continue
       saveAdminTrack({ ...track, status })
       await invalidateCaches(id)
@@ -127,7 +127,7 @@ export default function TracksAdmin() {
         <div>
           <h1 className="admin-title">{t('admin.tracks')}</h1>
           <p className="admin-subtitle">
-            {t('admin.tracksFound', { visible: visible.length, total: allTracks.length })}
+            {t('admin.tracksFound', { visible: visible.length, total: adminTracks.length })}
           </p>
         </div>
         <button type="button" className="admin-btn admin-btn-primary" onClick={() => navigate('/admin/tracks/new')}>

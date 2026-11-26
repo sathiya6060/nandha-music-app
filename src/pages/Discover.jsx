@@ -7,18 +7,17 @@ import Icon, { HeartIcon } from '../components/Icons.jsx'
 
 /**
  * Discover swipe feed — vertical full-screen hook cards.
- * Each card plays a 15–30s HOOK clip: play() from track.hookStartSec,
- * stop after hookDurationSec. The live player has no {fromDiscover}
- * option (play(track, queue) only), so this seeks after play() and
- * stops with a timer. Sample tracks (no audio) show the card with a
- * placeholder + 'Sample — full audio coming soon' and swipe past.
+ * Each card plays a 15–30s HOOK clip: play() then seekTo(hookStartSec),
+ * stop after hookDurationSec. Guests start at 0 (M4) — a hook past the
+ * 5s preview limit would pause immediately and the guest would hear
+ * nothing; signed-in users hear the hook as before.
  * Swipe up (touch), mouse wheel, Arrow keys, or the on-screen buttons
  * move to the next song. Not in the bottom nav — opened from the
  * Discover tab on Home and the /discover route.
  */
 
 function isPlayable(track) {
-  return !!track && !track.isSample && !!(track.audio128 || track.audio320)
+  return !!track && !!(track.audio128 || track.audio320)
 }
 
 function DiscoverCard({ track, index, onPrev, onNext, isFirst, isLast, ref }) {
@@ -38,9 +37,9 @@ function DiscoverCard({ track, index, onPrev, onNext, isFirst, isLast, ref }) {
   const isCurrent = !!current && current.id === track.id
   const isPlaying = isCurrent && !!player?.isPlaying
   const title = track.titleTa || track.titleEn || 'Untitled'
-  // First lyric line only. Never fall back to the title here — sample
-  // tracks have no lyrics, and the title-as-lyric fallback printed the
-  // same title twice on every card (big lyric line + heading).
+  // First lyric line only. Never fall back to the title here — the
+  // title-as-lyric fallback printed the same title twice on every
+  // card (big lyric line + heading).
   const lyric = (track.lyricsTa && track.lyricsTa[0]) || ''
   const playable = isPlayable(track)
 
@@ -74,11 +73,6 @@ function DiscoverCard({ track, index, onPrev, onNext, isFirst, isLast, ref }) {
         {lyric && <p className="discover-card__lyric" lang="ta">{lyric}</p>}
         <h3 className="discover-card__title">{title}</h3>
         <p className="discover-card__artist">{track.artist || 'Nandha Music'} · {track.album || ''}</p>
-        {!playable && (
-          <p className="discover-card__sample">
-            <span className="badge">{t('common.sampleAudioSoon')}</span>
-          </p>
-        )}
       </div>
       <div className="discover-card__actions">
         <button
@@ -179,7 +173,10 @@ export function DiscoverFeed({ style }) {
     clearTimeout(seekTimer.current)
     clearTimeout(stopTimer.current)
     player?.play?.(track, feed)
-    const start = track.hookStartSec || 0
+    // M4: guests start at 0, not at the hook — a hook past the 5s
+    // preview limit would pause immediately and the guest would hear
+    // nothing. Signed-in users hear the hook as before.
+    const start = player?.isGuest ? 0 : (track.hookStartSec || 0)
     const dur = track.hookDurationSec || 30
     seekTimer.current = setTimeout(() => player?.seekTo?.(start), 400)
     stopTimer.current = setTimeout(() => {

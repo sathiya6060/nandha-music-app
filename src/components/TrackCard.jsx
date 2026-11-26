@@ -35,8 +35,7 @@ export default function TrackCard({ track }) {
           </span>
         )}
         <h3 className="track-card__title">
-          {title}{' '}
-          {track.isSample ? <span className="badge">{t('common.sample')}</span> : null}
+          {title}
         </h3>
         <p className="track-card__artist">{track.artist || 'Nandha Music'}</p>
       </button>

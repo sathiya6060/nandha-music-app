@@ -70,6 +70,25 @@ export function useMediaSession({
     track?.cover,
   ])
 
+  // Playback state — keep the lock-screen / notification UI honest:
+  // 'none' when nothing is loaded (e.g. after stop), otherwise the live
+  // playing/paused state. Without this, stopping left a stale "playing"
+  // state on the lock screen.
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) {
+      return
+    }
+    try {
+      navigator.mediaSession.playbackState = !track
+        ? 'none'
+        : isPlaying
+          ? 'playing'
+          : 'paused'
+    } catch {
+      /* ignore */
+    }
+  }, [track, isPlaying])
+
   // Action handlers.
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) {

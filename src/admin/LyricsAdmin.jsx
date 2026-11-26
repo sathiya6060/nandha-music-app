@@ -1,6 +1,6 @@
 // Synced lyrics admin — per-track lines with timestamps (mm:ss).
 import { useMemo, useState } from 'react'
-import { allTracks as catalogTracks } from '../data/catalog.js'
+import { tracks as catalogTracks } from '../data/catalog.js'
 import {
   getMergedTracks,
   loadSyncedLyrics,
@@ -28,14 +28,14 @@ function linesFromTrack(track) {
 export default function LyricsAdmin() {
   const { user } = useAuth()
   const { t } = useI18n()
-  const allTracks = useMemo(() => getMergedTracks(catalogTracks).filter((tr) => tr.status !== 'deleted'), [])
+  const adminTracks = useMemo(() => getMergedTracks(catalogTracks).filter((tr) => tr.status !== 'deleted'), [])
   const [trackId, setTrackId] = useState('')
   const [lines, setLines] = useState([])
   const [loaded, setLoaded] = useState(false)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
 
-  const selectedTrack = allTracks.find((tr) => tr.id === trackId) || null
+  const selectedTrack = adminTracks.find((tr) => tr.id === trackId) || null
 
   const pickTrack = (id) => {
     setTrackId(id)
@@ -46,7 +46,7 @@ export default function LyricsAdmin() {
       setLoaded(false)
       return
     }
-    const track = allTracks.find((tr) => tr.id === id)
+    const track = adminTracks.find((tr) => tr.id === id)
     const saved = loadSyncedLyrics()[id]
     if (saved?.lines) {
       setLines(saved.lines.map((l) => ({ time: l.time || '', ta: l.ta || '', en: l.en || '' })))
@@ -113,7 +113,7 @@ export default function LyricsAdmin() {
       <div className="admin-toolbar">
         <select className="admin-input" value={trackId} onChange={(e) => pickTrack(e.target.value)} aria-label={t('admin.pickTrack')}>
           <option value="">{t('admin.pickTrack')}</option>
-          {allTracks.map((tr) => (
+          {adminTracks.map((tr) => (
             <option key={tr.id} value={tr.id}>
               {tr.titleTa || tr.titleEn} — {tr.artist || ''}
             </option>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useI18n } from '../lib/i18n.js'
 import { ADMIN_EMAILS, useAuth } from '../lib/auth.jsx'
 
@@ -15,7 +15,7 @@ import { ADMIN_EMAILS, useAuth } from '../lib/auth.jsx'
 export default function Login() {
   const { t } = useI18n()
   const navigate = useNavigate()
-  const { user, isAdmin, loading, signInEmail, signUpEmail, signInGoogle } = useAuth()
+  const { user, isAdmin, loading, configError, signInEmail, signUpEmail, signInGoogle } = useAuth()
   const [mode, setMode] = useState('signin') // 'signin' | 'signup'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -42,6 +42,13 @@ export default function Login() {
     setNotice('')
     setBusy(true)
     if (mode === 'signup') {
+      // L4: Supabase rejects passwords under 6 characters server-side —
+      // say so specifically instead of the generic sign-in error.
+      if (password.length < 6) {
+        setError(t('auth.passwordTooShort'))
+        setBusy(false)
+        return
+      }
       const { user: created, session, error: err } = await signUpEmail(email.trim(), password)
       setBusy(false)
       if (err || !created) {
@@ -97,6 +104,13 @@ export default function Login() {
         <p className="page-head__sub">{mode === 'signup' ? t('auth.signUpHint') : t('auth.loginHint')}</p>
       </div>
 
+      {/* M2c: misconfigured backend (no Supabase, no demo flag) — sign-in
+          is unavailable. The form below is disabled; this is the visible
+          fail-closed state, not a silent demo fallback. */}
+      {configError && (
+        <p role="alert" className="form-error">{t('auth.configError')}</p>
+      )}
+
       <form onSubmit={handleSubmit} className="inline-form" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
         <label htmlFor="login-email">{t('auth.email')}</label>
         <input
@@ -107,6 +121,7 @@ export default function Login() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
+          disabled={configError}
         />
         <label htmlFor="login-password">{t('auth.password')}</label>
         <input
@@ -117,27 +132,38 @@ export default function Login() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
+          minLength={mode === 'signup' ? 6 : undefined}
+          disabled={configError}
         />
         {error && <p role="alert" className="form-error">{error}</p>}
         {notice && <p role="status" className="topbar__notice">{notice}</p>}
-        <button type="submit" className="btn btn-primary" disabled={busy}>
+        <button type="submit" className="btn btn-primary" disabled={busy || configError}>
           {busy ? t('common.loading') : mode === 'signup' ? t('auth.signUp') : t('common.signIn')}
         </button>
       </form>
+
+      {/* Consent note (Fix 9): creating an account means agreeing to the
+          Privacy Policy and Terms — linked, never buried. */}
+      <p className="auth-consent">
+        {t('auth.consentNote')}{' '}
+        <Link to="/privacy">{t('legal.privacy')}</Link>
+        {' '}{t('common.and')}{' '}
+        <Link to="/terms">{t('legal.terms')}</Link>.
+      </p>
 
       <div style={{ marginTop: 16 }}>
         <button
           type="button"
           className="btn btn-ghost"
           onClick={() => switchMode(mode === 'signup' ? 'signin' : 'signup')}
-          disabled={busy}
+          disabled={busy || configError}
         >
           {mode === 'signup' ? t('auth.switchToSignIn') : t('auth.switchToSignUp')}
         </button>
       </div>
 
       <div style={{ marginTop: 16 }}>
-        <button type="button" className="btn btn-ghost" onClick={handleGoogle} disabled={busy}>
+        <button type="button" className="btn btn-ghost" onClick={handleGoogle} disabled={busy || configError}>
           {t('auth.signInGoogle')}
         </button>
       </div>

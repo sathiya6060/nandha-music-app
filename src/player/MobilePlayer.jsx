@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { usePlayer, formatTime } from './PlayerContext.jsx'
 import { useI18n } from '../lib/i18n.js'
+import Logo from '../components/Logo.jsx'
 import LyricsPanel from './LyricsPanel.jsx'
 import QueuePanel from './QueuePanel.jsx'
 import StoryCard from './StoryCard.jsx'
@@ -13,8 +15,9 @@ import './player.css'
 //   prefers-reduced-motion (static cover).
 // - About the Song: a "Story" button (or swipe up) reveals a story card.
 // - Swipe-to-skip: horizontal swipe left = next, right = previous;
-//   swipe up opens the story, swipe down closes the card / lyrics view /
-//   player. Swipes are ignored when they start on sliders or buttons, and
+//   swipe up opens the story, swipe down closes the card / lyrics view,
+//   and stops playback when nothing is open (L2: stop means stop).
+//   Swipes are ignored when they start on sliders or buttons, and
 //   vertical swipes only act when the sheet is scrolled to the top so they
 //   never fight normal scrolling.
 // - Lyrics view: the "Lyrics" button switches between cover view and
@@ -125,6 +128,7 @@ export default function MobilePlayer() {
     repeat,
     isPlayerOpen,
     notice,
+    previewEnded,
     playPause,
     next,
     prev,
@@ -133,7 +137,7 @@ export default function MobilePlayer() {
     setQuality,
     toggleShuffle,
     cycleRepeat,
-    closePlayer,
+    stopPlayback,
     setNotice,
   } = usePlayer()
   const { t } = useI18n()
@@ -148,6 +152,8 @@ export default function MobilePlayer() {
   })
   const touchRef = useRef(null)
   const sheetRef = useRef(null)
+  const closeBtnRef = useRef(null)
+  const prevFocusRef = useRef(null)
 
   // Close inner panels and reset the view when the track changes.
   useEffect(() => {
@@ -165,22 +171,56 @@ export default function MobilePlayer() {
     }
   }, [isPlayerOpen])
 
-  // Escape closes the story card, then the lyrics view, then the player.
+  // Escape closes the story card, then the lyrics view, then STOPS
+  // playback (L2: stop means stop — the X, Escape and swipe-down all
+  // stop; only the inner panels collapse without stopping).
   useEffect(() => {
     if (!isPlayerOpen) return undefined
     const onKeyDown = (e) => {
       if (e.key !== 'Escape') return
       if (panel) setPanel(null)
       else if (view === 'lyrics') setView('cover')
-      else closePlayer()
+      else stopPlayback()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isPlayerOpen, panel, view, closePlayer])
+  }, [isPlayerOpen, panel, view, stopPlayback])
+
+  // L5: focus trap — when the player opens, focus the close button and
+  // remember where focus was; restore it on close so Tab never leaves
+  // the sheet while it is open.
+  useEffect(() => {
+    if (!isPlayerOpen) return undefined
+    prevFocusRef.current = document.activeElement
+    closeBtnRef.current?.focus()
+    return () => {
+      const prev = prevFocusRef.current
+      if (prev && typeof prev.focus === 'function' && document.contains(prev)) {
+        prev.focus()
+      }
+    }
+  }, [isPlayerOpen])
+
+  // L5: keep Tab cycling inside the dialog while it is open.
+  const onDialogKeyDown = (e) => {
+    if (e.key !== 'Tab' || !sheetRef.current) return
+    const focusables = [...sheetRef.current.querySelectorAll(
+      'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )].filter((el) => el.getClientRects().length > 0)
+    if (focusables.length === 0) return
+    const first = focusables[0]
+    const last = focusables[focusables.length - 1]
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
 
   if (!isPlayerOpen || !track) return null
 
-  const isSample = track.isSample || (!track.audio128 && !track.audio320)
   const composer = track.composer || 'Siddha Guruji'
   const shareUrl =
     typeof window !== 'undefined'
@@ -234,7 +274,7 @@ export default function MobilePlayer() {
       } else if (view === 'lyrics') {
         setView('cover') // swipe down leaves the lyrics view
       } else {
-        closePlayer() // swipe down closes the player
+        stopPlayback() // swipe down stops playback (L2: stop means stop)
       }
     }
   }
@@ -274,6 +314,7 @@ export default function MobilePlayer() {
       aria-label={`${t('player.nowPlaying')}: ${track.titleEn || track.titleTa}`}
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
+      onKeyDown={onDialogKeyDown}
     >
       <div
         className={`mobile-player${view === 'lyrics' ? ' is-lyrics-view' : ''}`}
@@ -285,7 +326,8 @@ export default function MobilePlayer() {
             <button
               type="button"
               className="mobile-player-close"
-              onClick={closePlayer}
+              ref={closeBtnRef}
+              onClick={stopPlayback}
               aria-label={t('common.close')}
             >
               <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
@@ -295,12 +337,23 @@ export default function MobilePlayer() {
             <span className="mobile-player-eyebrow">
               {track.album || 'Nandha Music'}
             </span>
-            <span className="mobile-player-topbar-spacer" aria-hidden="true" />
+            <span className="mobile-player-topbar-spacer" aria-hidden="true">
+              <Logo size={32} />
+            </span>
           </div>
 
           {notice && (
             <div className="player-notice mobile-player-notice" role="status">
               {notice}
+            </div>
+          )}
+
+          {previewEnded && (
+            <div className="player-preview mobile-player-preview" role="status">
+              <span>{t('player.previewEnded')}</span>
+              <Link className="player-preview__btn" to="/login">
+                {t('player.signInToListen')}
+              </Link>
             </div>
           )}
 
@@ -346,9 +399,6 @@ export default function MobilePlayer() {
             <p className="mobile-player-composer">
               {t('player.composer')}: {composer}
             </p>
-            {isSample && (
-              <p className="mobile-player-sample">{t('common.sampleAudioSoon')}</p>
-            )}
           </div>
 
           <div className="mobile-player-seek">

@@ -106,8 +106,7 @@ export default function TrackRow({ track, index, queue, onPlay }) {
       </button>
       <div className="track-row__info">
         <button type="button" className="track-row__title-btn" onClick={handlePlay}>
-          {title}{' '}
-          {track.isSample ? <span className="badge">{t('common.sample')}</span> : null}
+          {title}
         </button>
         <p className="track-row__sub">{subtitle}</p>
       </div>

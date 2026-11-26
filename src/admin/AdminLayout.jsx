@@ -5,6 +5,7 @@
 // itself never renders admin chrome for non-admins.
 // Wrapped in LanguageProvider so the admin is self-contained for i18n;
 // AuthProvider must still wrap this component from the app root.
+import { useState } from 'react'
 import { NavLink, Navigate, Outlet, Link } from 'react-router-dom'
 import { useAuth, DEMO_ROLES } from '../lib/auth.jsx'
 import { LanguageProvider, useI18n, LOCALES } from '../lib/i18n.js'
@@ -39,6 +40,9 @@ function roleLabelKey(role) {
 function AdminLayoutInner() {
   const { user, role, isAdmin, isDemo, setDemoRole, signOut, loading } = useAuth()
   const { t, lang, setLang, locales } = useI18n()
+  // Mobile nav (Fix 1): the sidebar is hidden below 720px and opens via
+  // the hamburger in the topbar; picking a section closes it again.
+  const [navOpen, setNavOpen] = useState(false)
 
   if (loading) {
     return (
@@ -56,7 +60,7 @@ function AdminLayoutInner() {
   if (!isAdmin) return <Navigate to="/" replace />
 
   return (
-    <div className="admin-shell">
+    <div className={`admin-shell${navOpen ? ' admin-shell--nav-open' : ''}`}>
       <aside className="admin-sidebar">
         <Link to="/" className="admin-brand">
           <img src="/assets/nandha-logo.png" alt="Nandha Music" className="admin-brand-logo" />
@@ -67,12 +71,13 @@ function AdminLayoutInner() {
         </Link>
         <nav className="admin-nav" aria-label={t('admin.dashboard')}>
           {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) => `admin-nav-link${isActive ? ' is-active' : ''}`}
-            >
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                onClick={() => setNavOpen(false)}
+                className={({ isActive }) => `admin-nav-link${isActive ? ' is-active' : ''}`}
+              >
               {t(item.key)}
             </NavLink>
           ))}
@@ -99,6 +104,15 @@ function AdminLayoutInner() {
       <div className="admin-main">
         <header className="admin-topbar">
           <div className="admin-topbar-user">
+            <button
+              type="button"
+              className="admin-nav-toggle"
+              onClick={() => setNavOpen((o) => !o)}
+              aria-expanded={navOpen}
+              aria-label={t('common.menu')}
+            >
+              ☰
+            </button>
             <span className="admin-user-email">{user ? user.email : t('auth.notSignedIn')}</span>
             <span className="admin-badge admin-badge-role">{t(roleLabelKey(role))}</span>
             <label className="admin-demo-role">

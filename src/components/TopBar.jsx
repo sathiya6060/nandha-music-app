@@ -40,7 +40,7 @@ export default function TopBar() {
   return (
     <header className="topbar">
       <Link to="/" aria-label="Nandha Music" style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-        <Logo size={36} />
+        <Logo size={44} />
       </Link>
 
       <form className="topbar__search search-box" role="search" onSubmit={handleSearchSubmit}>

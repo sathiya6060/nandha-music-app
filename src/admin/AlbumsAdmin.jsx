@@ -1,6 +1,6 @@
 // Albums admin — list + create/edit with track ordering.
 import { useMemo, useState } from 'react'
-import { allTracks as catalogTracks, allAlbums as catalogAlbums } from '../data/catalog.js'
+import { tracks as catalogTracks, albums as catalogAlbums } from '../data/catalog.js'
 import {
   getMergedTracks,
   getMergedAlbums,
@@ -17,7 +17,7 @@ const EMPTY_ALBUM = { titleTa: '', titleEn: '', releaseDate: '', trackIds: [] }
 export default function AlbumsAdmin() {
   const { user } = useAuth()
   const { t } = useI18n()
-  const allTracks = useMemo(() => getMergedTracks(catalogTracks), [])
+  const adminTracks = useMemo(() => getMergedTracks(catalogTracks), [])
   const [version, setVersion] = useState(0)
   const [editing, setEditing] = useState(null) // album id or 'new'
   const [form, setForm] = useState(EMPTY_ALBUM)
@@ -40,7 +40,7 @@ export default function AlbumsAdmin() {
       releaseDate: album.releaseDate || '',
       trackIds: Array.isArray(album.trackIds)
         ? [...album.trackIds]
-        : allTracks.filter((tr) => tr.albumId === album.id).map((tr) => tr.id),
+        : adminTracks.filter((tr) => tr.albumId === album.id).map((tr) => tr.id),
     })
     setCoverPreview(album.cover || '')
   }
@@ -101,9 +101,9 @@ export default function AlbumsAdmin() {
   }
 
   const orderedTracks = form.trackIds
-    .map((id) => allTracks.find((tr) => tr.id === id))
+    .map((id) => adminTracks.find((tr) => tr.id === id))
     .filter(Boolean)
-  const unselectedTracks = allTracks.filter((tr) => !form.trackIds.includes(tr.id) && tr.status !== 'deleted')
+  const unselectedTracks = adminTracks.filter((tr) => !form.trackIds.includes(tr.id) && tr.status !== 'deleted')
 
   return (
     <div className="admin-page">
@@ -200,7 +200,7 @@ export default function AlbumsAdmin() {
             {mergedAlbums.map((a) => {
               const count = Array.isArray(a.trackIds)
                 ? a.trackIds.length
-                : allTracks.filter((tr) => tr.albumId === a.id).length
+                : adminTracks.filter((tr) => tr.albumId === a.id).length
               return (
                 <tr key={a.id}>
                   <td>{a.cover ? <img src={a.cover} alt="" className="admin-thumb" /> : <img src="/assets/nandha-logo.png" alt="" className="admin-thumb admin-thumb-logo" />}</td>

@@ -101,7 +101,6 @@ export default function LyricsPanel({ track, className }) {
     }
   }, [activeIndex])
 
-  const isSample = track?.isSample || (track && !track.audio128 && !track.audio320)
   const rootClassName = `lyrics-panel${className ? ` ${className}` : ''}`
 
   if (!track) {
@@ -119,7 +118,6 @@ export default function LyricsPanel({ track, className }) {
           <h3>{t('common.lyrics')}</h3>
         </div>
         <p className="lyrics-empty">{t('player.lyricsSoon')}</p>
-        {isSample && <p className="lyrics-note">{t('player.lyricsFullSoon')}</p>}
       </div>
     )
   }

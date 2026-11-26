@@ -1,6 +1,6 @@
 // Artists admin — list + editor (photo, bilingual bio, social links).
 import { useMemo, useState } from 'react'
-import { allArtists } from '../data/catalog.js'
+import { artists } from '../data/catalog.js'
 import {
   getMergedArtists,
   saveAdminArtist,
@@ -44,7 +44,7 @@ export default function ArtistsAdmin() {
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
 
-  const mergedArtists = useMemo(() => getMergedArtists(allArtists), [version])
+  const mergedArtists = useMemo(() => getMergedArtists(artists), [version])
 
   const startNew = () => {
     setEditing('new')

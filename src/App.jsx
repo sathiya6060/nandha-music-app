@@ -14,6 +14,8 @@ import { queryClientOptions, bindQueryClient } from './lib/cache.js'
 import { registerServiceWorker } from './lib/pwa.js'
 import Sidebar, { BottomNav } from './components/Sidebar.jsx'
 import TopBar from './components/TopBar.jsx'
+import Footer from './components/Footer.jsx'
+import ConsentBanner from './components/ConsentBanner.jsx'
 import PlayerBar from './player/PlayerBar.jsx'
 import MobilePlayer from './player/MobilePlayer.jsx'
 // Search is imported eagerly (not lazy): it is the most-visited route
@@ -30,9 +32,17 @@ const Playlists = lazy(() => import('./pages/Playlists.jsx'))
 const PlaylistDetail = lazy(() => import('./pages/PlaylistDetail.jsx'))
 const Artist = lazy(() => import('./pages/Artist.jsx'))
 const Album = lazy(() => import('./pages/Album.jsx'))
+// Track deep link (H1): shared /track/:id URLs used to hit the catch-all
+// and bounce home. The page resolves the track and opens the player.
+const Track = lazy(() => import('./pages/Track.jsx'))
 const EPK = lazy(() => import('./pages/EPK.jsx'))
 // Login is unlinked in the public UI — the admin opens /login directly.
 const Login = lazy(() => import('./pages/Login.jsx'))
+// Legal pages (lazy — only downloaded when visited).
+const Privacy = lazy(() => import('./pages/legal/Privacy.jsx'))
+const Terms = lazy(() => import('./pages/legal/Terms.jsx'))
+const Cookies = lazy(() => import('./pages/legal/Cookies.jsx'))
+const Refund = lazy(() => import('./pages/legal/Refund.jsx'))
 
 // Build id baked into this bundle (written by scripts/write-version.mjs
 // on every build). Compared against the live /version.json below.
@@ -176,16 +186,23 @@ function AppShell() {
                 <Route path="/playlist/:id" element={<PlaylistDetail />} />
                 <Route path="/artist/:id" element={<Artist />} />
                 <Route path="/album/:id" element={<Album />} />
+                <Route path="/track/:id" element={<Track />} />
                 <Route path="/epk" element={<EPK />} />
                 <Route path="/login" element={<Login />} />
+                <Route path="/privacy" element={<Privacy />} />
+                <Route path="/terms" element={<Terms />} />
+                <Route path="/cookies" element={<Cookies />} />
+                <Route path="/refund" element={<Refund />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
           </main>
+          <Footer />
         </div>
         <BottomNav />
         <PlayerBar />
         <MobilePlayer />
+        <ConsentBanner />
       </div>
     </>
   )

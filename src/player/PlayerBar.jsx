@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { usePlayer, formatTime } from './PlayerContext.jsx'
 import { useI18n } from '../lib/i18n.js'
 import Icon from '../components/Icons.jsx'
@@ -77,6 +78,7 @@ export default function PlayerBar() {
     shuffle,
     repeat,
     notice,
+    previewEnded,
     playPause,
     next,
     prev,
@@ -93,13 +95,21 @@ export default function PlayerBar() {
   if (!track) return null
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0
-  const isSample = track.isSample || (!track.audio128 && !track.audio320)
 
   return (
     <div className="player-bar" role="region" aria-label={t('player.nowPlaying')}>
       {notice && (
         <div className="player-notice" role="status">
           {notice}
+        </div>
+      )}
+
+      {previewEnded && (
+        <div className="player-preview" role="status">
+          <span>{t('player.previewEnded')}</span>
+          <Link className="player-preview__btn" to="/login">
+            {t('player.signInToListen')}
+          </Link>
         </div>
       )}
 
@@ -138,7 +148,6 @@ export default function PlayerBar() {
           <span className="player-bar-artist">
             {track.artist}
             {track.titleEn && track.titleTa ? ` · ${track.titleEn}` : ''}
-            {isSample ? ' · Sample' : ''}
           </span>
         </span>
       </button>

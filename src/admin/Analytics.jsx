@@ -1,27 +1,12 @@
 // Analytics — simple bar lists (no chart library).
 import { useMemo } from 'react'
-import { allTracks } from '../data/catalog.js'
+import { tracks } from '../data/catalog.js'
 import { getMergedTracks, getNoResultSearches } from '../lib/adminStore.js'
 import { useI18n } from '../lib/i18n.js'
 
-// Seeded sample data — replaced by real analytics once wired up.
-const SEEDED_DAILY_PLAYS = [
-  { day: 'Thu 19 Nov', plays: 84 },
-  { day: 'Fri 20 Nov', plays: 132 },
-  { day: 'Sat 21 Nov', plays: 210 },
-  { day: 'Sun 22 Nov', plays: 176 },
-  { day: 'Mon 23 Nov', plays: 148 },
-  { day: 'Tue 24 Nov', plays: 193 },
-  { day: 'Wed 25 Nov', plays: 241 },
-]
-
-const SEEDED_TOP_CITIES = [
-  { city: 'Chennai', plays: 486 },
-  { city: 'Coimbatore', plays: 212 },
-  { city: 'Madurai', plays: 148 },
-  { city: 'Bengaluru', plays: 121 },
-  { city: 'Tiruchirappalli', plays: 74 },
-]
+// No seeded analytics: the "Plays (7d)" and "Top cities" panels show
+// real data once play events are wired up; until then they show an
+// empty state (26 Nov 2026 — dummy data removed per user instruction).
 
 function BarList({ items, labelKey, valueKey, formatValue }) {
   const max = Math.max(1, ...items.map((i) => Number(i[valueKey]) || 0))
@@ -45,7 +30,7 @@ function BarList({ items, labelKey, valueKey, formatValue }) {
 
 export default function Analytics() {
   const { t, lang } = useI18n()
-  const mergedTracks = useMemo(() => getMergedTracks(allTracks), [])
+  const mergedTracks = useMemo(() => getMergedTracks(tracks), [])
   const noResultSearches = useMemo(() => getNoResultSearches(), [])
 
   const topTracks = useMemo(
@@ -85,18 +70,18 @@ export default function Analytics() {
 
         <section className="admin-panel" aria-labelledby="admin-plays-7d">
           <h2 className="admin-panel-title" id="admin-plays-7d">
-            {t('admin.plays7d')} ({t('common.sample')})
+            {t('admin.plays7d')}
           </h2>
-          <BarList items={SEEDED_DAILY_PLAYS} labelKey="day" valueKey="plays" formatValue={formatNumber} />
+          <p className="admin-muted">{t('common.noResults')}</p>
         </section>
       </div>
 
       <div className="admin-two-col">
         <section className="admin-panel" aria-labelledby="admin-top-cities">
           <h2 className="admin-panel-title" id="admin-top-cities">
-            {t('admin.topCities')} ({t('common.sample')})
+            {t('admin.topCities')}
           </h2>
-          <BarList items={SEEDED_TOP_CITIES} labelKey="city" valueKey="plays" formatValue={formatNumber} />
+          <p className="admin-muted">{t('common.noResults')}</p>
         </section>
 
         <section className="admin-panel" aria-labelledby="admin-no-result">
@@ -104,7 +89,8 @@ export default function Analytics() {
           {sortedNoResults.length === 0 ? (
             <p className="admin-muted">{t('admin.noResultHint')}</p>
           ) : (
-            <table className="admin-table">
+            <div className="admin-table-wrap">
+              <table className="admin-table">
               <thead>
                 <tr>
                   <th scope="col">{t('common.search')}</th>
@@ -125,7 +111,8 @@ export default function Analytics() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           )}
         </section>
       </div>
