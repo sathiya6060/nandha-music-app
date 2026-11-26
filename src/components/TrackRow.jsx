@@ -3,7 +3,7 @@ import { useI18n } from '../lib/i18n.js'
 import { usePlayer } from '../player/PlayerContext.jsx'
 import Icon, { HeartIcon } from './Icons.jsx'
 
-export const LIKED_KEY = 'nandha-liked'
+const LIKED_KEY = 'nandha-liked'
 
 export function getLikedIds() {
   try {

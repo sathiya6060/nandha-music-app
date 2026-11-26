@@ -11,9 +11,9 @@
  * ('nandha-now-playing-id'), written by PlayerContext.
  */
 
-export const AUDIO_CACHE = 'nandha-audio-v2'
-export const MAX_PINNED = 50
-export const PIN_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+const AUDIO_CACHE = 'nandha-audio-v2'
+const MAX_PINNED = 50
+const PIN_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 const META_KEY = 'nandha-pinned-meta'
 const NOW_PLAYING_KEY = 'nandha-now-playing-id'
 

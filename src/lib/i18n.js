@@ -13,7 +13,7 @@ export const LOCALES = {
   hi: { label: 'हिन्दी', strings: hi, font: "'Inter', 'Noto Sans Tamil', system-ui, sans-serif" },
 };
 
-export const DEFAULT_LANG = 'en';
+const DEFAULT_LANG = 'en';
 const STORAGE_KEY = 'nandha-lang-v2';
 
 const LanguageContext = createContext(null);

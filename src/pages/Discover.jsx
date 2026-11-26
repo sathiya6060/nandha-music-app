@@ -20,7 +20,7 @@ function isPlayable(track) {
   return !!track && !!(track.audio128 || track.audio320)
 }
 
-function DiscoverCard({ track, index, onPrev, onNext, isFirst, isLast, ref }) {
+function DiscoverCard({ track, index, isActive, onPrev, onNext, isFirst, isLast, ref }) {
   const { t } = useI18n()
   const player = usePlayer()
   const [liked, setLiked] = useState(() => isLiked(track.id))
@@ -53,7 +53,7 @@ function DiscoverCard({ track, index, onPrev, onNext, isFirst, isLast, ref }) {
   }
 
   return (
-    <article ref={ref} className="discover-card" aria-label={`${title} — ${track.artist || 'Nandha Music'}`}>
+    <article ref={ref} className={`discover-card${isActive ? ' is-active' : ''}`} aria-label={`${title} — ${track.artist || 'Nandha Music'}`}>
       {track.cover ? (
         <img className="discover-card__cover" src={track.cover} alt="" loading={index === 0 ? 'eager' : 'lazy'} />
       ) : (
@@ -146,7 +146,12 @@ export function DiscoverFeed({ style }) {
       programmaticTimerRef.current = setTimeout(() => {
         programmaticScrollRef.current = false
       }, 700)
-      el.scrollTo({ top: card.offsetTop, behavior: 'smooth' })
+      // L2: honour reduced-motion — jump straight to the card instead
+      // of the smooth scroll.
+      const reduceMotion =
+        typeof window !== 'undefined' &&
+        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      el.scrollTo({ top: card.offsetTop, behavior: reduceMotion ? 'auto' : 'smooth' })
     }
   }, [feed.length])
 
@@ -230,6 +235,7 @@ export function DiscoverFeed({ style }) {
             ref={(el) => { cardRefs.current[i] = el }}
             track={track}
             index={i}
+            isActive={i === index}
             isFirst={i === 0}
             isLast={i === feed.length - 1}
             onPrev={() => goTo(i - 1)}

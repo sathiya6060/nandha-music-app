@@ -55,7 +55,7 @@ const LS_NOW_PLAYING = 'nandha-now-playing-id'
 // Guest preview limit (user rule, 26 Nov 2026): without sign-in only the
 // first 5 seconds of a song play; signed-in users get the full song.
 // Enforced in the <audio> timeupdate handler + seekTo (see below).
-export const PREVIEW_SECONDS = 5
+const PREVIEW_SECONDS = 5
 
 const UNPLAYABLE_NOTICE = 'Could not play this track — try again'
 
@@ -103,7 +103,7 @@ function readQueue() {
 }
 
 /** Resolve the playable audio URL for a track at a given quality. */
-export function resolveAudioUrl(track, quality = '128') {
+function resolveAudioUrl(track, quality = '128') {
   if (!track) return null
   if (audioUrlHelper) {
     try {
@@ -128,7 +128,7 @@ export function isPlayable(track, quality = '128') {
  * instead of 0. Returns 0 for a normal start, a missing/invalid hook, or a
  * hook at/after the end of the track.
  */
-export function hookStartFor(track, opts = {}) {
+function hookStartFor(track, opts = {}) {
   if (!opts || !opts.fromDiscover) return 0
   const start = Number(track?.hookStartSec)
   if (!Number.isFinite(start) || start <= 0) return 0

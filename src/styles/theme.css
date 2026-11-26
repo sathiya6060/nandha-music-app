@@ -54,6 +54,14 @@
   --playerbar-h: 60px;
   --chrome-bottom: calc(var(--playerbar-h) + var(--bottomnav-h));
   --sidebar-w: 248px;
+  /* Motion (Emil Design Engineering): one custom curve for UI motion
+     (press, hover, sheet, banner) — --nm-ease is the default ease-out;
+     --nm-spring is for physical, interruptible motion. Built-in easings
+     stay where they are correct (canvas Ken-Burns ease-in-out, streak
+     flame, progress-bar linear). Durations: press 120ms, active-state
+     150–200ms, sheet 320ms, banner 320ms. */
+  --nm-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --nm-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 * { box-sizing: border-box; }
@@ -123,7 +131,6 @@ input[type="search"]::-webkit-search-decoration {
   background: var(--sand);
   color: var(--slate);
 }
-.card-light__muted { color: var(--steel); }
 
 /* Form validation message — gold alert (palette has no red). */
 .form-error {
@@ -178,7 +185,7 @@ input[type="search"]::-webkit-search-decoration {
   color: var(--slate);
   font-weight: 700;
   text-decoration: none;
-  transition: top 0.15s ease;
+  transition: top 0.15s var(--nm-ease);
 }
 .skip-link:focus-visible { top: 12px; text-decoration: none; }
 
@@ -246,6 +253,9 @@ input[type="search"]::-webkit-search-decoration {
   font-weight: 700;
   color: var(--text-strong);
   line-height: 1.3;
+  /* Break UI: a long Tamil section title must wrap, never push the
+     page wider than the viewport. */
+  overflow-wrap: anywhere;
 }
 
 .section-subtitle {
@@ -294,9 +304,12 @@ input[type="search"]::-webkit-search-decoration {
   background: transparent;
   color: var(--text);
   text-align: left;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: background-color 0.15s var(--nm-ease), border-color 0.15s var(--nm-ease), transform 0.12s var(--nm-ease);
 }
 .track-row:hover { background: var(--surface); }
+/* Emil press state: a row answers the tap instantly (background +
+   a 1% settle) instead of only changing colour on hover. */
+.track-row:active { background: var(--surface-2); transform: scale(0.99); }
 .track-row.is-current { background: var(--surface); border-color: var(--border); }
 .track-row.is-current .track-row__title { color: var(--gold-deep); }
 
@@ -405,13 +418,19 @@ input[type="search"]::-webkit-search-decoration {
   border: 1px solid var(--border);
   color: var(--text);
   text-align: left;
-  transition: background-color 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  transition: background-color 0.15s var(--nm-ease), border-color 0.2s var(--nm-ease), box-shadow 0.2s var(--nm-ease), transform 0.2s var(--nm-ease);
 }
 .track-card:hover {
   background: var(--surface-2);
   border-color: rgba(245, 158, 11, 0.45);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
   transform: translateY(-2px);
+}
+/* Press cancels the hover lift and settles 2% — the card feels held,
+   not just hovered. */
+.track-card:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 .track-card__cover {
   width: 100%;
@@ -467,9 +486,12 @@ input[type="search"]::-webkit-search-decoration {
   font-size: 0.95rem;
   font-weight: 600;
   text-decoration: none;
-  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.2s ease, filter 0.15s ease;
+  transition: background-color 0.15s var(--nm-ease), border-color 0.15s var(--nm-ease), box-shadow 0.2s var(--nm-ease), filter 0.15s var(--nm-ease), transform 0.12s var(--nm-ease);
 }
 .btn:hover { text-decoration: none; background: var(--surface-3); }
+/* Real press state (Emil): every button answers the tap with a 2%
+   settle in 120ms — the tap feels registered before the action lands. */
+.btn:active { transform: scale(0.98); }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .btn-primary {
@@ -479,10 +501,14 @@ input[type="search"]::-webkit-search-decoration {
   box-shadow: 0 2px 10px rgba(245, 158, 11, 0.28);
 }
 .btn-primary:hover { filter: brightness(1.08); box-shadow: 0 4px 16px rgba(245, 158, 11, 0.38); }
+.btn-primary:active { filter: brightness(1.12); }
 
 .btn-ghost { background: transparent; }
 
-.btn-sm { min-height: 36px; padding: 6px 14px; font-size: 0.875rem; }
+/* .btn-sm keeps the smaller padding/font, but the target is 44px —
+   the 36px version failed the ≥44px touch-target rule on the EPK and
+   Home links that use it. */
+.btn-sm { min-height: 44px; padding: 6px 14px; font-size: 0.875rem; }
 
 .input {
   width: 100%;
@@ -533,9 +559,10 @@ input[type="search"]::-webkit-search-decoration {
   font-weight: 600;
   white-space: nowrap;
   text-decoration: none;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: background-color 0.15s var(--nm-ease), border-color 0.15s var(--nm-ease), color 0.15s var(--nm-ease), transform 0.12s var(--nm-ease);
 }
 .chip:hover { text-decoration: none; border-color: var(--gold); color: var(--gold-deep); }
+.chip:active { transform: scale(0.96); }
 .chip.is-active { background: var(--gold); border-color: var(--gold); color: #1E293B; }
 
 .chip-row {
@@ -557,7 +584,6 @@ input[type="search"]::-webkit-search-decoration {
   text-transform: uppercase;
   white-space: nowrap;
 }
-.badge--muted { background: var(--surface-2); color: var(--muted); }
 
 /* ---------- States ---------- */
 .empty-state {
@@ -615,10 +641,11 @@ input[type="search"]::-webkit-search-decoration {
   font-weight: 600;
   font-size: 0.95rem;
   text-decoration: none;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color 0.15s var(--nm-ease), color 0.15s var(--nm-ease), transform 0.12s var(--nm-ease);
 }
 .sidebar__link:hover { color: var(--text-strong); background: var(--surface); text-decoration: none; }
-.sidebar__link.is-active { color: var(--gold-deep); background: rgba(245, 158, 11, 0.12); }
+.sidebar__link:active { transform: scale(0.98); }
+.sidebar__link.is-active { color: var(--gold-deep); background: rgba(245, 158, 11, 0.12); box-shadow: inset 3px 0 0 var(--gold); }
 .sidebar__section-label {
   margin: 16px 12px 6px;
   font-size: 0.7rem;
@@ -643,6 +670,7 @@ input[type="search"]::-webkit-search-decoration {
 }
 .bottom-nav__link {
   flex: 1;
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -657,11 +685,32 @@ input[type="search"]::-webkit-search-decoration {
   text-decoration: none;
   min-height: 44px;
   min-width: 44px;
-  transition: color 0.15s ease;
+  transition: color 0.15s var(--nm-ease), transform 0.12s var(--nm-ease);
 }
 .bottom-nav__link:hover { text-decoration: none; color: var(--text-strong); }
+.bottom-nav__link:active { transform: scale(0.94); }
 .bottom-nav__link.is-active { color: var(--gold); }
-.bottom-nav__icon { display: flex; line-height: 1; }
+/* Active tab earns an unmistakable marker: a gold pill above the icon
+   that scales in on route change, plus a 8% icon lift. Colour alone
+   was the only active signal before. */
+.bottom-nav__link.is-active::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  width: 24px;
+  height: 3px;
+  margin-left: -12px;
+  border-radius: 999px;
+  background: var(--gold);
+  animation: nm-nav-dot-in 0.2s var(--nm-ease);
+}
+@keyframes nm-nav-dot-in {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.bottom-nav__link.is-active .bottom-nav__icon { transform: scale(1.08); }
+.bottom-nav__icon { display: flex; line-height: 1; transition: transform 0.15s var(--nm-ease); }
 
 /* ---------- Top bar ---------- */
 .topbar__search { display: none; flex: 1; max-width: 480px; }
@@ -701,7 +750,7 @@ input[type="search"]::-webkit-search-decoration {
   margin: 20px 0;
 }
 .detail-head__cover { width: 100%; max-width: 220px; aspect-ratio: 1; border-radius: var(--radius-lg); object-fit: cover; }
-.detail-head__title { margin: 0; font-size: 1.6rem; font-weight: 800; color: var(--text-strong); }
+.detail-head__title { margin: 0; font-size: 1.6rem; font-weight: 800; color: var(--text-strong); overflow-wrap: anywhere; }
 .detail-head__meta { margin: 6px 0 0; color: var(--muted); }
 .detail-head__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 
@@ -784,7 +833,9 @@ input[type="search"]::-webkit-search-decoration {
   color: var(--text);
   font-size: 0.95rem;
   font-weight: 700;
+  transition: transform 0.12s var(--nm-ease), background-color 0.15s var(--nm-ease), color 0.15s var(--nm-ease);
 }
+.home-tabs__tab:active { transform: scale(0.97); }
 .home-tabs__tab[aria-selected="true"] {
   background: var(--gold);
   border-color: var(--gold);
@@ -932,9 +983,31 @@ input[type="search"]::-webkit-search-decoration {
   line-height: 1.4;
   color: var(--white);
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+  /* Break UI: a long lyric line clamps to 3 lines instead of covering
+     the cover and pushing the title off the card. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
-.discover-card__title { margin: 0; font-size: 1.1rem; font-weight: 800; color: var(--text-strong); }
-.discover-card__artist { margin: 2px 0 0; color: var(--muted); }
+.discover-card__title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text-strong);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.discover-card__artist {
+  margin: 2px 0 0;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .discover-card__actions {
   position: absolute;
   right: 12px;
@@ -958,7 +1031,9 @@ input[type="search"]::-webkit-search-decoration {
   color: var(--text-strong);
   font-size: 0.65rem;
   font-weight: 700;
+  transition: transform 0.12s var(--nm-ease), background-color 0.15s var(--nm-ease), color 0.15s var(--nm-ease), border-color 0.15s var(--nm-ease);
 }
+.discover-card__action:active { transform: scale(0.9); }
 .discover-card__action.is-liked { color: var(--gold); border-color: var(--gold); }
 .discover-card__nav {
   position: absolute;
@@ -978,7 +1053,41 @@ input[type="search"]::-webkit-search-decoration {
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: transform 0.12s var(--nm-ease), background-color 0.15s var(--nm-ease);
 }
+.discover-card__nav button:active { transform: scale(0.92); }
+/* Choreography (Emil): only the active card's content is fully present —
+   body, actions and nav fade + rise 10px as the card snaps in, so the
+   swipe lands instead of just stopping. Inactive cards hold their
+   content at opacity 0 until they become active. */
+.discover-card__body,
+.discover-card__actions,
+.discover-card__nav {
+  opacity: 0;
+  transform: translateY(10px);
+  /* M2: opacity:0 alone still leaves buttons focusable + announced —
+     hide them from tab order and screen readers until active. The
+     delayed visibility keeps the 0.32s fade-out playing first. */
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.32s var(--nm-ease), transform 0.32s var(--nm-ease), visibility 0s 0.32s;
+}
+/* The hint is centred with translateX(-50%) — animate opacity only so
+   the centring transform is never overridden. */
+.discover-card__hint {
+  opacity: 0;
+  transition: opacity 0.32s var(--nm-ease);
+}
+.discover-card.is-active .discover-card__body,
+.discover-card.is-active .discover-card__actions,
+.discover-card.is-active .discover-card__nav {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 0.32s var(--nm-ease), transform 0.32s var(--nm-ease), visibility 0s 0s;
+}
+.discover-card.is-active .discover-card__hint { opacity: 1; }
 .discover-card__hint {
   position: absolute;
   top: 16px;
@@ -991,10 +1100,6 @@ input[type="search"]::-webkit-search-decoration {
   font-size: 0.8rem;
   font-weight: 600;
   white-space: nowrap;
-}
-.discover-card__sample {
-  margin-top: 8px;
-  display: inline-block;
 }
 
 /* ---------- Song of the Day ---------- */
@@ -1033,6 +1138,7 @@ input[type="search"]::-webkit-search-decoration {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 8px 16px;
   background: #1E293B;
@@ -1040,6 +1146,15 @@ input[type="search"]::-webkit-search-decoration {
   border-bottom: 2px solid #F59E0B;
   font-size: 0.875rem;
   font-weight: 600;
+  text-align: center;
+  /* It used to appear instantly (a hard cut at the top of the screen).
+     It slides down once, 320ms on the shared curve — the refresh is
+     the user's action, so the entrance is the only motion it earns. */
+  animation: nm-banner-in 0.32s var(--nm-ease);
+}
+@keyframes nm-banner-in {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
 }
 
 .update-banner__btn {
@@ -1052,7 +1167,9 @@ input[type="search"]::-webkit-search-decoration {
   font-size: 0.875rem;
   font-weight: 700;
   cursor: pointer;
+  transition: transform 0.12s var(--nm-ease), filter 0.15s var(--nm-ease);
 }
+.update-banner__btn:active { transform: scale(0.97); }
 
 /* ---------- Public footer (Fix 11) ---------- */
 /* Slim footer at the end of every public page (inside .app-main-wrap,
@@ -1077,7 +1194,7 @@ input[type="search"]::-webkit-search-decoration {
 }
 .app-footer__links a {
   padding: 4px 0;
-  min-height: 32px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
 }
@@ -1101,6 +1218,14 @@ input[type="search"]::-webkit-search-decoration {
   background: var(--surface);
   color: var(--text);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  /* Slides up 14px once on first visit. Uses the standalone `translate`
+     property (not `transform`) so it never fights the translateX(-50%)
+     centring applied at >= 640px below. */
+  animation: nm-consent-in 0.32s var(--nm-ease);
+}
+@keyframes nm-consent-in {
+  from { opacity: 0; translate: 0 14px; }
+  to { opacity: 1; translate: 0 0; }
 }
 .consent-banner__text {
   margin: 0;
@@ -1162,7 +1287,7 @@ input[type="search"]::-webkit-search-decoration {
   border-top: 1px solid var(--border);
   font-size: 0.875rem;
 }
-.legal-nav a { padding: 6px 0; min-height: 32px; display: inline-flex; align-items: center; }
+.legal-nav a { padding: 6px 0; min-height: 44px; display: inline-flex; align-items: center; }
 
 /* ---------- Login consent note (Fix 9) ---------- */
 .auth-consent {

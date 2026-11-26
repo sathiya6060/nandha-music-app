@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePlayer, formatTime } from './PlayerContext.jsx'
 import { useI18n } from '../lib/i18n.js'
@@ -154,12 +154,48 @@ export default function MobilePlayer() {
   const sheetRef = useRef(null)
   const closeBtnRef = useRef(null)
   const prevFocusRef = useRef(null)
+  const [closing, setClosing] = useState(false)
+  // M1: pending close-teardown timer. A Next/Prev/Play tap during the
+  // 240ms slide-down changes the track — the effect below clears this
+  // timer so the stale stop cannot kill the new track.
+  const closeTimerRef = useRef(null)
+
+  // Choreographed close (Emil): the sheet used to vanish the instant
+  // X / Escape / swipe-down fired. requestClose pauses the audio NOW
+  // (stop means stop — the user's rule), plays the 240ms slide-down,
+  // and only then runs the full stopPlayback teardown. Reduced-motion
+  // users get the instant stop with no exit animation at all.
+  const requestClose = useCallback(() => {
+    if (closing) return
+    if (isPlaying) playPause()
+    if (
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ) {
+      stopPlayback()
+      return
+    }
+    setClosing(true)
+    clearTimeout(closeTimerRef.current)
+    closeTimerRef.current = setTimeout(() => stopPlayback(), 240)
+  }, [closing, isPlaying, playPause, stopPlayback])
 
   // Close inner panels and reset the view when the track changes.
+  // Also clears any pending close teardown (M1): a track change inside
+  // the 240ms slide-down means the user kept listening — the stale
+  // stopPlayback must not fire.
   useEffect(() => {
+    clearTimeout(closeTimerRef.current)
+    closeTimerRef.current = null
     setPanel(null)
     setView('cover')
+    setClosing(false)
   }, [track?.id])
+
+  // Never let a pending close teardown outlive the sheet.
+  useEffect(() => () => {
+    clearTimeout(closeTimerRef.current)
+  }, [])
 
   // Lock body scroll while the full-screen player is open.
   useEffect(() => {
@@ -173,18 +209,20 @@ export default function MobilePlayer() {
 
   // Escape closes the story card, then the lyrics view, then STOPS
   // playback (L2: stop means stop — the X, Escape and swipe-down all
-  // stop; only the inner panels collapse without stopping).
+  // stop; only the inner panels collapse without stopping). The final
+  // step goes through requestClose so the sheet slides down instead
+  // of vanishing (audio is paused instantly inside requestClose).
   useEffect(() => {
     if (!isPlayerOpen) return undefined
     const onKeyDown = (e) => {
       if (e.key !== 'Escape') return
       if (panel) setPanel(null)
       else if (view === 'lyrics') setView('cover')
-      else stopPlayback()
+      else requestClose()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isPlayerOpen, panel, view, stopPlayback])
+  }, [isPlayerOpen, panel, view, requestClose])
 
   // L5: focus trap — when the player opens, focus the close button and
   // remember where focus was; restore it on close so Tab never leaves
@@ -274,7 +312,7 @@ export default function MobilePlayer() {
       } else if (view === 'lyrics') {
         setView('cover') // swipe down leaves the lyrics view
       } else {
-        stopPlayback() // swipe down stops playback (L2: stop means stop)
+        requestClose() // swipe down stops playback (L2: stop means stop)
       }
     }
   }
@@ -308,7 +346,7 @@ export default function MobilePlayer() {
 
   return (
     <div
-      className="mobile-player-overlay"
+      className={`mobile-player-overlay${closing ? ' is-closing' : ''}`}
       role="dialog"
       aria-modal="true"
       aria-label={`${t('player.nowPlaying')}: ${track.titleEn || track.titleTa}`}
@@ -317,7 +355,7 @@ export default function MobilePlayer() {
       onKeyDown={onDialogKeyDown}
     >
       <div
-        className={`mobile-player${view === 'lyrics' ? ' is-lyrics-view' : ''}`}
+        className={`mobile-player${view === 'lyrics' ? ' is-lyrics-view' : ''}${closing ? ' is-closing' : ''}`}
         ref={sheetRef}
       >
         <div className="mobile-player-main">
@@ -327,7 +365,7 @@ export default function MobilePlayer() {
               type="button"
               className="mobile-player-close"
               ref={closeBtnRef}
-              onClick={stopPlayback}
+              onClick={requestClose}
               aria-label={t('common.close')}
             >
               <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
@@ -442,7 +480,11 @@ export default function MobilePlayer() {
               onClick={playPause}
               aria-label={isPlaying ? t('common.pause') : t('common.play')}
             >
-              {isPlaying ? <IconPause /> : <IconPlay />}
+              {/* key remounts the icon on play-state change so the pop
+                  animation replays — the toggle reads as instant. */}
+              <span key={isPlaying ? 'pause' : 'play'} className="player-play-icon">
+                {isPlaying ? <IconPause /> : <IconPlay />}
+              </span>
             </button>
             <button
               type="button"

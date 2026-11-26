@@ -12,8 +12,12 @@
  * never throws, and the caller still gets data from the next layer down.
  * Nothing here stores credentials — the Upstash token comes from env
  * (see src/lib/config.js) and is only ever sent to the configured REST URL.
+ *
+ * Redis writes (SET/DEL) go through the guard's write proxy
+ * (src/lib/redisGuard.js -> redis-cache Edge Function), never direct
+ * from the browser. Reads go through the guard's tiered cachedFetch.
  */
-import { config, isRedisConfigured } from './config.js';
+import { redisDelViaProxy } from './redisGuard.js';
 import { supabase } from './supabase.js';
 
 // ---------------------------------------------------------------------------
@@ -34,11 +38,11 @@ const LS_PREFIX = `${CACHE_VERSION}:`;
 // ---------------------------------------------------------------------------
 const memoryCache = new Map(); // key -> { value, expiresAt }
 
-export function memoryDelete(key) {
+function memoryDelete(key) {
   memoryCache.delete(key);
 }
 
-export function memoryClear(prefix = '') {
+function memoryClear(prefix = '') {
   if (!prefix) {
     memoryCache.clear();
     return;
@@ -63,7 +67,7 @@ function lsKey(key) {
   return `${LS_PREFIX}${key}`;
 }
 
-export function lsDelete(key) {
+function lsDelete(key) {
   if (!lsAvailable()) return;
   try {
     localStorage.removeItem(lsKey(key));
@@ -72,7 +76,7 @@ export function lsDelete(key) {
   }
 }
 
-export function lsClear(prefix = '') {
+function lsClear(prefix = '') {
   if (!lsAvailable()) return;
   try {
     const keys = [];
@@ -87,47 +91,17 @@ export function lsClear(prefix = '') {
 }
 
 // ---------------------------------------------------------------------------
-// Layer 3 — Upstash Redis REST client (fetch-based, best-effort)
+// Layer 3 — Upstash Redis (guarded; see src/lib/redisGuard.js)
 // ---------------------------------------------------------------------------
-let redisWarnedOnce = false;
+// Reads go through the guard's tiered cachedFetch (memory -> localStorage
+// -> Redis GET -> loader). Writes below go through the guard's write proxy
+// (redis-cache Edge Function). The browser NEVER calls the Upstash REST
+// API directly for writes, and never holds the full-access token.
 
-function redisWarn(message) {
-  if (redisWarnedOnce) return;
-  redisWarnedOnce = true;
-  console.warn(`[cache] Redis unavailable: ${message} — continuing without Redis.`);
-}
-
-async function redisFetch(path, options = {}) {
-  if (!isRedisConfigured) {
-    redisWarn('VITE_UPSTASH_REDIS_REST_URL / VITE_UPSTASH_REDIS_REST_TOKEN not set.');
-    return null;
-  }
-  try {
-    const res = await fetch(`${config.upstashRedisUrl}${path}`, {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${config.upstashRedisToken}`,
-        ...(options.headers ?? {}),
-      },
-    });
-    if (!res.ok) {
-      redisWarn(`REST request failed (HTTP ${res.status}).`);
-      return null;
-    }
-    return await res.json();
-  } catch (err) {
-    redisWarn(err?.message ?? String(err));
-    return null;
-  }
-}
-
-const redisKey = (key) => `nandha:${CACHE_VERSION}:${key}`;
-
-/** DEL one or more keys from Redis. Best-effort, never throws. */
+/** DEL one or more keys from Redis via the write proxy. Best-effort, never throws. */
 export async function redisDel(...keys) {
   if (keys.length === 0) return;
-  const path = keys.map((k) => encodeURIComponent(redisKey(k))).join('/');
-  await redisFetch(`/del/${path}`, { method: 'POST' });
+  await redisDelViaProxy(...keys);
 }
 
 // ---------------------------------------------------------------------------
@@ -145,7 +119,7 @@ export const queryClientOptions = {
   },
 };
 
-export const cacheKeys = {
+const cacheKeys = {
   track: (id) => ['track', id],
   tracks: (filters = {}) => ['tracks', filters],
   home: () => ['home'],

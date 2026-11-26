@@ -60,7 +60,7 @@ function writeJson(key, value) {
   }
 }
 
-export function newId(prefix = 'admin') {
+function newId(prefix = 'admin') {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return `${prefix}-${crypto.randomUUID()}`
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
 }
@@ -80,7 +80,7 @@ export async function invalidateCaches(trackId) {
 }
 
 // ---------------------------------------------------------------- tracks
-export function loadAdminTracks() {
+function loadAdminTracks() {
   return readJson(KEYS.tracks, {})
 }
 
@@ -157,7 +157,7 @@ export function getMergedTracks(baseTracks = []) {
 }
 
 // ---------------------------------------------------------------- albums
-export function loadAdminAlbums() {
+function loadAdminAlbums() {
   return readJson(KEYS.albums, {})
 }
 
@@ -187,7 +187,7 @@ export function getMergedAlbums(baseAlbums = []) {
 }
 
 // ---------------------------------------------------------------- artists
-export function loadAdminArtists() {
+function loadAdminArtists() {
   return readJson(KEYS.artists, {})
 }
 
@@ -217,7 +217,7 @@ export function getMergedArtists(baseArtists = []) {
 }
 
 // ---------------------------------------------------------------- playlists
-export function loadAdminPlaylists() {
+function loadAdminPlaylists() {
   return readJson(KEYS.playlists, {})
 }
 
@@ -259,11 +259,6 @@ export function saveSyncedLyrics(trackId, lines) {
   return all[trackId]
 }
 
-export function getSyncedLyrics(trackId) {
-  const all = loadSyncedLyrics()
-  return all[trackId]?.lines || null
-}
-
 // ---------------------------------------------------------------- users
 // No seeded users: the list starts empty and fills only with real
 // accounts (26 Nov 2026 — dummy data removed per user instruction).
@@ -297,7 +292,7 @@ export function logActivity(entry) {
 }
 
 // ---------------------------------------------------------------- site settings
-export const DEFAULT_SITE_SETTINGS = {
+const DEFAULT_SITE_SETTINGS = {
   bioTa: '',
   bioEn: '',
   announcement: '',

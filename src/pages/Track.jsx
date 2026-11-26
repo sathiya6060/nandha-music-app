@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useI18n } from '../lib/i18n.js'
 import { getTrack, tracks } from '../data/catalog.js'
+import { cachedFetch } from '../lib/redisGuard.js'
 import TrackRow from '../components/TrackRow.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import { usePlayer, formatTime } from '../player/PlayerContext.jsx'
@@ -21,7 +22,24 @@ export default function Track() {
   const [shared, setShared] = useState(false)
   const playedForRef = useRef(null)
 
-  const track = getTrack(id)
+  // Sync value first (no loading flash), then refresh through the
+  // Redis guard (high priority): memory -> localStorage -> Redis ->
+  // static catalog. The guard never throws; a Redis outage keeps the
+  // sync value on screen.
+  const [track, setTrack] = useState(() => getTrack(id))
+
+  useEffect(() => {
+    let cancelled = false
+    void cachedFetch(`track:${id}`, async () => getTrack(id), {
+      ttlSeconds: 3600,
+      priority: 'high',
+    }).then((t) => {
+      if (!cancelled && t) setTrack(t)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [id])
 
   // Deep link: load the track and open the player for it. Guarded by
   // track id so StrictMode's double-effect in dev doesn't restart it.

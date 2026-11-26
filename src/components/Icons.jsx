@@ -1,6 +1,6 @@
 /**
  * Shared inline-SVG icon set — ONE set, ONE stroke weight (1.8) for every
- * line icon. Play/pause/next/prev are solid glyphs by design (they read
+ * line icon. Play/pause are solid glyphs by design (they read
  * as transport controls, not line art). All icons inherit currentColor.
  * Usage: <Icon name="home" size={24} /> — decorative only (aria-hidden).
  */
@@ -70,41 +70,6 @@ const PATHS = {
       <rect x="14" y="4" width="4" height="16" rx="1" />
     </>
   ),
-  next: (
-    <>
-      <polygon points="5 4 15 12 5 20 5 4" />
-      <line x1="19" y1="5" x2="19" y2="19" />
-    </>
-  ),
-  prev: (
-    <>
-      <polygon points="19 20 9 12 19 4 19 20" />
-      <line x1="5" y1="19" x2="5" y2="5" />
-    </>
-  ),
-  shuffle: (
-    <>
-      <polyline points="16 3 21 3 21 8" />
-      <line x1="4" y1="20" x2="21" y2="3" />
-      <polyline points="21 16 21 21 16 21" />
-      <line x1="15" y1="15" x2="21" y2="21" />
-      <line x1="4" y1="4" x2="9" y2="9" />
-    </>
-  ),
-  repeat: (
-    <>
-      <polyline points="17 1 21 5 17 9" />
-      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-      <polyline points="7 23 3 19 7 15" />
-      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-    </>
-  ),
-  volume: (
-    <>
-      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-    </>
-  ),
   close: (
     <>
       <line x1="18" y1="6" x2="6" y2="18" />
@@ -118,12 +83,6 @@ const PATHS = {
       <circle cx="18" cy="19" r="3" />
       <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
       <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-    </>
-  ),
-  plus: (
-    <>
-      <line x1="12" y1="5" x2="12" y2="19" />
-      <line x1="5" y1="12" x2="19" y2="12" />
     </>
   ),
   flame: (
@@ -146,7 +105,7 @@ const PATHS = {
   ),
 }
 
-const FILLED = new Set(['play', 'pause', 'next', 'prev'])
+const FILLED = new Set(['play', 'pause'])
 
 export default function Icon({ name, size = 24 }) {
   const paths = PATHS[name]

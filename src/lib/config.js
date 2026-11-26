@@ -10,6 +10,12 @@
  *                                   e.g. https://audio.nandhamusic.example
  *   VITE_UPSTASH_REDIS_REST_URL     Upstash Redis REST URL (optional)
  *   VITE_UPSTASH_REDIS_REST_TOKEN   Upstash Redis REST token (optional)
+ *                                   — READ-ONLY token only (see
+ *                                   src/lib/redisGuard.js). The
+ *                                   full-access token lives ONLY in the
+ *                                   redis-cache Edge Function env.
+ *   VITE_REDIS_MONTHLY_BUDGET       Redis command budget/month, default
+ *                                   450000 (90% of the 500K free tier).
  *   VITE_DEMO_MODE                  'true' = demo mode (see below).
  *
  * DEMO MODE (26 Nov 2026, OpenCodeReview M2): demo mode runs ONLY when
@@ -24,8 +30,23 @@
 const env = import.meta.env ?? {};
 
 function readEnv(name) {
-  const value = env[name];
-  return typeof value === 'string' && value.trim() !== '' ? value.trim() : '';
+  const fromImportMeta = env[name];
+  if (typeof fromImportMeta === 'string' && fromImportMeta.trim() !== '') {
+    return fromImportMeta.trim();
+  }
+  // Node test harness only (mobile-verify/test-redis-guard.mjs): the
+  // browser build never has process.env.
+  if (typeof process !== 'undefined' && process?.env?.[name]) {
+    const v = process.env[name];
+    if (typeof v === 'string' && v.trim() !== '') return v.trim();
+  }
+  return '';
+}
+
+/** Monthly Redis command budget; invalid/missing -> 450,000 (90% of free). */
+function parseBudget(raw) {
+  const n = Number.parseInt(raw ?? '', 10);
+  return Number.isFinite(n) && n > 0 ? n : 450_000;
 }
 
 export const config = {
@@ -35,6 +56,8 @@ export const config = {
   audioBaseUrl: readEnv('VITE_AUDIO_BASE_URL').replace(/\/+$/, ''),
   upstashRedisUrl: readEnv('VITE_UPSTASH_REDIS_REST_URL').replace(/\/+$/, ''),
   upstashRedisToken: readEnv('VITE_UPSTASH_REDIS_REST_TOKEN'),
+  /** Monthly Redis command budget (redisGuard.js). Default 450,000. */
+  redisMonthlyBudget: parseBudget(readEnv('VITE_REDIS_MONTHLY_BUDGET')),
   /** Explicit demo-mode flag (M2): only 'true' enables demo mode. */
   demoMode: readEnv('VITE_DEMO_MODE').toLowerCase() === 'true',
 };
@@ -51,7 +74,7 @@ export const isDemoMode = config.demoMode === true;
 export const isSupabaseConfigured = !isDemoMode;
 export const isRedisConfigured =
   config.upstashRedisUrl !== '' && config.upstashRedisToken !== '';
-export const isR2Configured = config.audioBaseUrl !== '';
+const isR2Configured = config.audioBaseUrl !== '';
 
 /**
  * Resolve the playable audio URL for a track.
@@ -78,8 +101,3 @@ export function audioUrl(track, quality = '128') {
   return `${config.audioBaseUrl}/${fileName}`;
 }
 
-/** Convenience: the demo/local audio path for a track (never an R2 URL). */
-export function localAudioUrl(track, quality = '128') {
-  if (!track) return null;
-  return quality === '320' ? track.audio320 ?? null : track.audio128 ?? null;
-}

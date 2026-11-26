@@ -181,7 +181,11 @@ export default function PlayerBar() {
           aria-label={isPlaying ? t('common.pause') : t('common.play')}
           title={isPlaying ? t('common.pause') : t('common.play')}
         >
-          {isPlaying ? <IconPause /> : <IconPlay />}
+          {/* key remounts the icon on play-state change so the pop
+              animation replays — the toggle reads as instant. */}
+          <span key={isPlaying ? 'pause' : 'play'} className="player-play-icon">
+            {isPlaying ? <IconPause /> : <IconPlay />}
+          </span>
         </button>
 
         <button

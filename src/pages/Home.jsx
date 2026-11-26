@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { useI18n } from '../lib/i18n.js'
 import { queryClientOptions } from '../lib/cache.js'
+import { cachedFetch } from '../lib/redisGuard.js'
 import {
   REAL_TRACK_ID,
   albums,
@@ -247,9 +248,13 @@ export default function Home() {
   const navigate = useNavigate()
   const [tab, setTab] = useState('home')
 
+  // Home feed through the Redis guard (high priority): memory ->
+  // localStorage -> Redis -> static catalog. Search is deliberately
+  // NOT wired through Redis — unique queries would burn the budget.
   const tracksQuery = useQuery({
     queryKey: ['catalog', 'tracks'],
-    queryFn: async () => tracks,
+    queryFn: async () =>
+      cachedFetch('home', async () => tracks, { ttlSeconds: 600, priority: 'high' }),
     ...QUERY_DEFAULTS,
     staleTime: STALE_TIME,
   })
