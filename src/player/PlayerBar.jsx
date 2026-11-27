@@ -1,11 +1,11 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { usePlayer, formatTime } from './PlayerContext.jsx'
 import { useI18n } from '../lib/i18n.js'
 import { formatSleepRemaining } from '../lib/sleepTimer.js'
 import Icon from '../components/Icons.jsx'
 import QueuePanel from './QueuePanel.jsx'
 import SleepTimerSheet from './SleepTimerSheet.jsx'
+import PreviewBanner from './PreviewBanner.jsx'
 import './player.css'
 
 function IconShuffle() {
@@ -92,12 +92,45 @@ export default function PlayerBar() {
     cycleRepeat,
     openPlayer,
     stopPlayback,
-    dismissPreviewPrompt,
     sleepTimer,
     sleepRemainingSec,
+    isPlayerOpen,
   } = usePlayer()
   const [showQueue, setShowQueue] = useState(false)
   const [sleepOpen, setSleepOpen] = useState(false)
+
+  // Close the mini-bar popovers when the full player opens. The sleep
+  // sheet renders at z-index 120, ABOVE the full-player overlay
+  // (z-index 100), so without this it stays visible on top of the
+  // expanded player: a keyboard user can Tab past it (the sheet has no
+  // focus trap) to the bar's expand button, open the full player, and
+  // then one Escape both closes the sheet AND stops playback — the
+  // full player's handler sees no inner panel open and falls through
+  // to requestClose. (OCR review of the prod sweep, 27 Nov 2026.)
+  // The queue popover sits inside the bar (z-index 95, hidden behind
+  // the overlay) but its state goes stale the same way, so it closes
+  // too. The full player has its own sleep/queue controls.
+  useEffect(() => {
+    if (isPlayerOpen) {
+      setSleepOpen(false)
+      setShowQueue(false)
+    }
+  }, [isPlayerOpen])
+
+  // Escape closes the sleep sheet / queue popover without stopping
+  // playback. (Prod sweep, 27 Nov 2026: the sleep sheet had no
+  // Escape handler — in the full player Escape fell through to the
+  // close handler and stopped playback.)
+  useEffect(() => {
+    if (!sleepOpen && !showQueue) return undefined
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape') return
+      if (sleepOpen) setSleepOpen(false)
+      else if (showQueue) setShowQueue(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [sleepOpen, showQueue])
 
   if (!track) return null
 
@@ -111,21 +144,19 @@ export default function PlayerBar() {
 
   return (
     <div className="player-bar" role="region" aria-label={t('player.nowPlaying')}>
-      {notice && (
-        <div className="player-notice" role="status">
-          {notice}
-        </div>
-      )}
-
-      {previewEnded && (
-        <div className="player-preview" role="status">
-          <span>{t('player.previewEnded')}</span>
-          <Link className="player-preview__btn" to="/login">
-            {t('player.signInToListen')}
-          </Link>
-          <button type="button" className="player-preview__dismiss" onClick={dismissPreviewPrompt}>
-            {t('player.dismissPreview')}
-          </button>
+      {/* Prod sweep (27 Nov 2026 — OCR L3): the player notice and the
+          guest preview banner used to share one absolute anchor above
+          the bar, so a toast fired while the gate banner was up (e.g.
+          "Link copied" right after the 5s gate) overlapped it. They
+          now stack in one column container, notice first. */}
+      {(notice || previewEnded) && (
+        <div className="player-bar-popups">
+          {notice && (
+            <div className="player-notice" role="status">
+              {notice}
+            </div>
+          )}
+          {previewEnded && <PreviewBanner className="player-preview" />}
         </div>
       )}
 

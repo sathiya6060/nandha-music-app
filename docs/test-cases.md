@@ -394,3 +394,148 @@ NOT pushed** — implementation + verification only. Still blocked: migration
 003 not applied live (Supabase SQL Editor step), delete-account Edge
 Function not deployed (dashboard step), signed-in full-song play + admin
 write E2E unverified (needs Sathiya's /login sign-in).
+
+## Production sweep (27 Nov 2026, evening IST) — full production pass
+
+Scope: every route (24 in App.jsx) × 320x568 / 390x844 / 1280x800 on the
+live site (build mwywm5ty-3045d11e) first, then fixes verified against the
+local preview (:5173). Skills read first: shipping-and-launch,
+accessibility-skill, webapp-testing (screenshot-first pattern, puppeteer
+harness in mobile-verify/), emil-ui-skills; `npx impeccable detect src/`
+run — only the known Inter font anti-pattern (brand decision) + 1
+bounce-easing advisory (user decides), nothing new.
+
+**Live sweep (`mobile-verify/check-prod-sweep.js`, results in
+`mobile-verify/prod-sweep/results.json`): 129 PASS, 9 FAIL.** The 9
+fails split into 4 real issues and 5 probe bugs, all diagnosed:
+
+- Real: More button below the fold @390x664 (bottom 711), @320x568
+  (682), @1280x800 (862); toast overlaps the consent banner (measured
+  live: toast y 665–708 vs banner y 676–768).
+- Probe bugs (re-probed in `check-prod-sweep-r2.js`, 22 PASS / 2 FAIL):
+  full-player @390x844 nulls — the player never opened in that loop
+  iteration (re-probe: cover 234×234, controls 700, More 824 — all in
+  view; the flake is the 3rd consecutive full-player open in one
+  browser session, not an app bug); search Tamil/Latin — the probe
+  typed into the hidden topbar input instead of `main .search-box`
+  (scoped selector: both PASS); L3 notice — Home has no TrackRow (0
+  rows, 1-track catalog shows cards only), so the probe had no
+  Add-to-queue button to click. Re-probed via /search TrackRow:
+  **L3 reproduced live — notice y 671–706 vs preview y 615–706,
+  overlap: true; visually the notice is fully hidden behind the
+  banner** (`prod-sweep/l3-live.png`).
+- Dynamic routes walked live: /track/vaazhvinil-orumurayenum and
+  /playlist/dc1e34f9-6dba-4adf-ac3a-2c5bf40c73ea at all 3 viewports —
+  no overflow, no page errors. Admin signed-out → /login PASS.
+- Desktop cover verified: 340×340 at 1280x800 (rule is
+  `min(60vw, 340px)` in player.css — the old "272px" note was wrong;
+  the cover is square by design). Volume row bottom 804 (4px below
+  fold) — scrolls, not a defect.
+- Google Fonts: css2 requests 481ms + 163ms, 1,297 + 1,205 bytes,
+  `document.fonts` "loaded", Tamil renders correctly in every
+  screenshot, `display=swap` so text renders immediately. No slow
+  load, no flash observed — **not self-hosted, no change made**.
+- QueuePanel aria-label verbs: already localised (common.clearQueue /
+  closeQueue / removeFromQueue + common.play have ta/hi values) — the
+  OCR recommendation was already applied; no fix needed.
+- Version-banner mechanism verified in code (App.jsx useVersionCheck:
+  fetches /version.json `cache: 'no-store'`, compares buildId, shows
+  UpdateBanner + Refresh, never auto-reloads) — see fix-verify below
+  for the live observation.
+
+**Fixes applied (local only, NOT deployed, NOT pushed):**
+
+1. **Sleep Escape** — MobilePlayer keydown chain closes the sleep
+   sheet first; PlayerBar gained a keydown effect closing the sleep
+   sheet / queue popover on Escape without stopping playback.
+2. **OCR L2 dedupe** — new shared `src/player/PreviewBanner.jsx`;
+   PlayerBar + MobilePlayer use it (duplicated banner JSX removed).
+3. **OCR L3 stacking** — PlayerBar notice + preview now render inside
+   a single `.player-bar-popups` absolute column (notice first);
+   player.css reworked (absolute positioning removed from the base
+   `.player-notice` / `.player-preview` rules; `nm-toast-in` keyframes
+   replaced with `nm-pop-in`). Live before: notice hidden behind the
+   banner; local after: notice y 571–607, preview y 615–706, stacked
+   with an 8px gap, both fully visible (`prod-sweep/l3-local.png`).
+4. **Toast vs consent banner** — `src/lib/toast.jsx` measures the
+   consent banner's actual top edge when a toast shows and lifts the
+   toast region above it (inline `bottom` style, 12px gap); falls back
+   to the CSS default when no banner. Live before: overlap true;
+   local after: toast bottom 664, banner top 676, overlap false.
+5. **Canvas pill** — `.mobile-player-canvas-toggle` moved bottom-right
+   → top-right (top: 8px); the baked-in cover text is now clear.
+   **Caught in verification:** the moved pill collided with the
+   preview hint chip (185px hint + 84px toggle on a 226px cover — the
+   toggle peeked out half-hidden behind the gold chip). Fix: the toggle
+   is hidden while the hint is up (`previewSecondsLeft == null` gate in
+   MobilePlayer.jsx) and appears once the gate fires; signed-in users
+   never see the hint, so the toggle is always there for them.
+6. **More button reorder** — the More button moved above the volume
+   row in MobilePlayer.jsx (cover untouched, still min(60vw, 34dvh)).
+   Before → after: @390x664 711 → 651 (in view), @1280x800 862 → 796
+   (in view), @390x844 824 → 758, @320x568 682 → 622 (still 54px
+   below fold — see Recorded below).
+7. **Search plural** — new bug found in the sweep: "1 results".
+   `search.results_one` / `_other` added in en/ta/hi (431/431/431,
+   zero missing) and Search.jsx now uses `tp('search.results', n)`.
+   Verified: "1 result".
+
+**Fix verification (`mobile-verify/check-prod-sweep-local.js`,
+`mobile-verify/prod-sweep/results-fix.json`): 23 PASS, 1 FAIL.**
+More in view @664 (651), @844 (758), desktop (796); canvas toggle
+top-right at all 4 sizes with hint hidden; toast above banner (664 vs
+676); Sleep Escape closes the sheet in the full player (player stays
+open, track still set) and in the mini player (bar stays); version
+banner observed for the first time — intercepted /version.json with a
+stale buildId → "New version available" + Refresh button;
+search "1 result". The 1 FAIL is More @320x568 (bottom 622).
+
+**Recorded (not a defect, no fix):** More @320x568 is 54px below the
+fold. The 568px budget was measured element by element
+(`diag-568-layout.js`): cover 192 + title block ~124 + seek 72 +
+controls 64 + margins/paddings ~90 = 622 for the More button. Safe
+spacing trims total ~38px, still 16px short; closing the gap would
+need shrinking the cover (forbidden by the P1 spec), hiding the
+English-title/composer line (content trade-off), or squeezing tap
+targets. The sheet scrolls (scrollHeight 702 > clientHeight 568) and
+a 60px scroll brings More to bottom 562, in view. Recorded as a known
+limitation for the smallest viewport only.
+
+**Regression suites (local :5173, after all fixes):** P1
+`check-audit-p1.js` **60/60 PASS** (first run 59/60 — the 4g FAIL was
+a stale probe selector reading the header Sign-up button
+`a.btn-primary` → `/login?mode=signup` instead of the page's Sign-in
+button; fixed to `main a.btn-primary`; Profile.jsx:45 correctly links
+`/login`). P2 `check-audit-p2.js` **89/89 PASS, 0 FAIL**.
+
+**Gates:** `npm test` 19 files / 113 tests PASS; `npm run build`
+green (buildId mwyywavf-5c3a8495); `scripts/pre-deploy-check.sh` OK;
+oxlint 36 warnings, 0 errors (back to baseline — the sweep briefly
+pushed it to 41 with 5 unused vars in my own verify scripts
+`check-prod-sweep.js` ×4 + `check-deploy-p2-live.js` `distBytes`;
+all 5 removed, zero new warnings in src/); `npx impeccable detect`
+on the changed files — no new findings. Locale parity 431/431/431.
+**NOT deployed, NOT pushed** — implementation + verification only.
+Next: OCR review → Ponytail audit → deploy (standing flow).
+
+**Screenshots viewed:** l3-live.png (notice hidden behind banner),
+l3-local.png ("Added to queue" pill stacked above the banner),
+fix-fullplayer-664.png (More in view; Canvas pill top-right over sky,
+baked-in text clear), fix-toast-consent.png ("Added to Liked Songs"
+above the banner, "1 result"), fix-version-banner.png,
+fullplayer-844-r2.png, toast-consent-r2.png.
+
+Still outstanding (unchanged): migration 003 not applied live;
+delete-account Edge Function not deployed (+ SERVICE_ROLE_KEY secret);
+signed-in full-song play + admin write E2E unverified (needs Sathiya's
+/login sign-in); M1 different-track close-race blocked on a 2nd song;
+Upstash Redis connection still blocked awaiting go-ahead; S7 security
+headers still out of scope (direct-upload path).
+
+### Deploy + live verification (27 Nov 2026, evening IST)
+- Deletions: 2 Ponytail comments only (MobilePlayer.jsx:439, player.css:641). Gates: npm test 19/113 PASS; build green, deployed buildId **mwyzy5ch-88bae1d3**; pre-deploy OK; oxlint 37 warnings / 0 errors. Deploy **0814e260-b538-4a15-96d0-0158aba00def**, 49 files, 2,877,011 bytes.
+- P1 live **75/75 PASS, 1 RECORDED** (check-deploy-p1-live.js; first run 72/75 — 3 probe bugs fixed: R1 stale buildId, 4g unscoped `.btn-primary`, R11 /Play/i matching "Open player"). P2 live **85 PASS / 0 FAIL / 3 SKIP** (demo-only). Perf: DCL 772ms / FCP 860ms median @390px.
+- Prod sweep live **131 PASS / 7 FAIL** (check-prod-sweep.js): 4× @390x664 null geometry = cold-start probe flake (re-probe 14/14 PASS), 1× More @320x568 = recorded limitation, 2× search = wrong input selector (re-probe PASS). Fixups **14/14 PASS** (check-deploy-sweep-fixups.js): More @664 bottom 651, toast gap exactly 12px, Accept/Decline visible + tappable. L3 **STACKED** (diag-l3-live.js: notice 571–607, preview 615–706). Escape **9/9 PASS** (check-deploy-sweep-live.js v2: mini-bar sheet closes on player open, Escape closes full-player sheet, playback continues). Search "1 result" singular.
+- Screenshots viewed: fullplayer-664-reprobe.png, l3-live.png, toast-consent-real.png, escape-after-live.png, home-390-live.png, home-1280-live.png.
+
+Still outstanding (unchanged): migration 003 not applied live; delete-account Edge Function not deployed (+ SERVICE_ROLE_KEY secret); signed-in full-song play + admin write E2E unverified (needs Sathiya's /login sign-in); M1 different-track close-race blocked on a 2nd song; Upstash Redis connection still blocked awaiting go-ahead; S7 security headers still out of scope (direct-upload path).

@@ -59,6 +59,8 @@ export default {
   'home.topTracks': 'சிறந்த பாடல்கள்',
   'search.title': 'தேடுக',
   'search.results': '{{n}} முடிவுகள்',
+  'search.results_one': '1 முடிவு',
+  'search.results_other': '{{n}} முடிவுகள்',
   'search.noResultsLogged': '“{{q}}” க்கு முடிவுகள் இல்லை',
   'search.browse': 'அனைத்தையும் பார்',
   'library.title': 'உங்கள் நூலகம்',

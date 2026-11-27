@@ -1,8 +1,20 @@
 # Lint baseline (S10, 27 Nov 2026 — updated for the items 5–12 batch)
 
-`npx oxlint` — **36 warnings, 0 errors** (was 233 warnings on 27 Nov
-2026 before this pass). `scripts/pre-deploy-check.sh` gates on
+`npx oxlint` — **37 warnings, 0 errors** (was 233 warnings on 27 Nov
+2026 before this pass; 36 after the items 5–12 batch). `scripts/pre-deploy-check.sh` gates on
 `--max-warnings 40`, so the count cannot silently grow again.
+
+## OCR review of the prod sweep (27 Nov 2026) — count 36 → 37
+
+- `src/player/PlayerBar.jsx:115` — `react(set-state-in-effect)` (+1,
+  accepted, same pattern as the other 10): the review fix closes the
+  mini-bar sleep sheet + queue popover when the full player opens
+  (`isPlayerOpen` effect). It synchronizes local popover state with a
+  context-owned state change — exactly what effects are for, and it
+  covers every `openPlayer` caller (PlayerBar's two buttons AND
+  `Track.jsx:66,91`), which per-button close handlers would miss. The
+  alternative (lifting popover state into context) is a refactor out of
+  scope for a review fix.
 
 ## Items 5–12 batch (27 Nov 2026) — count 34 → 36
 

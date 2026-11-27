@@ -11,6 +11,7 @@ import HideButton from '../components/HideButton.jsx'
 import LyricsPanel from './LyricsPanel.jsx'
 import QueuePanel from './QueuePanel.jsx'
 import SleepTimerSheet from './SleepTimerSheet.jsx'
+import PreviewBanner from './PreviewBanner.jsx'
 import StoryCard from './StoryCard.jsx'
 import './player.css'
 
@@ -134,7 +135,6 @@ export default function MobilePlayer() {
     toggleShuffle,
     cycleRepeat,
     stopPlayback,
-    dismissPreviewPrompt,
     setNotice,
     sleepTimer,
     sleepRemainingSec,
@@ -209,24 +209,27 @@ export default function MobilePlayer() {
     }
   }, [isPlayerOpen])
 
-  // Escape closes the "More actions" sheet first, then the story card,
-  // then the lyrics view, then STOPS playback (L2: stop means stop —
-  // the X, Escape and swipe-down all stop; only the inner panels
-  // collapse without stopping). The final step goes through
-  // requestClose so the sheet slides down instead of vanishing (audio
-  // is paused instantly inside requestClose).
+  // Escape closes the sleep sheet first, then the "More actions"
+  // sheet, then the story card, then the lyrics view, then STOPS
+  // playback (L2: stop means stop — the X, Escape and swipe-down all
+  // stop; only the inner panels collapse without stopping). The final
+  // step goes through requestClose so the sheet slides down instead
+  // of vanishing (audio is paused instantly inside requestClose).
+  // (Prod sweep, 27 Nov 2026: the sleep sheet had no Escape handler —
+  // Escape fell through to requestClose and stopped playback.)
   useEffect(() => {
     if (!isPlayerOpen) return undefined
     const onKeyDown = (e) => {
       if (e.key !== 'Escape') return
-      if (showMore) setShowMore(false)
+      if (sleepOpen) setSleepOpen(false)
+      else if (showMore) setShowMore(false)
       else if (panel) setPanel(null)
       else if (view === 'lyrics') setView('cover')
       else requestClose()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isPlayerOpen, showMore, panel, view, requestClose])
+  }, [isPlayerOpen, sleepOpen, showMore, panel, view, requestClose])
 
   // L5: focus trap — when the player opens, focus the close button and
   // remember where focus was; restore it on close so Tab never leaves
@@ -406,17 +409,7 @@ export default function MobilePlayer() {
             </div>
           )}
 
-          {previewEnded && (
-            <div className="player-preview mobile-player-preview" role="status">
-              <span>{t('player.previewEnded')}</span>
-              <Link className="player-preview__btn" to="/login">
-                {t('player.signInToListen')}
-              </Link>
-              <button type="button" className="player-preview__dismiss" onClick={dismissPreviewPrompt}>
-                {t('player.dismissPreview')}
-              </button>
-            </div>
-          )}
+          {previewEnded && <PreviewBanner className="player-preview mobile-player-preview" />}
 
           {/* Canvas loop: slow Ken-Burns zoom/pan over the cover with a warm
               dark-blue + Amber Gold gradient overlay. Pure CSS animation —
@@ -443,7 +436,7 @@ export default function MobilePlayer() {
                 countdown to the 5s gate. Absolutely positioned over
                 the cover's top-left corner — zero layout change, so
                 the P1 full-player geometry (seek + controls in view)
-                is untouched. The Canvas toggle stays bottom-right. */}
+                is untouched. */}
             {previewSecondsLeft != null && (
               <Link
                 to="/login"
@@ -457,6 +450,13 @@ export default function MobilePlayer() {
                 </span>
               </Link>
             )}
+            {/* Prod sweep (27 Nov 2026): the toggle sits top-right and the
+                preview hint sits top-left — on a 226px cover the two
+                pills collide (185px hint + 84px toggle). The toggle is
+                hidden while the hint is up (the 5s guest preview) and
+                appears once the gate fires; signed-in users never see
+                the hint, so the toggle is always there for them. */}
+            {previewSecondsLeft == null && (
             <button
               type="button"
               className="mobile-player-canvas-toggle"
@@ -467,6 +467,7 @@ export default function MobilePlayer() {
               {canvasOn ? <IconCanvasPause /> : <IconCanvasPlay />}
               <span>{t('player.canvas')}</span>
             </button>
+            )}
           </div>
 
           <div className="mobile-player-titles">
@@ -548,6 +549,27 @@ export default function MobilePlayer() {
             </button>
           </div>
 
+          {/* Prod sweep (27 Nov 2026): this button used to sit BELOW the
+              volume row, which put it 47px below the fold at 390x664
+              (and 62px at desktop 1280x800) — the volume row is 48px +
+              12px margin. It now sits directly under the transport
+              controls, so it is in view at 664px and desktop without
+              touching the cover (still min(60vw, 34dvh)). The volume
+              slider moves below it; the sheet scrolls, so both stay
+              reachable. At 320x568 the button is still just below the
+              fold — that viewport is too short for everything, and the
+              sheet scrolls. */}
+          <button
+            type="button"
+            className="mobile-player-more-btn"
+            onClick={() => setShowMore(true)}
+            aria-haspopup="dialog"
+            aria-expanded={showMore}
+          >
+            <Icon name="more" size={18} />
+            <span>{t('player.moreActions')}</span>
+          </button>
+
           <div className="mobile-player-volume">
             <IconVolumeLow />
             <input
@@ -567,18 +589,8 @@ export default function MobilePlayer() {
               timer) used to sit in two wrapping rows below the controls
               (~184px at 320px) and pushed the sheet far past the fold.
               They now live in the "More actions" sheet at the bottom of
-              this file, opened by this one compact button — same
+              this file, opened by the compact button above — same
               handlers, same labels, same locale keys. */}
-          <button
-            type="button"
-            className="mobile-player-more-btn"
-            onClick={() => setShowMore(true)}
-            aria-haspopup="dialog"
-            aria-expanded={showMore}
-          >
-            <Icon name="more" size={18} />
-            <span>{t('player.moreActions')}</span>
-          </button>
 
           {panel === 'story' && (
             <div className="mobile-player-panel">

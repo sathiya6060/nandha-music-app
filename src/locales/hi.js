@@ -59,6 +59,8 @@ export default {
   'home.topTracks': 'टॉप गाने',
   'search.title': 'खोजें',
   'search.results': '{{n}} परिणाम',
+  'search.results_one': '1 परिणाम',
+  'search.results_other': '{{n}} परिणाम',
   'search.noResultsLogged': '“{{q}}” के लिए कोई परिणाम नहीं',
   'search.browse': 'सभी देखें',
   'library.title': 'आपकी लाइब्रेरी',

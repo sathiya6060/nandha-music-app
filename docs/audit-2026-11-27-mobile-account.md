@@ -468,3 +468,154 @@ bytes). **NOT deployed, NOT pushed — implementation + verification only.**
 - "Canvas" pill overlaps cover art's baked-in text in the full player
   (pre-existing).
 - More button 47px below fold @664 (spec produces it; controls in view).
+
+## Live verification — items 5–12 deployed (27 Nov 2026, build mwywm5ty-3045d11e)
+
+Deployment `d843cedf-e74a-4ad2-baca-c3a6c9ab0283`, live at
+https://nandha-music.pages.dev. 4 Ponytail deletions applied first
+(3 locale keys × 3 locales, `.mix-card--steel`, `getSyncUserId()`,
+unused `beforeEach` import); locale parity 429/429/429; lint baseline
+36 warnings (docs/lint-baseline.md updated).
+
+- P1 live re-run (`mobile-verify/check-deploy-p1-live-r2.js`):
+  **75/75 PASS, 1 RECORDED** (More button 47px below fold @664).
+  First run 73/75 — both failures were probe bugs, fixed in the probe:
+  4g read the first `.btn-primary` in the whole document (the header
+  "Sign up" added by item 6) instead of the Profile guest "Sign in";
+  R11's `/Play/i` selector matched "Open player" (the
+  `.player-bar-main` button) instead of the real Play toggle. The real
+  replay flow was verified separately (`diag-regate-live.js`): playback
+  resumes from 0 and re-gates at 5.2s audio time (7s wall).
+- P2 live (`mobile-verify/check-deploy-p2-live.js`): **85 PASS, 0 FAIL,
+  3 SKIP** (demo-only: signed-in avatar menu, demo full playback, demo
+  delete — no demo mode on the live site; verified locally 89/89).
+  Live evidence: hint chip "Sign in for full songs · 0:04" counting
+  down; header Sign in/Sign up (guest, 390 + 1280); Sign up →
+  `/login?mode=signup`; autoFocus off on touch / on desktop; all 4
+  search queries find the track; Follow → Following + toast; Share
+  toasts; settings persist across reload (quality 320, sleep 15,
+  alarm 06:30); 404 `<h1>` + title; no overflow on any route at
+  320/390/1280 — 320px viewport stays 320px (545px bug NOT regressed);
+  gate pauses 5.22s audio time over a signed Supabase URL, dismiss
+  rewinds to 0, replay re-gates; covers 134×134 @390 / 161×161 @1280;
+  zero page/console errors. Perf (live, 390px, median of 3): DCL
+  707ms, FCP 816ms; dist 2,876,354 bytes.
+- Screenshots viewed in `mobile-verify/deploy-verify-p1-r2/` and
+  `mobile-verify/deploy-verify-p2/` (home 320/390/1280, banner, gate,
+  hint, full player 320/390/844, profile guest, settings 320/390,
+  follow toast, Tamil search, More sheet).
+- GitHub re-push: head `1efcbc0c904f333c6f0c303ec7a64e7bf62ff352`,
+  141 paths, sync record 10 entries.
+
+Still outstanding (unchanged): migration 003 not applied live;
+delete-account Edge Function not deployed (+ SERVICE_ROLE_KEY secret);
+signed-in full-song play + admin write E2E unverified (needs Sathiya's
+sign-in); Upstash Redis connection still blocked awaiting go-ahead.
+
+## Production sweep (27 Nov 2026, evening IST)
+
+User direction: fix the remaining UI/flow problems first, make it a proper
+production application, add remaining features later. Implementation +
+verification only — no deploy, no GitHub push (OCR → Ponytail → deploy
+follows). Full evidence in `docs/test-cases.md` (Production sweep
+section) and `mobile-verify/prod-sweep/`.
+
+**Live sweep first** (`mobile-verify/check-prod-sweep.js`): all 24 routes
+× 320x568 / 390x844 / 1280x800 + dynamic /track/:id + /playlist/:id +
+admin redirect + full-player geometry + L3 + toast-vs-consent + home
+spot checks + Tamil/Latin search. **129 PASS, 9 FAIL** — 4 real, 5 probe
+bugs (all diagnosed in `check-prod-sweep-r2.js`, 22 PASS / 2 FAIL, and
+`diag-l3-live.js` / `diag-l3-queue.js` / `diag-568-layout.js`).
+
+**Backlog verdicts:** QueuePanel aria-label verbs already localised (no
+fix). Desktop cover 340×340 (rule `min(60vw, 340px)` — the old "272px"
+note was wrong). Google Fonts: 481ms + 163ms, loaded, Tamil correct,
+`display=swap` — no problem, not self-hosted. Version-banner mechanism
+verified in code and observed live via /version.json interception
+("New version available" + Refresh; never auto-reloads).
+
+**Real issues found + fixed (local, build mwyywavf-5c3a8495):**
+- Sleep sheet had no Escape handler → Escape now closes the sleep
+  sheet first (full player + mini player), playback continues.
+- OCR L2 preview-banner duplication → shared `src/player/PreviewBanner.jsx`.
+- OCR L3 notice/preview overlap → single `.player-bar-popups` column;
+  live the notice was fully hidden behind the banner, now stacked with
+  an 8px gap, both visible.
+- Toast overlapped the consent banner → toast lifts above the banner's
+  measured top edge (12px gap).
+- Canvas pill covered the cover's baked-in text → moved top-right; the
+  move itself collided with the preview hint chip, so the toggle hides
+  while the hint is up (5s guest preview) and appears after the gate.
+- More button below the fold → reordered above the volume row:
+  @664 711→651, desktop 862→796, @844 824→758 (all in view).
+- New: search said "1 results" → plural `tp()` forms, "1 result"
+  (locale parity 431/431/431).
+
+**Recorded, not fixed:** More @320x568 still 54px below the fold
+(bottom 622). Measured budget shows safe trims only save ~38px;
+closing it needs a cover shrink (spec forbids) or hiding a title line
+(content trade-off). The sheet scrolls and a 60px scroll brings it in
+view — smallest viewport only.
+
+**Regression:** P1 60/60 PASS, P2 89/89 PASS (local :5173); `npm test`
+19 files / 113 tests PASS; build green; pre-deploy-check OK; oxlint
+36 warnings, 0 errors (baseline); impeccable no new findings.
+**NOT deployed, NOT pushed.**
+
+**OCR review of this batch (27 Nov 2026, evening IST) — GO with one
+fix applied (build mwyz8jfq-a6d45360):**
+- M1 (Medium, fixed): cross-component Escape hole. The mini-bar sleep
+  sheet renders at z-index 120, above the full-player overlay (z-100),
+  and stayed open when the player opened via keyboard — one Escape then
+  both closed the sheet AND stopped playback, contradicting the
+  batch's Escape contract. Fix: `PlayerBar.jsx` closes its sleep sheet
+  + queue popover when `isPlayerOpen` becomes true (covers every
+  `openPlayer` caller, incl. `Track.jsx:66,91`). Verified by
+  `mobile-verify/check-ocr-sweep-escape.js`: 9/9 PASS (sheet + queue
+  close on player open; Escape with nothing open still stops playback
+  by design; Escape closes the full-player sleep sheet without
+  stopping). One accepted lint warning added (`set-state-in-effect`,
+  PlayerBar.jsx:115 — same pattern as the other 10; baseline
+  36 → 37, documented in `docs/lint-baseline.md`, gate allows 40).
+- Canvas toggle verified correct: `previewSecondsLeft` is null after
+  the gate fires and always null for signed-in users, so the toggle
+  appears after the gate and is always there for signed-in users.
+- Lows left unfixed: toast re-measures only when the toast changes
+  (stays lifted if the banner unmounts mid-toast; cosmetic, ≤3.5s);
+  `search.results` base key is the live `tp()` fallback, not dead.
+- A focus-trap gap was suspected (trap queries `sheetRef` only) but
+  DISPROVED by probe: the sleep/More sheets render inside the player
+  sheet, so the trap covers them — 30 Tabs stayed in the dialog
+  (`mobile-verify/check-ocr-sweep-focus.js`). Not a finding.
+- More @320x568 (54px below fold) judged ACCEPTABLE for GO: closing it
+  needs a cover shrink (forbidden by the P1 spec) or hiding a title
+  line; the sheet scrolls and controls/seek are in view — smallest
+  viewport only, recorded limitation.
+- After the fix: `npm test` 19 files / 113 tests PASS; build green
+  (mwyz8jfq-a6d45360); pre-deploy-check OK; P1 60/60 PASS (1 recorded);
+  P2 88/89 — the 1 FAIL ("hint countdown decreases", 0:04 → 0:04) is a
+  timing flake, re-probed PASS (0:05 → 0:04 → 0:02, currentTime
+  advancing; `mobile-verify/check-ocr-hint-flake.js`). Ready for the
+  Ponytail audit.
+
+Still outstanding (unchanged): migration 003 not applied live;
+delete-account Edge Function not deployed (+ SERVICE_ROLE_KEY secret);
+signed-in full-song play + admin write E2E unverified (needs Sathiya's
+/login sign-in); M1 different-track close-race blocked on a 2nd song;
+Upstash Redis connection still blocked awaiting go-ahead; S7 security
+headers still out of scope (direct-upload path).
+
+### Deploy + live verification (27 Nov 2026, evening IST)
+- **Deletions applied (user approved 18:37 IST — exactly the 2 Ponytail comment items, nothing else):** MobilePlayer.jsx:439 last sentence "The Canvas toggle stays bottom-right." deleted; player.css:641 parenthetical "(the Canvas toggle is bottom-right)" deleted. Grep verified: remaining "bottom-right" hits are the sweep's own historical comment (player.css:608, correct) and the mix-card play button (theme.css:1670, correct).
+- **Gates:** npm test 19 files / 113 tests PASS; build green (local mwyzxv1m-bcdb8f73; pre-deploy-check rebuilt the same source → deployed buildId **mwyzy5ch-88bae1d3**); pre-deploy-check OK; oxlint 37 warnings, 0 errors (documented, gate 40).
+- **Deploy:** Cloudflare Pages deployment **0814e260-b538-4a15-96d0-0158aba00def** (49 files, 2,877,011 bytes, stage deploy success), live at https://nandha-music.pages.dev. The script's urllib 403 verify lines are the known fetcher-block artifact — curl confirms prod 200 + version.json = mwyzy5ch-88bae1d3.
+- **P1 live (check-deploy-p1-live.js): 75/75 PASS, 1 RECORDED** (More button 47px below fold @664). First run 72/75 — all 3 FAILs were probe bugs, diagnosed and fixed in the probe (R1 hardcoded the old Priority-1 buildId mwyrrp61-86e96322; 4g read the first `.btn-primary` in the document = header Sign-up, now scoped to `main`; R11 matched /Play/i = "Open player", now exact 'Play'), re-run 75/75. Gate pauses 5.20s audio time over a signed Supabase URL, dismiss rewinds to 0, replay re-gates; covers 134×134 @390 / 161×161 @1280; 320px viewport stays 320px.
+- **P2 live (check-deploy-p2-live.js): 85 PASS / 0 FAIL / 3 SKIP** (demo-only: signed-in avatar menu, demo full playback, demo delete). Perf live 390px median of 3: DCL 772ms, FCP 860ms; dist 2,877,011 bytes. Settings persist across reload; 404 <h1> + title correct; all 4 Tamil/Latin queries find the track.
+- **Prod sweep live (check-prod-sweep.js): 131 PASS / 7 FAIL** — all 7 explained, none an app bug: 4× full-player @390x664 all-null geometry = cold-start probe flake (play click fired before the catalog loaded; re-probe with waits: 14/14 PASS, More bottom 651 in view — see fixups); 1× More @320x568 bottom 622 = the RECORDED limitation (54px below fold); 2× search Tamil/Latin = wrong input selector in the probe (generic `input[type="search"]` picked the wrong input; P2's `main .search-box input[type="search"]` passes). Route walk: all 24 routes × 320/390/1280, no overflow, no page errors; admin signed-out → /login; covers square everywhere; desktop cover 340×340.
+- **Sweep fixups live (check-deploy-sweep-fixups.js): 14/14 PASS** — @390x664 cover 226×226, seek bottom 525, controls bottom 593, More bottom 651 (in view); Canvas toggle hidden while the hint chip is up; search Tamil + Latin; REAL toast "Added to Liked Songs" above the consent banner with exactly a 12px gap (toast bottom 664 vs banner top 676), Accept + Decline visible and tappable.
+- **L3 live (diag-l3-live.js): STACKED, no overlap** — notice y 571–607, preview y 615–706 (8px gap), zero page errors. Screenshot l3-live.png.
+- **Sleep Escape live (check-deploy-sweep-live.js v2): 9/9 PASS** — sleep sheet opens from the mini bar; closes when the full player opens (OCR M1 fix); opens inside the full player via More → sleep row; Escape closes it, full player stays open with the track set, playback continues (audio went from not-yet-started to playing across the Escape — Escape did not stop it). Search "1 result" singular confirmed. v1 of this probe failed 5/9 because it never waited for the catalog (play click missed) and looked for a direct sleep button in the full player (it lives in the More sheet) — probe bugs, fixed in v2.
+- **Screenshots viewed:** prod-sweep/fullplayer-664-reprobe.png (More in view @664, hint chip on one line, Canvas pill hidden, cover text clear), l3-live.png (notice stacked above banner, "1 result"), toast-consent-real.png (toast 12px above banner, Accept/Decline clear), escape-after-live.png (sheet closed, player open, Pause icon = playing), deploy-verify-p1/home-390-live.png + home-1280-live.png (clean; consent banner transiently overlaps the Song of the Day Play button / mix-card subtitles until Accept/Decline — same as previous deploys, dismissible).
+- **Recorded, unchanged:** More @320x568 still 54px below fold (cover shrink forbidden by P1 spec); P2's 3 demo-only skips need Sathiya's sign-in to verify live.
+
+Still outstanding (unchanged): migration 003 not applied live; delete-account Edge Function not deployed (+ SERVICE_ROLE_KEY secret); signed-in full-song play + admin write E2E unverified (needs Sathiya's /login sign-in); M1 different-track close-race blocked on a 2nd song; Upstash Redis connection still blocked awaiting go-ahead; S7 security headers still out of scope (direct-upload path).

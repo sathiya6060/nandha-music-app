@@ -223,7 +223,9 @@ export default function Search() {
       ) : results.length > 0 ? (
         <section className="section" aria-label={t('search.title')}>
           <p aria-live="polite" style={{ color: 'var(--muted)', fontSize: '0.875rem', margin: '0 0 8px' }}>
-            {t('search.results', { n: results.length })}
+            {/* Prod sweep (27 Nov 2026): "1 results" was wrong — tp()
+                picks the singular form for n === 1. */}
+            {tp('search.results', results.length)}
           </p>
           {/* Top-result hero (F-028): the best match, large, with a Play
               button. The full list below INCLUDES the top result again

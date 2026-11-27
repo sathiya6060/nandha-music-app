@@ -60,6 +60,8 @@ export default {
   'home.topTracks': 'Top Tracks',
   'search.title': 'Search',
   'search.results': '{{n}} results',
+  'search.results_one': '1 result',
+  'search.results_other': '{{n}} results',
   'search.noResultsLogged': 'No results for “{{q}}”',
   'search.browse': 'Browse all',
   'library.title': 'Your Library',

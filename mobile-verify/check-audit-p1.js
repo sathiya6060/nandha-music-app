@@ -507,7 +507,7 @@ async function openFullPlayer(page) {
       url: location.pathname, h1: h1 ? h1.textContent.trim() : null,
       title: document.title,
       body: document.body.innerText.slice(0, 300),
-      signInHref: (document.querySelector('a.btn-primary') || {}).getAttribute?.('href') || null,
+      signInHref: (document.querySelector('main a.btn-primary') || {}).getAttribute?.('href') || null,
       activeTabs: links.filter((l) => l.current === 'page').map((l) => l.href),
     };
   });
