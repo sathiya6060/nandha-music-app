@@ -89,6 +89,7 @@ export default function SiteSettings() {
       artistPickTrackId: form.artistPickTrackId,
       pressPhotos: form.pressPhotos || [],
       contactEmail: form.contactEmail,
+      previewImage: form.previewImage || '/assets/nandha-og.jpg',
     })
     logActivity({ actor: user?.email || 'Admin', action: 'Updated site settings', detail: 'EPK / announcement / Artist Pick' })
     await invalidateCaches()
@@ -194,6 +195,20 @@ export default function SiteSettings() {
         <label className="admin-field">
           <span>{t('admin.contactEmail')}</span>
           <input type="email" className="admin-input" value={form.contactEmail || ''} onChange={(e) => set('contactEmail', e.target.value)} />
+        </label>
+
+        <label className="admin-field">
+          <span>{t('admin.previewImage')}</span>
+          <select className="admin-input" value={form.previewImage || '/assets/nandha-og.jpg'} onChange={(e) => set('previewImage', e.target.value)}>
+            <option value="/assets/nandha-og.jpg">Nandha Music — brand card (default)</option>
+            <option value="/assets/vaazhvinil-cover.jpg">Vaazhvinil Orumurayenum — song cover</option>
+            <option value="https://qldhyzgpxuzpsymongvf.supabase.co/storage/v1/object/public/covers/malaiyoram-veesiya-kaatre-cover-800.jpg">Malaiyoram Veesiya Kaatre — song cover</option>
+            <option value="https://qldhyzgpxuzpsymongvf.supabase.co/storage/v1/object/public/covers/marakka-mudiyuma-cover-800.jpg">Marakka Mudiyuma — song cover</option>
+          </select>
+          <span className="admin-field-hint">{t('admin.previewImageHint')}</span>
+          {form.previewImage && (
+            <img src={form.previewImage} alt="" className="admin-thumb" style={{ marginTop: 8 }} />
+          )}
         </label>
 
         <div className="admin-form-actions">

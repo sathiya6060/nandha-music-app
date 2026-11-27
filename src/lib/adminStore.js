@@ -234,6 +234,9 @@ const DEFAULT_SITE_SETTINGS = {
   artistPickTrackId: '',
   pressPhotos: [],
   contactEmail: 'officialnandhamusic@gmail.com',
+  // Link preview image (Admin → Site Settings): the image shown when the
+  // site link is shared. Default is the brand OG card (1200x630).
+  previewImage: '/assets/nandha-og.jpg',
 }
 
 export function loadSiteSettings() {

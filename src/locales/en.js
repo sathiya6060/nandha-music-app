@@ -324,6 +324,8 @@ export default {
   'admin.artistPick': 'Featured Artist Pick — track',
   'admin.pressPhotos': 'Press photos',
   'admin.contactEmail': 'Contact email',
+  'admin.previewImage': 'Link preview image',
+  'admin.previewImageHint': 'Shown when the site link is shared (WhatsApp, social media). The brand card is the default.',
   'admin.songOfDayCurrent': 'Currently effective Song of the Day: {{title}}',
   'admin.songOfDayHint': 'Devotional tracks first. Defaults to Vaazhvinil Orumurayenum.',
   'admin.statusDraft': 'Draft',

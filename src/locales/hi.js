@@ -318,6 +318,8 @@ export default {
   'admin.artistPick': 'विशेष आर्टिस्ट पिक — गाना',
   'admin.pressPhotos': 'प्रेस फ़ोटो',
   'admin.contactEmail': 'संपर्क ईमेल',
+  'admin.previewImage': 'लिंक पूर्वावलोकन छवि',
+  'admin.previewImageHint': 'साइट लिंक साझा करने पर दिखने वाली छवि (WhatsApp, सोशल मीडिया)। ब्रांड कार्ड डिफ़ॉल्ट है।',
   'admin.songOfDayCurrent': 'आज का प्रभावी दिन का गाना: {{title}}',
   'admin.songOfDayHint': 'भक्ति गाने पहले। डिफ़ॉल्ट: Vaazhvinil Orumurayenum।',
   'admin.statusDraft': 'ड्राफ़्ट',

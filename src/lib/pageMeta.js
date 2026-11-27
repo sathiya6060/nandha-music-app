@@ -14,11 +14,40 @@ export const SITE_URL = 'https://nandhamusic.pages.dev'
 const DEFAULT_TITLE = 'Nandha Music — YOUR BEAT. YOUR ECHO.'
 const DEFAULT_DESCRIPTION =
   'Official Tamil Music Label | Love • Devotional • Melody | Stream Vaazhvinil Orumurayenum now.'
-export const DEFAULT_IMAGE = `${SITE_URL}/assets/vaazhvinil-cover.jpg`
+export const DEFAULT_IMAGE = `${SITE_URL}/assets/nandha-og.jpg`
+
+// The admin-chosen link preview image (Admin → Site Settings →
+// "Link preview image", stored in localStorage under the same key
+// adminStore.js uses: 'nandha-site-settings'). Read directly from
+// localStorage here instead of importing adminStore — that module pulls
+// in the Supabase client, which this tiny meta helper must not drag in.
+// Falls back to the brand OG card when nothing is saved (or when there
+// is no localStorage, e.g. tests / SSR).
+export function getDefaultImage() {
+  try {
+    if (typeof localStorage === 'undefined') return DEFAULT_IMAGE
+    const raw = localStorage.getItem('nandha-site-settings')
+    const saved = raw ? JSON.parse(raw)?.previewImage : null
+    if (typeof saved === 'string' && saved.trim()) return absoluteUrl(saved.trim())
+  } catch {
+    // Corrupt JSON / blocked storage — fall through to the default.
+  }
+  return DEFAULT_IMAGE
+}
+
+// Known sizes for the images the preview setting can pick, so the
+// og:image:width/height hints stay truthful. Anything else drops the
+// hints instead of stating a wrong size.
+function defaultImageSize(img) {
+  if (img.endsWith('/assets/nandha-og.jpg')) return ['1200', '630']
+  if (img.endsWith('/assets/vaazhvinil-cover.jpg')) return ['3000', '3000']
+  if (img.endsWith('-cover-800.jpg')) return ['800', '800']
+  return null
+}
 
 /** Turn a catalog cover path (relative or absolute) into an absolute URL. */
 export function absoluteUrl(path) {
-  if (!path) return DEFAULT_IMAGE
+  if (!path) return getDefaultImage()
   if (/^https?:\/\//i.test(path)) return path
   return `${SITE_URL}${path.startsWith('/') ? '' : '/'}${path}`
 }
@@ -59,15 +88,22 @@ export function setPageMeta({ title, description, image, url, type } = {}) {
   setMeta('meta[property="og:type"]', type || 'website')
   setMeta('meta[property="og:url"]', pageUrl)
   setMeta('meta[property="og:image"]', img)
-  // The default image is the 3000px JPG (index.html values). A detail
-  // page's cover has an unknown size (DB cover or the 800px variant),
-  // so drop the width/height hints instead of stating a wrong size.
+  // Width/height hints: a detail page's cover has an unknown size (DB
+  // cover or the 800px variant), so drop the hints instead of stating a
+  // wrong size. The site default comes from the preview-image setting,
+  // whose known sizes live in defaultImageSize().
   if (image) {
     removeMeta('meta[property="og:image:width"]')
     removeMeta('meta[property="og:image:height"]')
   } else {
-    setMeta('meta[property="og:image:width"]', '3000')
-    setMeta('meta[property="og:image:height"]', '3000')
+    const size = defaultImageSize(img)
+    if (size) {
+      setMeta('meta[property="og:image:width"]', size[0])
+      setMeta('meta[property="og:image:height"]', size[1])
+    } else {
+      removeMeta('meta[property="og:image:width"]')
+      removeMeta('meta[property="og:image:height"]')
+    }
   }
   setMeta('meta[name="twitter:card"]', 'summary_large_image')
   setMeta('meta[name="twitter:title"]', fullTitle)

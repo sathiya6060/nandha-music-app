@@ -318,6 +318,8 @@ export default {
   'admin.artistPick': 'சிறப்பு ஆர்ட்டிஸ்ட் பிக் — பாடல்',
   'admin.pressPhotos': 'பத்திரிகை புகைப்படங்கள்',
   'admin.contactEmail': 'தொடர்பு மின்னஞ்சல்',
+  'admin.previewImage': 'இணைப்பு முன்னோட்டப் படம்',
+  'admin.previewImageHint': 'தள இணைப்பு பகிரப்படும்போது (WhatsApp, சமூக ஊடகங்கள்) காட்டப்படும் படம். பிராண்ட் அட்டை இயல்புநிலை.',
   'admin.songOfDayCurrent': 'இன்று நடைமுறையில் உள்ள இன்றைய பாடல்: {{title}}',
   'admin.songOfDayHint': 'பக்தி பாடல்கள் முதலில். இயல்புநிலை: Vaazhvinil Orumurayenum.',
   'admin.statusDraft': 'வரைவு',
