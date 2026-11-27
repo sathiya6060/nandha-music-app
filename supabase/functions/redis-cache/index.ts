@@ -24,6 +24,19 @@
 // - Value size capped at 1 MB and TTL at 1 day; a failed write is
 //   NOT fatal — the app keeps serving from memory/localStorage/source.
 //
+// STORAGE CAP (free tier, enforced here — 28 Nov 2026): the live INFO
+// on this database reports maxmemory 64 MB, policy noeviction — when
+// full, Upstash rejects writes with OOM and never evicts anything on
+// its own. Our keys self-clean via TTL (600s), so the cap below is a
+// safety net, not the normal path: a SET is refused with
+// 'storage_full' (507) once used_memory passes 80% of the live
+// maxmemory, and the app serves from Supabase instead — no user error,
+// no lag (the SET is fire-and-forget). INFO is a free operational
+// command (Upstash does not bill it), so the check costs nothing.
+// If the check itself errors, the write is allowed (fail open):
+// Upstash's own OOM rejection is the backstop, and the app treats a
+// failed SET as a plain cache skip.
+//
 // Deploy (no CLI needed): Supabase dashboard -> Edge Functions ->
 // "Create a new function", name `redis-cache`, paste this file, set
 // the two UPSTASH_* secrets, Deploy. Leave "Verify JWT" ON (default).
@@ -97,7 +110,7 @@ async function upstash(
   url: string,
   token: string,
   command: unknown[],
-): Promise<{ ok: boolean; detail?: string }> {
+): Promise<{ ok: boolean; detail?: string; result?: unknown }> {
   try {
     // redis-connections skill §5: explicit timeout so a hung Upstash
     // call fails fast (502) instead of hanging the function — the app
@@ -122,10 +135,32 @@ async function upstash(
     if (data && typeof data === "object" && "error" in data) {
       return { ok: false, detail: String((data as { error: unknown }).error).slice(0, 200) };
     }
-    return { ok: true };
+    return { ok: true, result: (data as { result?: unknown } | null)?.result };
   } catch (err) {
     return { ok: false, detail: String(err).slice(0, 200) };
   }
+}
+
+// Free-tier storage cap: refuse a SET once used_memory passes 80% of
+// the live maxmemory (INFO, unbilled). Fail open on any check error.
+const STORAGE_CAP_FRACTION = 0.8;
+
+function parseInfoMemory(info: string): { used: number; max: number } | null {
+  const used = /used_memory:(\d+)/.exec(info);
+  const max = /maxmemory:(\d+)/.exec(info);
+  if (!used || !max) return null;
+  const u = Number(used[1]);
+  const m = Number(max[1]);
+  if (!Number.isFinite(u) || !Number.isFinite(m) || m <= 0) return null;
+  return { used: u, max: m };
+}
+
+async function storageFull(url: string, token: string): Promise<boolean> {
+  const r = await upstash(url, token, ["INFO", "memory"]);
+  if (!r.ok || typeof r.result !== "string") return false;
+  const mem = parseInfoMemory(r.result);
+  if (!mem) return false;
+  return mem.used >= mem.max * STORAGE_CAP_FRACTION;
 }
 
 serve(async (req) => {
@@ -181,6 +216,12 @@ serve(async (req) => {
       typeof ttlSeconds === "number" && Number.isFinite(ttlSeconds)
         ? Math.min(Math.max(Math.floor(ttlSeconds), 60), MAX_TTL_SECONDS)
         : DEFAULT_TTL_SECONDS;
+    // Free-tier storage cap: refuse the write (507) instead of letting
+    // Upstash OOM — the app treats it as a plain cache skip and serves
+    // from Supabase. DEL is never capped (it frees space).
+    if (await storageFull(restUrl, restToken)) {
+      return json({ error: "storage_full" }, 507, headers);
+    }
     const r = await upstash(restUrl, restToken, ["SET", key, value, "EX", ttl]);
     if (!r.ok) return json({ error: "upstash_failed", detail: r.detail }, 502, headers);
     return json({ ok: true }, 200, headers);
