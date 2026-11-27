@@ -157,6 +157,15 @@ function UpdateBanner() {
   )
 }
 
+// ResettableBoundary (27 Nov 2026 — click/loading fix): the route
+// boundary that clears a latched error fallback when the user navigates
+// (see ErrorBoundary componentDidUpdate). Must live inside BrowserRouter
+// (useLocation) — all three usages below are.
+function ResettableBoundary({ children }) {
+  const { pathname } = useLocation()
+  return <ErrorBoundary resetKey={pathname}>{children}</ErrorBoundary>
+}
+
 function AppShell() {
   const location = useLocation()
   const { role, user } = useAuth()
@@ -187,7 +196,7 @@ function AppShell() {
     return (
       <>
         <UpdateBanner />
-        <ErrorBoundary>
+        <ResettableBoundary>
           <Suspense fallback={<LoadingFallback />}>
             <Routes>
               <Route path="/admin" element={<AdminLayout />}>
@@ -206,7 +215,7 @@ function AppShell() {
             <Route path="*" element={<Navigate to="/admin" replace />} />
           </Routes>
           </Suspense>
-        </ErrorBoundary>
+        </ResettableBoundary>
       </>
     )
   }
@@ -222,7 +231,7 @@ function AppShell() {
         <div className="app-main-wrap">
           <TopBar />
           <main id="main" className="main" tabIndex={-1}>
-            <ErrorBoundary>
+            <ResettableBoundary>
               <Suspense fallback={<LoadingFallback />}>
                 <Routes>
                 <Route path="/" element={<Home />} />
@@ -247,7 +256,7 @@ function AppShell() {
                 <Route path="*" element={<NotFound />} />
               </Routes>
               </Suspense>
-            </ErrorBoundary>
+            </ResettableBoundary>
           </main>
           <Footer />
         </div>
@@ -280,9 +289,9 @@ export default function App() {
                   above AppShell (the per-Suspense boundaries inside
                   AppShell catch route render + lazy-chunk failures). */}
               <ToastProvider>
-                <ErrorBoundary>
+                <ResettableBoundary>
                   <AppShell />
-                </ErrorBoundary>
+                </ResettableBoundary>
               </ToastProvider>
             </BrowserRouter>
           </PlayerProvider>

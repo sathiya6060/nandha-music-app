@@ -23,7 +23,7 @@ import './player.css'
 // - About the Song: a "Story" button (or swipe up) reveals a story card.
 // - Swipe-to-skip: horizontal swipe left = next, right = previous;
 //   swipe up opens the story, swipe down closes the card / lyrics view,
-//   and stops playback when nothing is open (L2: stop means stop).
+//   and closes the sheet (playback continues in the mini-player).
 //   Swipes are ignored when they start on sliders or buttons, and
 //   vertical swipes only act when the sheet is scrolled to the top so they
 //   never fight normal scrolling.
@@ -134,7 +134,7 @@ export default function MobilePlayer() {
     setQuality,
     toggleShuffle,
     cycleRepeat,
-    stopPlayback,
+    closePlayer,
     setNotice,
     sleepTimer,
     sleepRemainingSec,
@@ -157,35 +157,36 @@ export default function MobilePlayer() {
   const closeBtnRef = useRef(null)
   const prevFocusRef = useRef(null)
   const [closing, setClosing] = useState(false)
-  // M1: pending close-teardown timer. A Next/Prev/Play tap during the
-  // 240ms slide-down changes the track — the effect below clears this
-  // timer so the stale stop cannot kill the new track.
+  // M1: pending close timer. A Next/Prev/Play tap during the 240ms
+  // slide-down changes the track — the effect below clears this timer
+  // so the stale close cannot hide the sheet on the new track.
   const closeTimerRef = useRef(null)
 
   // Choreographed close (Emil): the sheet used to vanish the instant
-  // X / Escape / swipe-down fired. requestClose pauses the audio NOW
-  // (stop means stop — the user's rule), plays the 240ms slide-down,
-  // and only then runs the full stopPlayback teardown. Reduced-motion
-  // users get the instant stop with no exit animation at all.
+  // X / Escape / swipe-down fired. requestClose plays the 240ms
+  // slide-down and only then closes the sheet — and closing only
+  // closes (27 Nov 2026, user decision): playback keeps going in the
+  // mini-player, the queue and the sleep timer survive. Only the
+  // mini-player's X button stops playback (stopPlayback). Reduced-motion
+  // users get the instant close with no exit animation at all.
   const requestClose = useCallback(() => {
     if (closing) return
-    if (isPlaying) playPause()
     if (
       typeof window !== 'undefined' &&
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     ) {
-      stopPlayback()
+      closePlayer()
       return
     }
     setClosing(true)
     clearTimeout(closeTimerRef.current)
-    closeTimerRef.current = setTimeout(() => stopPlayback(), 240)
-  }, [closing, isPlaying, playPause, stopPlayback])
+    closeTimerRef.current = setTimeout(() => closePlayer(), 240)
+  }, [closing, closePlayer])
 
   // Close inner panels and reset the view when the track changes.
   // Also clears any pending close teardown (M1): a track change inside
   // the 240ms slide-down means the user kept listening — the stale
-  // stopPlayback must not fire.
+  // closePlayer must not fire.
   useEffect(() => {
     clearTimeout(closeTimerRef.current)
     closeTimerRef.current = null
@@ -210,11 +211,11 @@ export default function MobilePlayer() {
   }, [isPlayerOpen])
 
   // Escape closes the sleep sheet first, then the "More actions"
-  // sheet, then the story card, then the lyrics view, then STOPS
-  // playback (L2: stop means stop — the X, Escape and swipe-down all
-  // stop; only the inner panels collapse without stopping). The final
-  // step goes through requestClose so the sheet slides down instead
-  // of vanishing (audio is paused instantly inside requestClose).
+  // sheet, then the story card, then the lyrics view, then closes the
+  // full player — and closing only closes (27 Nov 2026): playback
+  // keeps going in the mini-player. Only the mini-player's X button
+  // stops playback. The final step goes through requestClose so the
+  // sheet slides down instead of vanishing.
   // (Prod sweep, 27 Nov 2026: the sleep sheet had no Escape handler —
   // Escape fell through to requestClose and stopped playback.)
   useEffect(() => {
@@ -319,7 +320,7 @@ export default function MobilePlayer() {
       } else if (view === 'lyrics') {
         setView('cover') // swipe down leaves the lyrics view
       } else {
-        requestClose() // swipe down stops playback (L2: stop means stop)
+        requestClose() // swipe down closes the sheet (playback continues)
       }
     }
   }

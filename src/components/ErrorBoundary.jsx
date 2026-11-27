@@ -60,6 +60,19 @@ export default class ErrorBoundary extends Component {
     return { hasError: true }
   }
 
+  // Navigation reset (27 Nov 2026 — click/loading fix): a latched
+  // boundary used to stick forever across navigations, so the URL
+  // changed but the "Something went wrong" fallback stayed until the
+  // user reloaded. When the parent passes a new resetKey (the current
+  // pathname), clear the latch and retry the new route. Only fires
+  // while latched — healthy navigations never touch state, and the
+  // guard (resetKey changed + hasError) means the setState cannot loop.
+  componentDidUpdate(prevProps) {
+    if (this.state.hasError && this.props.resetKey !== prevProps.resetKey) {
+      this.setState({ hasError: false })
+    }
+  }
+
   componentDidCatch(error, errorInfo) {
     // Single logging place for render errors — extend here for
     // Phase 4 observability (do not scatter console.error calls).
