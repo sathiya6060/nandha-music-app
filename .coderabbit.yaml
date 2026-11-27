@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit review config for Nandha Music.
+# Public repo, free open-source plan: reviews run automatically on every
+# pull request to main. Profile "chill" keeps findings to real issues.
+reviews:
+  profile: "chill"
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "main"
+    auto_incremental_review: true
