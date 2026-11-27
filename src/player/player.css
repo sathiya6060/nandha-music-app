@@ -432,8 +432,8 @@
 /* Close choreography (Emil): opening animated but closing vanished
    instantly — the sheet now slides down 48px + fades over 240ms on
    the spring curve (--nm-spring). MobilePlayer.jsx holds the sheet
-   mounted for the exit (audio already paused — stop is instant, only
-   the visual exit is animated) and adds .is-closing for the duration. */
+   mounted for the exit (audio keeps playing in the mini-player — close
+   only closes, 27 Nov 2026) and adds .is-closing for the duration. */
 .mobile-player-overlay.is-closing {
   animation: mobile-player-fade-out 0.22s var(--nm-ease, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
 }

@@ -180,7 +180,17 @@ export default function MobilePlayer() {
     }
     setClosing(true)
     clearTimeout(closeTimerRef.current)
-    closeTimerRef.current = setTimeout(() => closePlayer(), 240)
+    // Close-fix follow-up (27 Nov 2026): reset `closing` once the exit
+    // animation has run — otherwise the `is-closing` class (a `forwards`
+    // animation) sticks on the sheet forever and it can never reopen
+    // for the rest of the track. Under the old stopPlayback close the
+    // track was cleared, so reopening always meant a new track and the
+    // [track?.id] effect reset it; the minimise-only close preserves
+    // the track, so the reset has to happen here.
+    closeTimerRef.current = setTimeout(() => {
+      closePlayer()
+      setClosing(false)
+    }, 240)
   }, [closing, closePlayer])
 
   // Close inner panels and reset the view when the track changes.

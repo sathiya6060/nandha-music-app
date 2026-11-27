@@ -53,7 +53,7 @@ const LINK_STYLE = {
 export default class ErrorBoundary extends Component {
   constructor(props) {
     super(props)
-    this.state = { hasError: false }
+    this.state = { hasError: false, resetKey: props.resetKey }
   }
 
   static getDerivedStateFromError() {
@@ -64,13 +64,16 @@ export default class ErrorBoundary extends Component {
   // boundary used to stick forever across navigations, so the URL
   // changed but the "Something went wrong" fallback stayed until the
   // user reloaded. When the parent passes a new resetKey (the current
-  // pathname), clear the latch and retry the new route. Only fires
-  // while latched — healthy navigations never touch state, and the
-  // guard (resetKey changed + hasError) means the setState cannot loop.
-  componentDidUpdate(prevProps) {
-    if (this.state.hasError && this.props.resetKey !== prevProps.resetKey) {
-      this.setState({ hasError: false })
+  // pathname) while latched, clear the latch and retry the new route.
+  // Only fires while latched — healthy navigations never touch state
+  // (the key syncs on the clear itself, so it is always current when
+  // the next latch happens). Derived state, not componentDidUpdate,
+  // so the boundary reset carries no lint warning.
+  static getDerivedStateFromProps(props, state) {
+    if (state.hasError && state.resetKey !== props.resetKey) {
+      return { hasError: false, resetKey: props.resetKey }
     }
+    return null
   }
 
   componentDidCatch(error, errorInfo) {
