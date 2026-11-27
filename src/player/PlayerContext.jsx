@@ -742,6 +742,33 @@ export function PlayerProvider({ children }) {
     }
   }, [])
 
+  /**
+   * Dismiss the guest preview-ended banner without signing in. The
+   * prompt is advisory, never a trap: hiding it rewinds the preview
+   * to 0 (still paused) so tapping play replays the 5s preview from
+   * the start. Clearing the flag alone would resume at 5.08s and the
+   * timeupdate gate would re-show the banner instantly.
+   */
+  const dismissPreviewPrompt = useCallback(() => {
+    const audio = audioRef.current
+    if (audio) {
+      // Pause first (the gate already paused it — this is belt and
+      // braces so dismiss can never resume playback), and guard the
+      // seek: some streams reject seeking before enough data, and a
+      // throw here must not skip the flag-clearing lines below and
+      // leave the banner stuck on screen.
+      audio.pause()
+      try {
+        audio.currentTime = 0
+      } catch {
+        /* ignore — the banner is hidden either way */
+      }
+    }
+    previewEndedRef.current = false
+    setPreviewEnded(false)
+    setCurrentTime(0)
+  }, [])
+
   // --- <audio> element wiring (single element, rendered once below) -------
   useEffect(() => {
     const audio = audioRef.current
@@ -975,6 +1002,7 @@ export function PlayerProvider({ children }) {
       openPlayer,
       closePlayer,
       stopPlayback,
+      dismissPreviewPrompt,
       setNotice: showNotice,
       formatTime,
       audioRef,
@@ -1009,6 +1037,7 @@ export function PlayerProvider({ children }) {
       openPlayer,
       closePlayer,
       stopPlayback,
+      dismissPreviewPrompt,
       showNotice,
     ],
   )

@@ -103,6 +103,7 @@ export default {
   'player.copied': 'कॉपी हो गया!',
   'player.previewEnded': 'पूर्वावलोकन समाप्त हो गया — पूरा गाना सुनने के लिए साइन इन करें',
   'player.signInToListen': 'सुनने के लिए साइन इन करें',
+  'player.dismissPreview': 'बाद में',
   'epk.title': 'इलेक्ट्रॉनिक प्रेस किट',
   'epk.bio': 'परिचय',
   'epk.music': 'संगीत',

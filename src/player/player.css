@@ -97,7 +97,13 @@
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 60;
+  /* 95, not 60: the guest gate banner is absolutely positioned above
+     this bar, and the consent banner sits at z-index 90. At 60 the
+     first-visit guest's "sign in to hear the full song" prompt rendered
+     entirely behind the cookie card — song stopped at 5s with no visible
+     explanation and untappable buttons. Still below the expanded player
+     sheet (100) and the skip-link/version banner (200). */
+  z-index: 95;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -195,6 +201,23 @@
   transition: transform 0.12s var(--nm-ease, cubic-bezier(0.23, 1, 0.32, 1));
 }
 .player-preview__btn:active { transform: scale(0.97); }
+/* Dismiss ("Maybe later") for the guest prompt: plain underlined text,
+   same dark-on-gold as the banner, 44px target. Hiding the banner
+   rewinds the preview to 0 so play replays the 5s preview. */
+.player-preview__dismiss {
+  background: transparent;
+  border: 0;
+  padding: 8px 4px;
+  min-height: 44px;
+  color: var(--nm-slate, #1e293b);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.player-preview__dismiss:focus-visible { outline: 2px solid var(--nm-slate, #1e293b); outline-offset: 2px; border-radius: 4px; }
 /* Expanded-player variant: static block inside the sheet, not absolute. */
 .mobile-player-preview {
   position: static;

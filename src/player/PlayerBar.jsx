@@ -89,10 +89,17 @@ export default function PlayerBar() {
     cycleRepeat,
     openPlayer,
     stopPlayback,
+    dismissPreviewPrompt,
   } = usePlayer()
   const [showQueue, setShowQueue] = useState(false)
 
   if (!track) return null
+
+  // WCAG 2.5.3 (Label in Name): the button's accessible name must
+  // contain its visible text. The visible title is titleTa-first, so
+  // the aria-label builds from the same strings in the same order.
+  const barTitle = track.titleTa || track.titleEn
+  const barArtistLine = `${track.artist || ''}${track.titleEn && track.titleTa ? ` · ${track.titleEn}` : ''}`.trim()
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 
@@ -110,6 +117,9 @@ export default function PlayerBar() {
           <Link className="player-preview__btn" to="/login">
             {t('player.signInToListen')}
           </Link>
+          <button type="button" className="player-preview__dismiss" onClick={dismissPreviewPrompt}>
+            {t('player.dismissPreview')}
+          </button>
         </div>
       )}
 
@@ -130,7 +140,7 @@ export default function PlayerBar() {
         type="button"
         className="player-bar-main"
         onClick={openPlayer}
-        aria-label={`${t('common.openPlayer')} — ${track.titleEn || track.titleTa}`}
+        aria-label={`${t('common.openPlayer')} — ${barTitle}${barArtistLine ? ` ${barArtistLine}` : ''}`}
       >
         <span className="player-bar-cover">
           {track.cover ? (

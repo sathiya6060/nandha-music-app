@@ -458,6 +458,7 @@ input[type="search"]::-webkit-search-decoration {
 }
 .track-card__cover {
   width: 100%;
+  height: auto;
   aspect-ratio: 1;
   border-radius: var(--radius);
   object-fit: cover;
@@ -795,7 +796,7 @@ input[type="search"]::-webkit-search-decoration {
   gap: 16px;
   margin: 20px 0;
 }
-.detail-head__cover { width: 100%; max-width: 220px; aspect-ratio: 1; border-radius: var(--radius-lg); object-fit: cover; }
+.detail-head__cover { width: 100%; max-width: 220px; height: auto; aspect-ratio: 1; border-radius: var(--radius-lg); object-fit: cover; }
 .detail-head__title { margin: 0; font-size: 1.6rem; font-weight: 800; color: var(--text-strong); overflow-wrap: anywhere; }
 .detail-head__meta { margin: 6px 0 0; color: var(--muted); }
 .detail-head__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
@@ -813,7 +814,7 @@ input[type="search"]::-webkit-search-decoration {
 .link-list a { display: flex; justify-content: space-between; gap: 8px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-strong); font-weight: 600; }
 .link-list a:hover { text-decoration: none; border-color: var(--gold); }
 
-.epk-photo { border-radius: var(--radius-lg); border: 1px solid var(--border); }
+.epk-photo { height: auto; border-radius: var(--radius-lg); border: 1px solid var(--border); }
 .video-card {
   padding: 16px;
   border-radius: var(--radius-lg);
@@ -1036,11 +1037,15 @@ input[type="search"]::-webkit-search-decoration {
   color: var(--white);
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
   /* Break UI: a long lyric line clamps to 3 lines instead of covering
-     the cover and pushing the title off the card. */
+     the cover and pushing the title off the card. overflow-wrap matches
+     .discover-card__title: a single long Tamil word (e.g. the 290px
+     "அண்ணாமலையாரே" at 1.5rem in a 262px box) would otherwise clip
+     mid-glyph with no break opportunity. */
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  overflow-wrap: anywhere;
 }
 .discover-card__title {
   margin: 0;

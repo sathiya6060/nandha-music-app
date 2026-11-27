@@ -138,6 +138,7 @@ export default function MobilePlayer() {
     toggleShuffle,
     cycleRepeat,
     stopPlayback,
+    dismissPreviewPrompt,
     setNotice,
   } = usePlayer()
   const { t } = useI18n()
@@ -349,7 +350,7 @@ export default function MobilePlayer() {
       className={`mobile-player-overlay${closing ? ' is-closing' : ''}`}
       role="dialog"
       aria-modal="true"
-      aria-label={`${t('player.nowPlaying')}: ${track.titleEn || track.titleTa}`}
+      aria-label={`${t('player.nowPlaying')}: ${track.titleTa || track.titleEn}`}
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
       onKeyDown={onDialogKeyDown}
@@ -392,6 +393,9 @@ export default function MobilePlayer() {
               <Link className="player-preview__btn" to="/login">
                 {t('player.signInToListen')}
               </Link>
+              <button type="button" className="player-preview__dismiss" onClick={dismissPreviewPrompt}>
+                {t('player.dismissPreview')}
+              </button>
             </div>
           )}
 

@@ -67,7 +67,10 @@ export default function QueuePanel({ onClose }) {
                 type="button"
                 className="queue-item-main"
                 onClick={() => play(item, queue)}
-                aria-label={`Play ${item.titleEn || item.titleTa}`}
+                // WCAG 2.5.3: the visible title is titleTa-first, so the
+                // accessible name must use the same strings in the same
+                // order (title + artist line) or axe flags a mismatch.
+                aria-label={`Play ${item.titleTa || item.titleEn} ${item.artist}${item.titleEn && item.titleTa ? ` · ${item.titleEn}` : ''}`}
                 aria-current={isCurrent ? 'true' : undefined}
               >
                 <span className="queue-item-cover">
@@ -92,10 +95,10 @@ export default function QueuePanel({ onClose }) {
                 type="button"
                 className="queue-remove-btn"
                 onClick={() => removeFromQueue(i)}
-                aria-label={`Remove ${item.titleEn || item.titleTa} from queue`}
+                aria-label={`Remove ${item.titleTa || item.titleEn} from queue`}
                 title="Remove from queue"
               >
-                ✕
+                <span aria-hidden="true">✕</span>
               </button>
             </li>
           )

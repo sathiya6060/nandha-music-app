@@ -297,7 +297,7 @@ export default function TracksAdmin() {
               {pageTracks.map((tr) => (
                 <tr key={tr.id}>
                   <td>
-                    <input type="checkbox" checked={selected.has(tr.id)} onChange={() => toggleSelect(tr.id)} aria-label={tr.titleEn || tr.titleTa || tr.id} />
+                    <input type="checkbox" checked={selected.has(tr.id)} onChange={() => toggleSelect(tr.id)} aria-label={tr.titleTa || tr.titleEn || tr.id} />
                   </td>
                   <td>
                     {tr.cover ? (

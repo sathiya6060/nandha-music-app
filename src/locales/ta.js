@@ -103,6 +103,7 @@ export default {
   'player.copied': 'நகலெடுக்கப்பட்டது!',
   'player.previewEnded': 'முன்னோட்டம் முடிந்தது — முழு பாடலைக் கேட்க உள்நுழைக',
   'player.signInToListen': 'கேட்க உள்நுழைக',
+  'player.dismissPreview': 'பிறகு',
   'epk.title': 'மின்னணு பத்திரிகை தொகுப்பு',
   'epk.bio': 'வாழ்க்கை வரலாறு',
   'epk.music': 'இசை',

@@ -106,6 +106,7 @@ export default {
   'player.copied': 'Copied!',
   'player.previewEnded': 'Preview ended — sign in to hear the full song',
   'player.signInToListen': 'Sign in to listen',
+  'player.dismissPreview': 'Maybe later',
   'epk.title': 'Electronic Press Kit',
   'epk.bio': 'Bio',
   'epk.music': 'Music',
