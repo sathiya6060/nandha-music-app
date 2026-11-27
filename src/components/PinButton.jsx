@@ -68,6 +68,21 @@ export default function PinButton({ track, variant = 'button' }) {
   }
 
   const label = pinned ? t('player.pinned') : t('player.pin')
+  if (variant === 'row') {
+    // Full-width row inside the "More actions" sheet (mobile audit,
+    // item 3): reuses the sleep sheet's .sleep-option row style.
+    return (
+      <button
+        type="button"
+        className={`sleep-option${pinned ? ' is-active' : ''}`}
+        onClick={handleClick}
+        disabled={busy}
+        aria-pressed={pinned}
+      >
+        <Icon name="pin" size={18} /> <span>{label}</span>
+      </button>
+    )
+  }
   if (variant === 'icon') {
     return (
       <button

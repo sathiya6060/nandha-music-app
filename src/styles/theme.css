@@ -180,11 +180,18 @@ input[type="search"]::-webkit-search-decoration {
   flex: 1;
   min-width: 0;
   /* Reserve room for the fixed player bar + bottom nav so content is
-     never hidden behind them. The chrome is player + nav, each with its
-     own safe-area padding, so the bottom reserve adds the safe area
-     twice (once per bar). */
-  padding: 0 16px calc(var(--chrome-bottom) + 24px + env(safe-area-inset-bottom, 0px) * 2);
+     never hidden behind them. The stack is player + nav + ONE safe-area
+     inset (the nav carries it; the mini-player no longer adds its own
+     below 1024px — see player.css). */
+  padding: 0 16px calc(var(--chrome-bottom) + 24px + env(safe-area-inset-bottom, 0px));
 }
+
+/* No player active (mobile audit, item 1): don't reserve the
+   mini-player share of the bottom chrome — the main content and the
+   consent banner sit above the nav only. AppShell toggles .no-player
+   on .app-layout from the player state; the desktop override lives in
+   the 1024px media query below. */
+.app-layout.no-player { --chrome-bottom: var(--bottomnav-h); }
 
 /* "Skip to content" — visually hidden until keyboard focus, so it never
    shows as a stray link at the top-left of the page. */
@@ -741,7 +748,9 @@ input[type="search"]::-webkit-search-decoration {
      fails WCAG 4.5:1 for small text; Steel Grey is kept for light
      surfaces only). Active: Amber Gold. */
   color: var(--muted);
-  font-size: 0.7rem;
+  /* Mobile audit item 4: 0.7rem (11.2px) was below the 12px minimum
+     for nav labels — 0.75rem (12px) is the floor. */
+  font-size: 0.75rem;
   font-weight: 700;
   text-decoration: none;
   min-height: 44px;
@@ -772,6 +781,28 @@ input[type="search"]::-webkit-search-decoration {
 }
 .bottom-nav__link.is-active .bottom-nav__icon { transform: scale(1.08); }
 .bottom-nav__icon { display: flex; line-height: 1; transition: transform 0.15s var(--nm-ease); }
+
+/* ---------- Profile page (mobile audit, item 4) ---------- */
+.profile-page__details {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0 0;
+}
+.profile-page__details dt {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+.profile-page__details dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.profile-page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
 
 /* ---------- Top bar ---------- */
 .topbar__search { display: none; flex: 1; max-width: 480px; }
@@ -856,6 +887,7 @@ input[type="search"]::-webkit-search-decoration {
 /* ---------- Desktop: left sidebar layout ---------- */
 @media (min-width: 1024px) {
   :root { --chrome-bottom: var(--playerbar-h); }
+  .app-layout.no-player { --chrome-bottom: 0px; }
   .sidebar {
     display: flex;
     flex-direction: column;
@@ -1287,8 +1319,8 @@ input[type="search"]::-webkit-search-decoration {
   z-index: 90;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: 4px;
+  padding: 8px 12px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background: var(--surface);
@@ -1305,37 +1337,72 @@ input[type="search"]::-webkit-search-decoration {
 }
 .consent-banner__text {
   margin: 0;
-  font-size: 0.875rem;
-  line-height: 1.5;
+  font-size: 0.8125rem;
+  line-height: 1.4;
 }
-/* Phase 2: inline legal links were ~17px tall — inline-flex + 44px
-   min-height makes them a real tap target (line box grows on that line). */
-.consent-banner__text a {
-  display: inline-flex;
+/* One row: legal links on the left, Accept/Decline on the right. The
+   links are padded inline-blocks in their own block row — the old
+   min-height:44px inline-flex links inflated the text line to 44px and
+   pushed the banner past 200px tall on phones. No "·" separator: the
+   gap between the links does that job. */
+.consent-banner__row {
+  display: flex;
   align-items: center;
-  min-height: 44px;
-  padding: 0 6px;
+  gap: 12px;
+}
+.consent-banner__links {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+}
+.consent-banner__links a {
+  padding: 6px 8px;
+  font-size: 0.8125rem;
   /* Underline: axe link-in-text-block — gold #F59E0B vs the sand body
      text is only 1.92:1, so colour alone must not be the only cue. */
   text-decoration: underline;
   text-underline-offset: 2px;
+  white-space: nowrap;
 }
 .consent-banner__actions {
   display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+/* Compact buttons: the banner must stay ≤96px tall on phones, so the
+   actions are 34px here, not the standard 44px .btn. They are still
+   wide tap targets (~80px) and this size is used nowhere else. */
+.consent-banner .btn {
+  min-height: 34px;
+  padding: 6px 14px;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+/* Very small phones (<= 360px): the links + buttons row is too crowded
+   at full padding — at 320px the links were squeezed under the buttons
+   in all three locales. Tighten the padding so the row fits without
+   overlap (with the short link/button labels). Tamil glyphs are still
+   too wide for both links + both buttons at 320px, so the Privacy link
+   hides here — the Cookies link stays, and both links remain in the
+   footer and on the /cookies page. */
+@media (max-width: 360px) {
+  .consent-banner__links a { padding: 6px 6px; }
+  .consent-banner .btn { padding: 6px 10px; }
+  .consent-banner__links-privacy { display: none; }
 }
 @media (min-width: 640px) {
   .consent-banner {
     flex-direction: row;
     align-items: center;
+    gap: 16px;
     left: 50%;
     right: auto;
     transform: translateX(-50%);
     width: min(680px, calc(100vw - 24px));
   }
   .consent-banner__text { flex: 1; }
-  .consent-banner__actions { flex-shrink: 0; }
+  .consent-banner__row { flex-shrink: 0; }
 }
 
 /* ---------- Legal pages (Fix 8) ---------- */

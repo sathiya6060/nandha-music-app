@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useI18n } from '../lib/i18n.js'
 import { ADMIN_EMAILS, useAuth } from '../lib/auth.jsx'
 
@@ -20,7 +20,10 @@ export default function Login() {
   const { t } = useI18n()
   const navigate = useNavigate()
   const { user, isAdmin, loading, configError, signInEmail, signUpEmail } = useAuth()
-  const [mode, setMode] = useState('signin') // 'signin' | 'signup'
+  const [searchParams] = useSearchParams()
+  // The Profile page's "Create one" link lands here with ?mode=signup —
+  // honour it so the sign-up form (not the sign-in form) is what opens.
+  const [mode, setMode] = useState(() => (searchParams.get('mode') === 'signup' ? 'signup' : 'signin')) // 'signin' | 'signup'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')

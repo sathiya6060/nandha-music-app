@@ -10,7 +10,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { LanguageProvider, useI18n } from './lib/i18n.js'
 import { AuthProvider, useAuth } from './lib/auth.jsx'
-import { PlayerProvider } from './player/PlayerContext.jsx'
+import { PlayerProvider, usePlayer } from './player/PlayerContext.jsx'
 import { queryClientOptions, bindQueryClient } from './lib/cache.js'
 import { registerServiceWorker } from './lib/pwa.js'
 import Sidebar, { BottomNav } from './components/Sidebar.jsx'
@@ -40,6 +40,7 @@ const Album = lazy(() => import('./pages/Album.jsx'))
 const Track = lazy(() => import('./pages/Track.jsx'))
 const MixPage = lazy(() => import('./pages/MixPage.jsx'))
 const EPK = lazy(() => import('./pages/EPK.jsx'))
+const Profile = lazy(() => import('./pages/Profile.jsx'))
 // Login is unlinked in the public UI — the admin opens /login directly.
 const Login = lazy(() => import('./pages/Login.jsx'))
 // Legal pages (lazy — only downloaded when visited).
@@ -153,6 +154,11 @@ function UpdateBanner() {
 function AppShell() {
   const location = useLocation()
   const { role } = useAuth()
+  // Mobile audit item 1: when no player is active, don't reserve the
+  // mini-player share of the bottom chrome — .app-layout.no-player
+  // drops --chrome-bottom to the nav alone (mobile) or 0 (desktop),
+  // so the content and the consent banner sit that much higher.
+  const { track } = usePlayer()
   const isAdminRoute = location.pathname.startsWith('/admin')
 
   if (isAdminRoute) {
@@ -186,7 +192,7 @@ function AppShell() {
   return (
     <>
       <UpdateBanner />
-      <div className="app-layout">
+      <div className={track ? 'app-layout' : 'app-layout no-player'}>
         <a href="#main" className="skip-link">
           Skip to content
         </a>
@@ -209,6 +215,7 @@ function AppShell() {
                 <Route path="/track/:id" element={<Track />} />
                 <Route path="/mix/:id" element={<MixPage />} />
                 <Route path="/epk" element={<EPK />} />
+                <Route path="/profile" element={<Profile />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/privacy" element={<Privacy />} />
                 <Route path="/terms" element={<Terms />} />

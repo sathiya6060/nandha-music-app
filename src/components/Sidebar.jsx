@@ -6,9 +6,10 @@ import Icon from './Icons.jsx'
 /**
  * Spotify-style mobile bottom nav (visible < 1024px) + desktop left nav.
  * One shared inline-SVG icon set (Icons.jsx), one stroke weight.
- * Tabs: Home, Search, Library, Playlists, Profile (Profile links to
- * /library in v1 — no separate profile page yet). Active = Amber Gold,
- * inactive = Steel Grey. Min 44px tap targets.
+ * Tabs: Home, Search, Library, Playlists, Profile (Profile is a real
+ * /profile route since the 27 Nov 2026 mobile audit, item 4 — it used
+ * to point at /library, which lit up two tabs at once). Active =
+ * Amber Gold, inactive = Steel Grey. Min 44px tap targets.
  */
 const NAV_ITEMS = [
   { to: '/', labelKey: 'nav.home', icon: 'home', end: true },
@@ -17,6 +18,7 @@ const NAV_ITEMS = [
   { to: '/liked', labelKey: 'nav.liked', icon: 'heart' },
   { to: '/playlists', labelKey: 'nav.playlists', icon: 'playlists' },
   { to: '/epk', labelKey: 'nav.epk', icon: 'flame' },
+  { to: '/profile', labelKey: 'nav.profile', icon: 'profile' },
 ]
 
 const BOTTOM_ITEMS = [
@@ -24,7 +26,7 @@ const BOTTOM_ITEMS = [
   { to: '/search', labelKey: 'nav.search', icon: 'search' },
   { to: '/library', labelKey: 'nav.library', icon: 'library' },
   { to: '/playlists', labelKey: 'nav.playlists', icon: 'playlists' },
-  { to: '/library', labelKey: 'nav.profile', icon: 'profile' },
+  { to: '/profile', labelKey: 'nav.profile', icon: 'profile' },
 ]
 
 /**

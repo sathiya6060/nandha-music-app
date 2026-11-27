@@ -36,7 +36,6 @@ export function getFollowedArtistIds() {
 /**
  * Route '/library' — demo mode, localStorage-backed.
  * User playlists, liked songs count, followed artists.
- * Also the v1 Profile destination (bottom-nav Profile tab links here).
  */
 export default function Library() {
   const { t, tp } = useI18n()

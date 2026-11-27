@@ -38,6 +38,20 @@ export default function HideButton({ track, variant = 'button' }) {
   }
 
   const label = hidden ? t('player.unhide') : t('player.hide')
+  if (variant === 'row') {
+    // Full-width row inside the "More actions" sheet (mobile audit,
+    // item 3): reuses the sleep sheet's .sleep-option row style.
+    return (
+      <button
+        type="button"
+        className={`sleep-option${hidden ? ' is-active' : ''}`}
+        onClick={handleClick}
+        aria-pressed={hidden}
+      >
+        <Icon name="eyeOff" size={18} /> <span>{label}</span>
+      </button>
+    )
+  }
   if (variant === 'icon') {
     return (
       <button

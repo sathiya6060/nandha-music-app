@@ -117,10 +117,16 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Mobile: the mini-player sits just ABOVE the bottom nav bar. */
+/* Mobile: the mini-player sits just ABOVE the bottom nav bar, and the
+   nav already carries the safe-area inset (its height + padding-bottom
+   both add it). So the bar takes NO safe-area padding of its own here —
+   it did before, which double-counted the inset and made the bar taller
+   than the --playerbar-h reservation. Desktop (bottom: 0) keeps its
+   own inset — see the >= 1024px rule at the bottom of this file. */
 @media (max-width: 1023px) {
   .player-bar {
     bottom: calc(var(--bottomnav-h, 64px) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: 8px;
   }
 }
 
@@ -532,7 +538,12 @@
    (Canvas toggle) or by prefers-reduced-motion (see bottom). */
 .mobile-player-canvas-wrap {
   position: relative;
-  width: min(78vw, 320px);
+  /* Mobile audit item 3: the cover was min(78vw, 320px) — 304px at
+     390px / 250px at 320px — which pushed the seek bar and the
+     transport controls below the fold at 664px and 568px heights.
+     min(60vw, 34dvh) keeps the cover large while leaving room for the
+     seek + controls without scrolling. */
+  width: min(60vw, 34dvh);
   margin: 18px auto 0;
 }
 
@@ -730,16 +741,38 @@
   color: var(--nm-muted, #94a3b8);
 }
 
-.mobile-player-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: center;
-  margin-top: 18px;
+/* Mobile audit item 3 — short viewports (<= 720px tall, e.g. 390x664
+   and 320x568): tighten the sheet so the seek bar and the transport
+   controls (Shuffle/Prev/Play/Next/Repeat) are visible without
+   scrolling. The cover is already capped by min(60vw, 34dvh) above;
+   this trims the titles, margins and the play button around it. */
+@media (max-height: 720px) {
+  .mobile-player { padding-top: 12px; }
+  .mobile-player-canvas-wrap { margin-top: 12px; }
+  .mobile-player-titles { margin-top: 12px; }
+  .mobile-player-title-ta { font-size: 22px; line-height: 1.25; }
+  .mobile-player-title-en { font-size: 13px; }
+  .mobile-player-artist { font-size: 14px; margin-top: 4px; }
+  .mobile-player-composer { font-size: 12px; }
+  .mobile-player-seek { margin-top: 8px; }
+  .mobile-player-controls { margin-top: 8px; }
+  .mobile-player-play { width: 60px; height: 60px; }
+  .mobile-player-skip { width: 48px; height: 48px; }
+  .mobile-player-volume { margin-top: 12px; }
+  .mobile-player-more-btn { margin-top: 12px; }
 }
 
-.mobile-player-action {
-  min-height: 44px;
+/* "More actions" button (mobile audit, item 3): one compact full-width
+   button replacing the two wrapping secondary-action rows. Opens the
+   More sheet; the 9 actions live there as full-width rows. */
+.mobile-player-more-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  margin-top: 18px;
   padding: 8px 14px;
   border: 1px solid rgba(254, 243, 199, 0.25);
   border-radius: 999px;
@@ -748,19 +781,10 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   -webkit-tap-highlight-color: transparent;
-  transition: transform 0.12s var(--nm-ease, cubic-bezier(0.23, 1, 0.32, 1)), background-color 0.15s var(--nm-ease, cubic-bezier(0.23, 1, 0.32, 1)), border-color 0.15s var(--nm-ease, cubic-bezier(0.23, 1, 0.32, 1)), color 0.15s var(--nm-ease, cubic-bezier(0.23, 1, 0.32, 1));
+  transition: transform 0.12s var(--nm-ease, cubic-bezier(0.23, 1, 0.32, 1)), background-color 0.15s var(--nm-ease, cubic-bezier(0.23, 1, 0.32, 1));
 }
-.mobile-player-action:active { transform: scale(0.96); }
-
-.mobile-player-action.is-active {
-  background: var(--nm-gold, #f59e0b);
-  border-color: var(--nm-gold, #f59e0b);
-  color: var(--nm-slate, #1e293b);
-}
+.mobile-player-more-btn:active { transform: scale(0.97); }
 
 .mobile-player-panel {
   margin-top: 16px;
@@ -1391,6 +1415,7 @@
 .sleep-option {
   display: flex;
   align-items: center;
+  gap: 10px;
   width: 100%;
   min-height: 48px;
   padding: 10px 12px;
@@ -1409,6 +1434,15 @@
   color: var(--nm-gold, #f59e0b);
   font-weight: 700;
 }
+/* Trailing state in a sheet row (mobile audit, item 3 — the "More
+   actions" sheet reuses .sleep-option): the quality value ("320 kbps")
+   or the ✓ on the active row, pushed to the right edge. */
+.sleep-option__state {
+  margin-left: auto;
+  color: var(--nm-gold, #f59e0b);
+  font-weight: 700;
+  white-space: nowrap;
+}
 
 /* PlayerBar sleep button: moon icon + remaining-time count. */
 .player-sleep-btn { position: relative; }
@@ -1423,9 +1457,4 @@
   font-size: 0.6rem;
   font-weight: 800;
   line-height: 1.4;
-}
-
-/* MobilePlayer secondary actions (share card, pin, hide, sleep). */
-.mobile-player-actions--secondary {
-  margin-top: 4px;
 }

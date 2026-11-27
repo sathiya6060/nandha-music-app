@@ -290,3 +290,49 @@ No new dependencies (`package.json` unchanged). Mixes are computed client-side f
 - F7 — Mix-card subtitle hidden behind the play button (REAL APP BUG, overlap): the 44px round play button is absolute bottom-right; the subtitle text ran underneath it ("New every Monda[y]", "Latest from Nandh[a]" — visible in `screenshots/390/sp-mix-grid-fixed.png` before the fix). The layout audit does not catch paint-overlap, only overflow. Fixed in `src/styles/theme.css`: `.mix-card__sub { padding-right: 56px }` (button width + gap). Re-measured with Range text rects at 390 + 1280: all 4 subtitles clear (e.g. 390px Weekly maxRight 96 vs button left 135); cards stay 136px tall. Final build `mwyl640t-d3f9313b` (preview rebuilt to `mwyl7m7a-4741b761` by the pre-deploy check — same source).
 
 **Not fixed here (out of scope / needs Sathiya):** signed-in full-song play + admin write E2E still need his `/login` sign-in (never runnable headless); M1 different-track race needs a 2nd song; multi-track behaviours (visible drag-reorder with distinct tracks, radio candidates, Smart-Shuffle interleave order) cannot be observed live on the 1-track catalog — the logic is unit-tested (`playlistOrder.test.js`, `mixes.test.js`) and the drag wiring is suite-tested; the live site still runs the older build — this batch was NOT deployed or pushed to GitHub, per the brief. Sleep-sheet option labels read "Sleep timer set for 5 minutes" (locale `player.sleepSet`) — wordy as a menu label, understandable and functional; left as a polish nit, not a bug.
+
+---
+
+## Audit P1 verification — items 1-4 (27 Nov 2026)
+
+Implementation + verification only (no deploy, no GitHub push). Script
+`mobile-verify/check-audit-p1.js` (puppeteer, dev preview `:5173`, build
+`mwyq6ezk-132b3c2f`): **60/60 PASS, 1 RECORDED, exit 0**. Screenshots in
+`mobile-verify/audit-p1/` (all VIEWED at 320x568, 390x844, 1280px), results
+in `mobile-verify/audit-p1/results.json`. Full per-check evidence in
+`docs/audit-2026-11-27-mobile-account.md` ("Verification results").
+
+- **Item 1 banner:** 92px @390 en, 92px @320 en, 74px @390 ta, 92px @320 ta,
+  74px @390 hi, 92px @320 hi, 54px @1280; no "·"; links have no 44px
+  min-height; links never overlap buttons @320 (rect-intersection checks);
+  Accept stores the choice; hidden during the gate prompt (Sign-in/Dismiss
+  uncovered by `elementFromPoint`); returns after dismiss. `.main` padding:
+  no player 88px mobile / 40px desktop, with player 148px / 100px.
+- **Item 2 safe-area:** player-bar `padding-bottom` 8px <1024px (no own
+  `env()`); bar bottom = nav top (780 = 780), height 65px; desktop bar at
+  bottom:0. CDP safe-area simulation unavailable in this Chrome — proof is
+  the computed style + the live stylesheet rule.
+- **Item 3 full player:** cover = min(60vw, 34dvh) exactly (226x226 @664,
+  192x192 @568, 234x234 @844); seek + controls in view without scrolling at
+  all three heights; old two-row actions gone; More sheet opens with 9 rows
+  and Lyrics / Quality (128→320 kbps) / Sleep rows all work; X closes.
+  RECORDED: More button 47px below the fold @664 (small scroll; not a brief
+  requirement).
+- **Item 4 Profile:** `/profile` is real (guest h1 + hint + Sign in → /login;
+  title `Profile | Nandha Music`); exactly one `aria-current` tab on Home,
+  `/profile` and `/library`; labels 12px; no overflow @320; desktop sidebar
+  Profile link works. Signed-in view NOT verified — needs Sathiya's `/login`
+  sign-in.
+
+**Bugs found by this verification (all fixed in the round):** (1) 320px
+banner links squeezed under the buttons in every locale — found by VIEWING
+the screenshot, not by the height check; fixed with short link/button labels
++ ≤360px tightening + Privacy link hidden at ≤360px. (2) Tamil banner
+3-line wrap at 320px (111px) — Tamil copy shortened. (3) Controls 2px below
+the fold at 320x568 — short-height margins trimmed (controls bottom now
+564).
+
+**Gates:** `npm test` 16 files / 94 tests PASS; `npm run build` green;
+`scripts/pre-deploy-check.sh` OK (39 warnings, 0 errors); `npx impeccable
+detect src/` same as baseline (Inter anti-pattern + bounce-easing
+false-positive advisory, no new findings).

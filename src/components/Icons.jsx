@@ -151,6 +151,13 @@ const PATHS = {
       <line x1="1" y1="18" x2="7" y2="18" />
     </>
   ),
+  more: (
+    <>
+      <circle cx="5" cy="12" r="1.8" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none" />
+      <circle cx="19" cy="12" r="1.8" fill="currentColor" stroke="none" />
+    </>
+  ),
   settings: (
     <>
       <circle cx="12" cy="12" r="3" />

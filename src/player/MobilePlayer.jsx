@@ -66,17 +66,6 @@ function IconPrev() {
   )
 }
 
-function IconShare() {
-  return (
-    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-      <circle cx="6" cy="12" r="2.5" fill="none" stroke="currentColor" strokeWidth="2" />
-      <circle cx="18" cy="5.5" r="2.5" fill="none" stroke="currentColor" strokeWidth="2" />
-      <circle cx="18" cy="18.5" r="2.5" fill="none" stroke="currentColor" strokeWidth="2" />
-      <path d="M8.2 10.8l7.6-4M8.2 13.2l7.6 4" stroke="currentColor" strokeWidth="2" />
-    </svg>
-  )
-}
-
 function IconShuffle() {
   return (
     <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
@@ -155,6 +144,7 @@ export default function MobilePlayer() {
   const [view, setView] = useState('cover') // 'cover' | 'lyrics'
   const [shared, setShared] = useState(false)
   const [sleepOpen, setSleepOpen] = useState(false)
+  const [showMore, setShowMore] = useState(false)
   const [cardBusy, setCardBusy] = useState(false)
   // Canvas motion on by default, unless the user prefers reduced motion.
   const [canvasOn, setCanvasOn] = useState(() => {
@@ -218,22 +208,24 @@ export default function MobilePlayer() {
     }
   }, [isPlayerOpen])
 
-  // Escape closes the story card, then the lyrics view, then STOPS
-  // playback (L2: stop means stop — the X, Escape and swipe-down all
-  // stop; only the inner panels collapse without stopping). The final
-  // step goes through requestClose so the sheet slides down instead
-  // of vanishing (audio is paused instantly inside requestClose).
+  // Escape closes the "More actions" sheet first, then the story card,
+  // then the lyrics view, then STOPS playback (L2: stop means stop —
+  // the X, Escape and swipe-down all stop; only the inner panels
+  // collapse without stopping). The final step goes through
+  // requestClose so the sheet slides down instead of vanishing (audio
+  // is paused instantly inside requestClose).
   useEffect(() => {
     if (!isPlayerOpen) return undefined
     const onKeyDown = (e) => {
       if (e.key !== 'Escape') return
-      if (panel) setPanel(null)
+      if (showMore) setShowMore(false)
+      else if (panel) setPanel(null)
       else if (view === 'lyrics') setView('cover')
       else requestClose()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isPlayerOpen, panel, view, requestClose])
+  }, [isPlayerOpen, showMore, panel, view, requestClose])
 
   // L5: focus trap — when the player opens, focus the close button and
   // remember where focus was; restore it on close so Tab never leaves
@@ -551,93 +543,23 @@ export default function MobilePlayer() {
             <IconVolumeHigh />
           </div>
 
-          <div className="mobile-player-actions">
-            <button
-              type="button"
-              className={`mobile-player-action ${view === 'lyrics' ? 'is-active' : ''}`}
-              onClick={() => setView(view === 'lyrics' ? 'cover' : 'lyrics')}
-              aria-pressed={view === 'lyrics'}
-            >
-              {t('common.lyrics')}
-            </button>
-            <button
-              type="button"
-              className={`mobile-player-action ${panel === 'story' ? 'is-active' : ''}`}
-              onClick={() => setPanel(panel === 'story' ? null : 'story')}
-              aria-expanded={panel === 'story'}
-            >
-              {t('player.story')}
-            </button>
-            <button
-              type="button"
-              className={`mobile-player-action ${panel === 'queue' ? 'is-active' : ''}`}
-              onClick={() => setPanel(panel === 'queue' ? null : 'queue')}
-              aria-expanded={panel === 'queue'}
-            >
-              {t('common.upNext')}
-            </button>
-            <button
-              type="button"
-              className="mobile-player-action"
-              onClick={() => setQuality(quality === '128' ? '320' : '128')}
-              aria-label={`${t('common.quality')} ${quality} kbps`}
-            >
-              {quality} kbps
-            </button>
-            <button
-              type="button"
-              className="mobile-player-action mobile-player-share"
-              onClick={share}
-              aria-label={t('common.share')}
-            >
-              <IconShare />
-              <span>{shared ? t('player.copied') : t('common.share')}</span>
-            </button>
-          </div>
-
-          {/* Secondary actions (Spotify batch, 27 Nov 2026): share-as-status
-              card (PT-025), offline pin (PT-019), hide (F-019), sleep
-              timer (PT-014). The sleep button shows the remaining time
-              while a timer is active. */}
-          <div className="mobile-player-actions mobile-player-actions--secondary">
-            <button
-              type="button"
-              className="mobile-player-action"
-              onClick={shareCard}
-              disabled={cardBusy}
-            >
-              <Icon name="share" size={18} />
-              <span>{t('share.statusCard')}</span>
-            </button>
-            <PinButton track={track} variant="icon" />
-            <HideButton track={track} variant="icon" />
-            <button
-              type="button"
-              className={`mobile-player-action${sleepTimer ? ' is-active' : ''}`}
-              onClick={() => setSleepOpen(true)}
-              // WCAG 2.5.3: when a timer is active the visible text is the
-              // countdown (or "End of track"), so the accessible name must
-              // contain that same text — a fixed "Sleep timer" label would
-              // not contain the visible "4:57".
-              aria-label={
-                sleepTimer?.mode === 'minutes'
-                  ? t('player.sleepRemaining', { time: formatSleepRemaining(sleepRemainingSec * 1000) })
-                  : sleepTimer
-                    ? t('player.sleepEndOfTrack')
-                    : t('player.sleepTimer')
-              }
-              aria-pressed={Boolean(sleepTimer)}
-            >
-              <Icon name="moon" size={18} />
-              <span>
-                {sleepTimer
-                  ? sleepTimer.mode === 'minutes'
-                    ? formatSleepRemaining(sleepRemainingSec * 1000)
-                    : t('player.sleepEndOfTrack')
-                  : t('player.sleepTimer')}
-              </span>
-            </button>
-          </div>
+          {/* Mobile audit item 3: the 9 secondary actions (Lyrics, Story,
+              Up next, Quality, Share, status card, pin, hide, sleep
+              timer) used to sit in two wrapping rows below the controls
+              (~184px at 320px) and pushed the sheet far past the fold.
+              They now live in the "More actions" sheet at the bottom of
+              this file, opened by this one compact button — same
+              handlers, same labels, same locale keys. */}
+          <button
+            type="button"
+            className="mobile-player-more-btn"
+            onClick={() => setShowMore(true)}
+            aria-haspopup="dialog"
+            aria-expanded={showMore}
+          >
+            <Icon name="more" size={18} />
+            <span>{t('player.moreActions')}</span>
+          </button>
 
           {panel === 'story' && (
             <div className="mobile-player-panel">
@@ -664,6 +586,126 @@ export default function MobilePlayer() {
         {/* Sleep timer sheet — rendered inside the player sheet so the
             focus trap covers it; position:fixed places it visually. */}
         <SleepTimerSheet open={sleepOpen} onClose={() => setSleepOpen(false)} />
+
+        {/* "More actions" sheet (mobile audit, item 3): the 9 secondary
+            actions as full-width rows, reusing the sleep sheet's
+            backdrop + .sheet + .sleep-option styles and the same
+            handlers, labels and locale keys as the old inline rows.
+            Choosing a row runs its action and closes the sheet; Sleep
+            timer opens its own sheet instead. The sleep row keeps the
+            WCAG 2.5.3 rule from the old button: when a timer is active
+            the visible text is the countdown (or "End of track"), so the
+            accessible name must contain that same text. */}
+        {showMore && (
+          <div className="sheet-backdrop" onClick={() => setShowMore(false)}>
+            <div
+              className="sheet more-sheet"
+              role="dialog"
+              aria-modal="true"
+              aria-label={t('player.moreActions')}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="sheet-head">
+                <h2 className="sheet-title">{t('player.moreActions')}</h2>
+                <button type="button" className="player-icon-btn" onClick={() => setShowMore(false)} aria-label={t('common.close')}>
+                  <Icon name="close" size={20} />
+                </button>
+              </div>
+              <ul className="sleep-options">
+                <li>
+                  <button
+                    type="button"
+                    className={`sleep-option${view === 'lyrics' ? ' is-active' : ''}`}
+                    onClick={() => { setView(view === 'lyrics' ? 'cover' : 'lyrics'); setShowMore(false) }}
+                    aria-pressed={view === 'lyrics'}
+                  >
+                    {t('common.lyrics')}
+                    <span className="sleep-option__state" aria-hidden="true">{view === 'lyrics' ? '✓' : ''}</span>
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    className={`sleep-option${panel === 'story' ? ' is-active' : ''}`}
+                    onClick={() => { setPanel(panel === 'story' ? null : 'story'); setShowMore(false) }}
+                    aria-expanded={panel === 'story'}
+                  >
+                    {t('player.story')}
+                    <span className="sleep-option__state" aria-hidden="true">{panel === 'story' ? '✓' : ''}</span>
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    className={`sleep-option${panel === 'queue' ? ' is-active' : ''}`}
+                    onClick={() => { setPanel(panel === 'queue' ? null : 'queue'); setShowMore(false) }}
+                    aria-expanded={panel === 'queue'}
+                  >
+                    {t('common.upNext')}
+                    <span className="sleep-option__state" aria-hidden="true">{panel === 'queue' ? '✓' : ''}</span>
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    className="sleep-option"
+                    onClick={() => { setQuality(quality === '128' ? '320' : '128'); setShowMore(false) }}
+                    aria-label={`${t('common.quality')} ${quality} kbps`}
+                  >
+                    {t('common.quality')}
+                    <span className="sleep-option__state" aria-hidden="true">{quality} kbps</span>
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    className="sleep-option"
+                    onClick={() => { setShowMore(false); share() }}
+                    aria-label={t('common.share')}
+                  >
+                    <Icon name="share" size={18} /> <span>{shared ? t('player.copied') : t('common.share')}</span>
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    className="sleep-option"
+                    onClick={() => { setShowMore(false); shareCard() }}
+                    disabled={cardBusy}
+                  >
+                    <Icon name="share" size={18} /> <span>{t('share.statusCard')}</span>
+                  </button>
+                </li>
+                <li><PinButton track={track} variant="row" /></li>
+                <li><HideButton track={track} variant="row" /></li>
+                <li>
+                  <button
+                    type="button"
+                    className={`sleep-option${sleepTimer ? ' is-active' : ''}`}
+                    onClick={() => { setShowMore(false); setSleepOpen(true) }}
+                    aria-label={
+                      sleepTimer?.mode === 'minutes'
+                        ? t('player.sleepRemaining', { time: formatSleepRemaining(sleepRemainingSec * 1000) })
+                        : sleepTimer
+                          ? t('player.sleepEndOfTrack')
+                          : t('player.sleepTimer')
+                    }
+                    aria-pressed={Boolean(sleepTimer)}
+                  >
+                    <Icon name="moon" size={18} />
+                    <span>
+                      {sleepTimer
+                        ? sleepTimer.mode === 'minutes'
+                          ? formatSleepRemaining(sleepRemainingSec * 1000)
+                          : t('player.sleepEndOfTrack')
+                        : t('player.sleepTimer')}
+                    </span>
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
