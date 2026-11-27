@@ -110,7 +110,7 @@ export async function resolvePlayableUrl(track, quality = '128') {
     try {
       return await getSignedAudioUrl(fileNameOf(track, quality))
     } catch {
-      // Demo mode (no Supabase configured): the signed file name is
+      // No Supabase configured: the signed file name is
       // also the local 1s silent mp3 at /assets/… — play that file
       // instead of failing with an empty src. The file is silence, so
       // nothing protected is exposed; production always has Supabase

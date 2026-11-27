@@ -9,8 +9,8 @@
 // - Audio uploads go to the existing private bucket "audio"; the stored
 //   audio_128_url/audio_320_url stay Storage object paths like
 //   'audio/<file>.mp3', never public URLs (signed-URL playback stays).
-// - Cover uploads go to bucket "covers". It may not exist yet: the
-//   caller gets a 'covers-bucket' error and the UI shows
+// - Cover uploads go to bucket "covers" (exists; public). If the bucket
+//   were missing, the caller gets a 'covers-bucket' error and the UI shows
 //   "Covers bucket not set up yet — ask the admin to create it in
 //   Supabase" instead of crashing.
 // - The tracks/albums tables only accept status draft/scheduled/
@@ -22,13 +22,12 @@
 //   description/story/scheduled_at columns (002_gapfix_columns.sql);
 //   featuredArtists deliberately has NO column — the editor shows a
 //   "not stored yet" note instead of silently discarding it.
-// - RLS: writes need a user_roles row (parent dashboard step). An RLS
-//   failure surfaces "Admin role not set up in the database yet";
-//   a missing table GRANT surfaces the permissions message. Nothing
-//   fails silently, and a failed Supabase write NEVER falls back to
-//   localStorage (that would fake a success).
+// - RLS: writes need a user_roles row with role 'admin' (set up in the
+//   database). An RLS failure surfaces "Admin role not set up in the
+//   database yet"; a missing table GRANT surfaces the permissions
+//   message. Nothing fails silently, and a failed Supabase write NEVER
+//   falls back to localStorage (that would fake a success).
 import { supabase, isSupabaseConfigured } from './supabase.js'
-import { isDemoMode } from './config.js'
 import { invalidateCatalog } from './cache.js'
 import { isUuid, resolveTrackDbIds, clearCatalogRowCache } from './supabaseCatalog.js'
 
@@ -66,7 +65,7 @@ function noteAdminErrorKind(kind) {
 
 /** True when admin writes should go to Supabase (not localStorage). */
 export function supabaseWritesEnabled() {
-  return isSupabaseConfigured && !isDemoMode
+  return isSupabaseConfigured
 }
 
 /** Classify a Supabase/storage error for the admin UI. */

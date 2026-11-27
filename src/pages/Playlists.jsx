@@ -19,7 +19,7 @@ function saveUserPlaylists(list) {
 
 /**
  * Route '/playlists' — curated playlists from the catalog plus
- * user-created playlists (localStorage, demo mode). Inline form for
+ * user-created playlists (localStorage). Inline form for
  * creating a playlist (no window.prompt).
  */
 export default function Playlists() {

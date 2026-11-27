@@ -547,3 +547,13 @@ Still outstanding (unchanged): migration 003 not applied live; delete-account Ed
 - Function probe live (pre-redeploy, expected): Vaazhvinil 200, Malaiyoram 403, Marakka 403 — redeploy still required.
 - Screenshots viewed: home-390-live.png, home-1280-live.png, gate-prompt-390.png, player-390x664.png.
 - NOT yet verified (awaits dashboard steps): new tracks in catalog, seed SQL applied, function redeployed, 3-song live playback.
+
+### Post-dashboard live verification — 3 songs end-to-end (27 Nov 2026 ~20:00–20:08 IST, build mwz1vtbq-53514955)
+- Function probe (deployed get-audio-url): all 3 tracks → 200 + signed URL (expiresIn 300); `../vaazhvinil-orumurayenum.mp3` → 403. Redeploy took effect.
+- Live catalog: 3 published tracks (Vaazhvinil 224s, Malaiyoram 351s hook 63/12, Marakka 254s) + 3 lyrics rows (Malaiyoram synced 32, Vaazhvinil 40, Marakka 32). Home covers 134×134 @390 / 161×161 @1280, new orange-N covers, no stretch.
+- Guest gate: Malaiyoram pauses 5.23s + prompt, dismiss rewinds to 0, replay re-gates 5.25s; Marakka pauses 5.20s + prompt. M1 race PASS (Malaiyoram → Vaazhvinil switch: src switches, first stops cleanly, second gates at 5.21s).
+- P1 live re-run: 73/75 PASS, 1 RECORDED — R1 + R12 are stale probe expectations (old buildId; Weekly Mix now correctly shows 3 rows for the 3-song catalog), not app failures.
+- **BUG 1 (High) — lyrics never display:** player Lyrics view shows Malaiyoram 0 lines ("Lyrics coming soon"), Vaazhvinil old 4 sample lines, Marakka 0 lines, despite DB rows. Cause: `PlayerContext.play()` loads the track from the queue by id; the list never attaches lyrics (`fetchTracks` has no lyrics step; only `fetchTrack` does, and `Track.jsx`'s play effect fires with the static fallback first). Fix: attach lyrics in `fetchTracks` or enrich the current track in the player.
+- **BUG 2 (Medium) — composer fallback misattributes:** `MobilePlayer.jsx:269` + `StoryCard.jsx:16` render 'Siddha Guruji' when composer is blank, so Malaiyoram (composer NULL) shows "Composer: Siddha Guruji". Fix: render nothing when blank.
+- Marakka was deleted by the user mid-verification (19:56 IST) and re-created ~20:06 IST; verified normally after re-creation. Its orphan album card remains in New Releases (0 tracks, cosmetic).
+- Still unverified: signed-in full-song play + synced-lyrics highlight (needs Sathiya's /login sign-in; guest gate stops at 5s, first Malaiyoram line is at 32.56s).

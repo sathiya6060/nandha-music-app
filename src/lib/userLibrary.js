@@ -1,5 +1,4 @@
 import { supabase, isSupabaseConfigured } from './supabase.js'
-import { isDemoMode } from './config.js'
 import { resolveTrackDbIds } from './supabaseCatalog.js'
 
 // Supabase sync for the user's library (item 8, 27 Nov 2026):
@@ -11,7 +10,7 @@ import { resolveTrackDbIds } from './supabaseCatalog.js'
 //
 // Rules:
 // - Sync runs ONLY for a real Supabase session with a uuid user id.
-//   Demo mode (id 'demo-user') and guests never touch the remote.
+//   Guests never touch the remote.
 // - If a table is missing (PGRST205 / 42P01 — migration 003 not
 //   applied yet), remote sync switches off for the session and the
 //   app stays local-only. Nothing is faked.
@@ -42,7 +41,6 @@ export function isRemoteSyncOn(user) {
   const id = user?.id || currentUserId
   return (
     isSupabaseConfigured &&
-    !isDemoMode &&
     Boolean(supabase) &&
     isUuid(id) &&
     !remoteOff

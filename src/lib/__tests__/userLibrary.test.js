@@ -28,7 +28,6 @@ vi.mock('../supabase.js', () => ({
   supabase: { from: (table) => query(table, shared.results.get(table) || { data: [], error: null }) },
   isSupabaseConfigured: true,
 }))
-vi.mock('../config.js', () => ({ isDemoMode: false }))
 vi.mock('../supabaseCatalog.js', () => ({
   resolveTrackDbIds: async () => new Map(),
 }))

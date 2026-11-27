@@ -8,10 +8,10 @@ Mobile-first — the mobile player and bottom navigation are the top priority.
 ## What is built (v1)
 
 - **Auth** — email + Google login (Supabase Auth); roles admin / artist /
-  listener with Supabase RLS (admin-only writes). Demo mode ONLY when
-  `VITE_DEMO_MODE=true` is set — every demo sign-in is a listener;
-  admin is never granted in demo (M2). No sign-in is needed to listen:
-  guests get a 5-second preview per track.
+  listener with Supabase RLS (admin-only writes). No sign-in is needed
+  to listen: guests get a 5-second preview per track. (Demo mode was
+  removed 27 Nov 2026 — auth is Supabase-only and fails closed when
+  unconfigured.)
 - **Home** — Popular Tracks, New Releases, Browse by Genre, time-of-day
   sections (Morning Devotional 5–10, Afternoon Melody, Evening Love 6–9,
   Night Calm), rule-based **Your Daily Mix**, **Song of the Day**, Bhakti

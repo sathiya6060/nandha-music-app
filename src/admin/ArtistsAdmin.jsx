@@ -12,7 +12,6 @@ import {
 import {
   getMergedArtists,
   saveAdminArtist,
-  deleteAdminArtist,
   logActivity,
   invalidateCaches,
 } from '../lib/adminStore.js'
@@ -32,15 +31,6 @@ const EMPTY_ARTIST = {
   website: '',
 }
 
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result)
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
-  })
-}
-
 export default function ArtistsAdmin() {
   const { user } = useAuth()
   const { t } = useI18n()
@@ -48,7 +38,6 @@ export default function ArtistsAdmin() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_ARTIST)
   const [photoPreview, setPhotoPreview] = useState('')
-  const [photoDataUrl, setPhotoDataUrl] = useState('')
   const [photoFile, setPhotoFile] = useState(null)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
@@ -62,7 +51,6 @@ export default function ArtistsAdmin() {
     setEditing('new')
     setForm(EMPTY_ARTIST)
     setPhotoPreview('')
-    setPhotoDataUrl('')
     setPhotoFile(null)
     setError('')
   }
@@ -83,22 +71,16 @@ export default function ArtistsAdmin() {
       website: socials.website || artist.website || '',
     })
     setPhotoPreview(artist.photo || artist.image || '')
-    setPhotoDataUrl('')
     setPhotoFile(null)
     setError('')
   }
 
-  const onPhotoChange = async (e) => {
+  const onPhotoChange = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
     setPhotoFile(file)
     if (photoPreview && photoPreview.startsWith('blob:')) URL.revokeObjectURL(photoPreview)
     setPhotoPreview(URL.createObjectURL(file))
-    try {
-      setPhotoDataUrl(await readFileAsDataUrl(file))
-    } catch {
-      setPhotoDataUrl('')
-    }
   }
 
   const handleSave = async (e) => {
@@ -134,7 +116,16 @@ export default function ArtistsAdmin() {
           },
           { photoFile },
         )
-        if (photoUrl) saveAdminArtist({ id, photo: photoUrl })
+        // Local photo override only (artists table has no photo
+        // column). A localStorage failure here must not report a
+        // DB error — the artist row already saved.
+        if (photoUrl) {
+          try {
+            saveAdminArtist({ id, photo: photoUrl })
+          } catch {
+            console.warn('[ArtistsAdmin] local photo override failed; artist row saved')
+          }
+        }
       } catch (err) {
         setError(adminErrorMessage(err, t))
         return
@@ -147,29 +138,8 @@ export default function ArtistsAdmin() {
       setVersion((v) => v + 1)
       return
     }
-    const saved = saveAdminArtist({
-      ...base,
-      id: editing === 'new' ? undefined : editing,
-      name: form.name.trim(),
-      nameEn: form.name.trim(),
-      nameTa: form.nameTa.trim(),
-      bioTa: form.bioTa.trim(),
-      bioEn: form.bioEn.trim(),
-      photo: photoDataUrl || (photoPreview && !photoPreview.startsWith('blob:') ? photoPreview : base.photo || base.image || null),
-      socials: {
-        instagram: form.instagram.trim(),
-        youtube: form.youtube.trim(),
-        facebook: form.facebook.trim(),
-        threads: form.threads.trim(),
-        spotify: form.spotify.trim(),
-        website: form.website.trim(),
-      },
-    })
-    logActivity({ actor: user?.email || 'Admin', action: editing === 'new' ? 'Created artist' : 'Updated artist', detail: saved.name || saved.nameTa })
-    await invalidateCaches()
-    setNotice(t('admin.saved'))
-    setEditing(null)
-    setVersion((v) => v + 1)
+    // Admin is Supabase-only (27 Nov 2026): no local fallback.
+    setError(t('admin.dbNotConnected'))
   }
 
   const handleDelete = async (artist) => {
@@ -188,11 +158,8 @@ export default function ArtistsAdmin() {
       setVersion((v) => v + 1)
       return
     }
-    deleteAdminArtist(artist.id)
-    logActivity({ actor: user?.email || 'Admin', action: 'Deleted artist', detail: name })
-    await invalidateCaches()
-    setNotice(t('admin.saved'))
-    setVersion((v) => v + 1)
+    // Admin is Supabase-only (27 Nov 2026): no local fallback.
+    setError(t('admin.dbNotConnected'))
   }
 
   return (

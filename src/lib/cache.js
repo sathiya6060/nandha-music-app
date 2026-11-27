@@ -244,7 +244,7 @@ function ensureVisibilityFlush() {
 /**
  * Record a play locally. Buffered in memory; flushed to Supabase
  * `play_events` every 5 min or when the tab is hidden/closed — never on
- * every play. No-op in demo mode (no Supabase) — counts stay local only.
+ * every play. No-op when Supabase is unconfigured — counts stay local only.
  */
 export function recordPlay(trackId) {
   if (!trackId) return;
@@ -263,7 +263,7 @@ export async function flushPlays() {
   if (playBuffer.size === 0) return { flushed: 0 };
   const entries = [...playBuffer.entries()];
   playBuffer.clear();
-  if (!supabase) return { flushed: 0, skipped: 'demo-mode' };
+  if (!supabase) return { flushed: 0, skipped: 'no-supabase' };
   try {
     // NOTE (S9, 27 Nov 2026): this dynamic import() is INTENTIONALLY
     // kept, even though Vite flags it INEFFECTIVE_DYNAMIC_IMPORT.

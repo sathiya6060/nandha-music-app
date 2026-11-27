@@ -34,7 +34,7 @@ export function getFollowedArtistIds() {
 }
 
 /**
- * Route '/library' — demo mode, localStorage-backed.
+ * Route '/library' — localStorage-backed.
  * User playlists, liked songs count, followed artists.
  */
 export default function Library() {

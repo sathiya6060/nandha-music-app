@@ -7,7 +7,7 @@
 // AuthProvider must still wrap this component from the app root.
 import { useEffect, useState } from 'react'
 import { NavLink, Navigate, Outlet, Link } from 'react-router-dom'
-import { useAuth, DEMO_ROLES } from '../lib/auth.jsx'
+import { useAuth } from '../lib/auth.jsx'
 import { getAdminRedirect } from '../lib/adminGate.js'
 import { getAdminRoleWarning, onAdminRoleWarning } from '../lib/supabaseAdmin.js'
 import { LanguageProvider, useI18n, LOCALES } from '../lib/i18n.js'
@@ -40,7 +40,7 @@ function roleLabelKey(role) {
 }
 
 function AdminLayoutInner() {
-  const { user, role, isAdmin, isDemo, setDemoRole, signOut, loading } = useAuth()
+  const { user, role, isAdmin, signOut, loading } = useAuth()
   const { t, lang, setLang, locales } = useI18n()
   // Mobile nav (Fix 1): the sidebar is hidden below 720px and opens via
   // the hamburger in the topbar; picking a section closes it again.
@@ -125,7 +125,7 @@ function AdminLayoutInner() {
             </button>
             <span className="admin-user-email">{user ? user.email : t('auth.notSignedIn')}</span>
             <span className="admin-badge admin-badge-role">{t(roleLabelKey(role))}</span>
-            <label className="admin-demo-role">
+            <label className="admin-topbar-field">
               {t('common.language')}:
               <select value={lang} onChange={(e) => setLang(e.target.value)} aria-label={t('common.language')}>
                 {locales.map((code) => (
@@ -136,25 +136,6 @@ function AdminLayoutInner() {
               </select>
             </label>
           </div>
-          {isDemo && (
-            <div className="admin-demo-bar" role="status">
-              <span>{t('admin.demoNotice')}</span>
-              <label className="admin-demo-role">
-                {t('auth.demoRole')}:
-                <select
-                  value={role}
-                  onChange={(e) => setDemoRole(e.target.value)}
-                  aria-label={t('auth.demoRole')}
-                >
-                  {DEMO_ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {t(roleLabelKey(r))}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          )}
         </header>
 
         <main className="admin-content">

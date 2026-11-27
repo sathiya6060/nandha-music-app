@@ -101,9 +101,9 @@ export default function Login() {
         <p className="page-head__sub">{mode === 'signup' ? t('auth.signUpHint') : t('auth.loginHint')}</p>
       </div>
 
-      {/* M2c: misconfigured backend (no Supabase, no demo flag) — sign-in
+      {/* Misconfigured backend (no Supabase) — sign-in
           is unavailable. The form below is disabled; this is the visible
-          fail-closed state, not a silent demo fallback. */}
+          fail-closed state. */}
       {configError && (
         <p role="alert" className="form-error">{t('auth.configError')}</p>
       )}

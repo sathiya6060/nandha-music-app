@@ -64,7 +64,7 @@ export default function SiteSettings() {
   const onPressPhotoFile = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    // Demo mode: keep an object URL for the session; URLs typed in are persisted.
+    // Keep an object URL for the session; URLs typed in are persisted.
     const url = URL.createObjectURL(file)
     setForm((f) => ({ ...f, pressPhotos: [...(f.pressPhotos || []), url] }))
   }
@@ -189,7 +189,6 @@ export default function SiteSettings() {
               <input type="file" accept="image/*" className="admin-file-hidden" onChange={onPressPhotoFile} />
             </label>
           </div>
-          <span className="admin-field-hint">{t('admin.demoNotice')}</span>
         </div>
 
         <label className="admin-field">

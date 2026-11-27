@@ -142,22 +142,7 @@
   font-size: 14px;
   font-weight: 600;
 }
-.admin-demo-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  background: var(--admin-sand);
-  border: 1px solid var(--admin-gold);
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 13px;
-  color: #1E293B;
-}
-.admin-demo-bar strong {
-  color: var(--admin-slate);
-}
-.admin-demo-role {
+.admin-topbar-field {
   display: inline-flex;
   align-items: center;
   gap: 6px;

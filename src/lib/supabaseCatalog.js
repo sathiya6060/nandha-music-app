@@ -4,7 +4,7 @@
 // src/data/catalog.js directly. catalog.js is FALLBACK ONLY: when
 // Supabase is unconfigured, unreachable, errors, or returns no rows,
 // the static catalog (today's 1 real track) is used so the app keeps
-// working offline / in demo mode.
+// working offline.
 //
 // Shape: DB rows are mapped to the UI shape catalog.js already uses
 // (titleEn/titleTa, artist, album, audio128/audio320, cover, ...).

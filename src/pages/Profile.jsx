@@ -18,13 +18,12 @@ import { clearLocalData } from '../lib/localData.js'
  * through the delete-account Edge Function (the client never holds
  * the service_role key). If the function is not deployed yet the UI
  * says so honestly ("email us") and deletes nothing — the deletion
- * is never faked. In demo mode there is no server account at all, so
- * deleting just clears local data and signs out. On success the
- * local data is cleared too, then the user is signed out.
+ * is never faked. On success the local data is cleared too, then the
+ * user is signed out.
  */
 export default function Profile() {
   const { t } = useI18n()
-  const { user, role, isDemo, signOut } = useAuth()
+  const { user, role, signOut } = useAuth()
   const navigate = useNavigate()
   const showToast = useToast()
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -58,14 +57,6 @@ export default function Profile() {
     setDeleting(true)
     setDeleteMsg('')
     try {
-      if (isDemo) {
-        // Demo mode: the "account" is entirely local.
-        clearLocalData()
-        await signOut().catch(() => {})
-        showToast?.(t('profile.deleteDone'))
-        navigate('/', { replace: true })
-        return
-      }
       const result = await deleteAccount()
       if (result.ok) {
         clearLocalData()

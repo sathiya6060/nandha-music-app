@@ -1,8 +1,25 @@
-# Lint baseline (S10, 27 Nov 2026 — updated for the items 5–12 batch)
+# Lint baseline (S10, 27 Nov 2026 — updated for the demo-removal batch)
 
-`npx oxlint` — **37 warnings, 0 errors** (was 233 warnings on 27 Nov
-2026 before this pass; 36 after the items 5–12 batch). `scripts/pre-deploy-check.sh` gates on
+`npx oxlint` — **36 warnings, 0 errors** (was 233 warnings on 27 Nov
+2026 before this pass; 36 after the items 5–12 batch; 39 before the
+demo-removal batch). `scripts/pre-deploy-check.sh` gates on
 `--max-warnings 40`, so the count cannot silently grow again.
+
+## Demo-removal batch (27 Nov 2026) — count 39 → 36
+
+The count had drifted to 39 since the items 5–12 batch (+3 gross from
+the two one-off `mobile-verify/debug-marakka-source*.js` scripts created
+during the 3-song verification, −1 for `DEMO_ROLES` removed with demo
+mode). The approved Ponytail delete-list for this batch removed both
+debug scripts (−3), so the count is back to **36**.
+
+- `mobile-verify/debug-marakka-source.js` — 1 `no-unused-vars`
+  warning, deleted (one-off Marakka diagnosis scratch).
+- `mobile-verify/debug-marakka-source2.js` — 2 `no-unused-vars`
+  warnings (unused `fs` import, unused catch param), deleted.
+- `src/lib/auth.jsx` — `DEMO_ROLES` export removed with demo mode, so
+  the `only-export-components` count for `auth.jsx` drops from 3 to 2
+  (`ADMIN_EMAILS`, `useAuth`).
 
 ## OCR review of the prod sweep (27 Nov 2026) — count 36 → 37
 
@@ -90,7 +107,7 @@ would churn every importer for a dev-only warning.
 
 - `src/lib/toast.jsx:42` — `useToast` alongside `ToastProvider` (items
   5–12 batch; same accepted pattern as the other 14).
-- `src/lib/auth.jsx` (3): `ADMIN_EMAILS`, `DEMO_ROLES`, `useAuth`.
+- `src/lib/auth.jsx` (2): `ADMIN_EMAILS`, `useAuth`.
 - `src/components/TrackRow.jsx` (4): `getLikedIds` + helpers.
 - `src/pages/Library.jsx` (2): `getFollowedArtistIds`, `FOLLOWED_KEY`.
 - `src/player/PlayerContext.jsx` (5): `PREVIEW_SECONDS`,

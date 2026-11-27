@@ -12,10 +12,7 @@ import {
 import {
   getMergedTracks,
   getMergedPlaylists,
-  saveAdminPlaylist,
-  deleteAdminPlaylist,
   logActivity,
-  invalidateCaches,
 } from '../lib/adminStore.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useI18n } from '../lib/i18n.js'
@@ -131,23 +128,8 @@ export default function PlaylistsAdmin() {
       setVersion((v) => v + 1)
       return
     }
-    const saved = saveAdminPlaylist({
-      ...base,
-      id: editing === 'new' ? undefined : editing,
-      name: form.name.trim(),
-      titleEn: form.name.trim(),
-      description: form.description.trim(),
-      descriptionEn: form.description.trim(),
-      descriptionTa: form.description.trim(),
-      trackIds: form.trackIds,
-      cover: coverPreview && !coverPreview.startsWith('blob:') ? coverPreview : base.cover || null,
-    })
-    logActivity({ actor: user?.email || 'Admin', action: editing === 'new' ? 'Created playlist' : 'Updated playlist', detail: saved.name })
-    await invalidateCaches()
-    setNotice(t('admin.saved'))
-    setError('')
-    setEditing(null)
-    setVersion((v) => v + 1)
+    // Admin is Supabase-only (27 Nov 2026): no local fallback.
+    setError(t('admin.dbNotConnected'))
   }
 
   const handleDelete = async (playlist) => {
@@ -166,11 +148,8 @@ export default function PlaylistsAdmin() {
       setVersion((v) => v + 1)
       return
     }
-    deleteAdminPlaylist(playlist.id)
-    logActivity({ actor: user?.email || 'Admin', action: 'Deleted playlist', detail: name })
-    await invalidateCaches()
-    setNotice(t('admin.saved'))
-    setVersion((v) => v + 1)
+    // Admin is Supabase-only (27 Nov 2026): no local fallback.
+    setError(t('admin.dbNotConnected'))
   }
 
   const orderedTracks = form.trackIds.map((id) => adminTracks.find((tr) => tr.id === id)).filter(Boolean)

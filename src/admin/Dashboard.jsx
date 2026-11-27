@@ -7,7 +7,7 @@ import { getMergedTracks, getActivityLog, loadUsers } from '../lib/adminStore.js
 import { useAuth } from '../lib/auth.jsx'
 import { useI18n } from '../lib/i18n.js'
 
-// Supabase free tier storage limit used as the demo "free limit".
+// Supabase free tier storage limit (1 GB).
 const FREE_STORAGE_LIMIT_BYTES = 1024 * 1024 * 1024 // 1 GB
 
 function formatBytes(bytes) {

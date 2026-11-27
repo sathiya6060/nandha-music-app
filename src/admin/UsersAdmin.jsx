@@ -1,4 +1,4 @@
-// Users admin — demo user table with role changes and block/unblock.
+// Users admin — local user table with role changes and block/unblock.
 // Admin-only: artists see the table read-only (role controls are disabled).
 import { useMemo, useState } from 'react'
 import { loadUsers, saveUsers, logActivity } from '../lib/adminStore.js'

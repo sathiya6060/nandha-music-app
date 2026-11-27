@@ -16,14 +16,6 @@
  *                                   redis-cache Edge Function env.
  *   VITE_REDIS_MONTHLY_BUDGET       Redis command budget/month, default
  *                                   450000 (90% of the 500K free tier).
- *   VITE_DEMO_MODE                  'true' = demo mode (see below).
- *
- * DEMO MODE (26 Nov 2026, OpenCodeReview M2): demo mode runs ONLY when
- * the explicit VITE_DEMO_MODE=true flag is set. Missing Supabase URL/key
- * alone does NOT enable demo mode — without Supabase and without the
- * flag the app is misconfigured and sign-in fails closed (see
- * src/lib/auth.jsx). In demo mode the role is always 'listener'; admin
- * is never granted (the allowlist does not apply in demo).
  * Copy `.env.example` (when present) to `.env.local` and fill in values.
  */
 
@@ -58,18 +50,7 @@ export const config = {
   upstashRedisToken: readEnv('VITE_UPSTASH_REDIS_REST_TOKEN'),
   /** Monthly Redis command budget (redisGuard.js). Default 450,000. */
   redisMonthlyBudget: parseBudget(readEnv('VITE_REDIS_MONTHLY_BUDGET')),
-  /** Explicit demo-mode flag (M2): only 'true' enables demo mode. */
-  demoMode: readEnv('VITE_DEMO_MODE').toLowerCase() === 'true',
 };
-
-/**
- * True ONLY when the explicit VITE_DEMO_MODE=true flag is set (M2).
- * Missing Supabase vars alone do NOT enable demo mode — without
- * Supabase and without the flag, the app is misconfigured and auth
- * fails closed (see src/lib/auth.jsx). The catalog in
- * src/data/catalog.js is still the local data source in demo.
- */
-export const isDemoMode = config.demoMode === true;
 
 export const isRedisConfigured =
   config.upstashRedisUrl !== '' && config.upstashRedisToken !== '';
@@ -87,9 +68,9 @@ const isR2Configured = config.audioBaseUrl !== '';
  * R2 layout (when VITE_AUDIO_BASE_URL is set): files are stored flat under
  * the base URL by file name, e.g.
  *   <base>/vaazhvinil-orumurayenum.mp3
- * The local/demo path stored on the track (e.g. '/assets/….mp3') is reduced
+ * The local path stored on the track (e.g. '/assets/….mp3') is reduced
  * to its file name for the R2 URL. Without R2, the track's local path is
- * returned as-is (served from /public/assets in dev/demo).
+ * returned as-is (served from /public/assets).
  */
 export function audioUrl(track, quality = '128') {
   if (!track) return null;

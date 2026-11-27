@@ -13,8 +13,6 @@ import {
 } from '../lib/supabaseAdmin.js'
 import {
   getMergedTracks,
-  saveAdminTrack,
-  deleteAdminTrack,
   restoreAdminTrack,
   logActivity,
   invalidateCaches,
@@ -138,20 +136,8 @@ export default function TracksAdmin() {
       setVersion((v) => v + 1)
       return
     }
-    for (const id of selected) {
-      const track = adminTracks.find((tr) => tr.id === id)
-      if (!track) continue
-      saveAdminTrack({ ...track, status })
-      await invalidateCaches(id)
-    }
-    logActivity({
-      actor: user?.email || 'Admin',
-      action: `Bulk ${status === 'published' ? 'published' : 'unpublished'} tracks`,
-      detail: `${selected.size} track(s) → ${status}`,
-    })
-    setNotice(t('admin.bulkStatusSet', { count: selected.size, status: statusLabel(status) }))
-    setSelected(new Set())
-    setVersion((v) => v + 1)
+    // Admin is Supabase-only (27 Nov 2026): no local fallback.
+    setError(t('admin.dbNotConnected'))
   }
 
   const handleDelete = async (track) => {
@@ -159,7 +145,7 @@ export default function TracksAdmin() {
     if (!window.confirm(t('admin.confirmDelete', { title }))) return
     setError('')
     // Supabase rows are hard-deleted (no 'deleted' status in the DB);
-    // local-only tracks keep the old soft-delete path.
+    // tracks without a DB row cannot be deleted from here.
     if (supabaseWritesEnabled() && track.dbId) {
       try {
         await deleteTrackFromSupabase(track)
@@ -172,11 +158,9 @@ export default function TracksAdmin() {
       setVersion((v) => v + 1)
       return
     }
-    deleteAdminTrack(track.id)
-    logActivity({ actor: user?.email || 'Admin', action: 'Deleted track', detail: title })
-    await invalidateCaches(track.id)
-    setNotice(t('admin.trackDeleted', { title }))
-    setVersion((v) => v + 1)
+    // Admin is Supabase-only (27 Nov 2026): a track without a
+    // database row cannot be deleted from here.
+    setError(t('admin.dbNotConnected'))
   }
 
   const handleRestore = async (track) => {

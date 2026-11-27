@@ -10,9 +10,7 @@ import {
 import {
   getMergedTracks,
   loadSyncedLyrics,
-  saveSyncedLyrics,
   logActivity,
-  invalidateCaches,
 } from '../lib/adminStore.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useI18n } from '../lib/i18n.js'
@@ -80,8 +78,11 @@ export default function LyricsAdmin() {
         }
         setLoaded(true)
         return
-      } catch {
-        // Fall through to the local copy below.
+      } catch (err) {
+        // Supabase fetch failed — show the error, then fall through
+        // to the local copy below (shown for reference); saving still
+        // goes to Supabase or fails loudly.
+        setError(adminErrorMessage(err, t))
       }
     }
     const saved = loadSyncedLyrics()[id]
@@ -144,12 +145,8 @@ export default function LyricsAdmin() {
       setNotice(t('admin.saved'))
       return
     }
-    saveSyncedLyrics(trackId, cleaned)
-    logActivity({ actor: user?.email || 'Admin', action: 'Edited synced lyrics', detail: selectedTrack?.titleTa || selectedTrack?.titleEn || trackId })
-    await invalidateCaches(trackId)
-    setLines(cleaned)
-    setError('')
-    setNotice(t('admin.saved'))
+    // Admin is Supabase-only (27 Nov 2026): no local fallback.
+    setError(t('admin.dbNotConnected'))
   }
 
   return (

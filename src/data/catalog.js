@@ -1,5 +1,5 @@
 /**
- * Nandha Music — catalog data layer (local / demo source of truth).
+ * Nandha Music — catalog data layer (local source of truth).
  *
  * REAL DATA ONLY. There is ONE real track: 'Vaazhvinil Orumurayenum'
  * (release 2026-12-10), one real album ('Annamalaiyar'), two real
@@ -15,7 +15,7 @@
  * When Supabase is configured, the app layer queries the `tracks` /
  * `albums` / `artists` / `playlists` tables (see
  * supabase/migrations/001_schema.sql) and uses this file only as the
- * demo-mode fallback. The shapes here mirror those tables.
+ * offline fallback. The shapes here mirror those tables.
  */
 
 // ---------------------------------------------------------------------------

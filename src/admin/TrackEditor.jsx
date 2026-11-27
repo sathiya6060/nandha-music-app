@@ -13,9 +13,7 @@ import {
 } from '../lib/supabaseAdmin.js'
 import {
   getMergedTracks,
-  saveAdminTrack,
   logActivity,
-  invalidateCaches,
   STATUS_LABEL_KEYS,
   GENRE_LABEL_KEYS,
   normalizeStatus,
@@ -265,8 +263,8 @@ export default function TrackEditor() {
         description: form.description.trim(),
         cover: coverDataUrl,
         plays: existing?.plays || 0,
-        // Demo mode: the audio file itself is not persisted to localStorage;
-        // its metadata is, so the record shows what was uploaded.
+        // Audio metadata only — the file itself goes to Supabase
+        // Storage on save; the record shows what was uploaded.
         audioName: audioFile ? audioFile.name : existing?.audioName || null,
         audioSize: audioFile ? audioFile.size : existing?.audioSize || null,
       }
@@ -300,17 +298,10 @@ export default function TrackEditor() {
         return
       }
 
-      const saved = saveAdminTrack(track)
-      logActivity({
-        actor: user?.email || 'Admin',
-        action: isNew ? 'Created track' : 'Updated track',
-        detail: saved.titleTa || saved.titleEn || saved.id,
-      })
-      await invalidateCaches(saved.id)
-      setNotice(t('admin.trackSaved', { title: saved.titleTa || saved.titleEn || saved.id }))
-      if (isNew) {
-        navigate(`/admin/tracks/${saved.id}/edit`, { replace: true })
-      }
+      // Admin is Supabase-only (27 Nov 2026): no local/demo fallback.
+      // Without the database connection the save fails loudly instead
+      // of pretending to succeed in this browser.
+      setSaveError(t('admin.dbNotConnected'))
     } finally {
       setSaving(false)
     }
@@ -490,7 +481,6 @@ export default function TrackEditor() {
                 {audioMeta.size ? ` · ${formatBytes(audioMeta.size)}` : ''}
               </span>
             )}
-            <span className="admin-field-hint">{t('admin.demoNotice')}</span>
           </label>
           <label className="admin-field">
             <span>{t('admin.coverFile')}</span>

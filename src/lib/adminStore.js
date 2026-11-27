@@ -1,6 +1,10 @@
-// Admin override store — localStorage-backed persistence for demo mode.
-// All admin writes go through here. Overrides are merged over the static
-// catalog data (src/data/catalog.js) so the shipped catalog is never edited.
+// Admin override store — localStorage-backed persistence for admin
+// overrides (e.g. the artist photo, which has no DB column) and local
+// reads (merged catalog, activity log, site settings, song of day).
+// Admin writes go to Supabase (src/lib/supabaseAdmin.js); only the
+// artist-photo override is still written here. Overrides are merged over
+// the static catalog data (src/data/catalog.js) so the shipped catalog
+// is never edited.
 // Every mutating helper also fires cache invalidation (static import —
 // S9: the dynamic import() used to be here, but cache.js is statically
 // imported elsewhere, so it split nothing).
@@ -85,32 +89,6 @@ function loadAdminTracks() {
   return readJson(KEYS.tracks, {})
 }
 
-/** Create or update one track override. Returns the saved track. */
-export function saveAdminTrack(track) {
-  const all = loadAdminTracks()
-  const id = track.id || newId('track')
-  const saved = { ...track, id, updatedAt: new Date().toISOString() }
-  if (!track.createdAt) saved.createdAt = saved.updatedAt
-  all[id] = saved
-  writeJson(KEYS.tracks, all)
-  return saved
-}
-
-/** Soft delete: status 'deleted' + deletedAt. Restorable via restoreAdminTrack. */
-export function deleteAdminTrack(id) {
-  const all = loadAdminTracks()
-  const base = all[id]
-  if (base) {
-    all[id] = { ...base, status: 'deleted', deletedAt: new Date().toISOString() }
-    writeJson(KEYS.tracks, all)
-    return all[id]
-  }
-  // Track only exists in the static catalog: record a deletion tombstone.
-  all[id] = { id, status: 'deleted', deletedAt: new Date().toISOString(), _tombstone: true }
-  writeJson(KEYS.tracks, all)
-  return all[id]
-}
-
 export function restoreAdminTrack(id) {
   const all = loadAdminTracks()
   const entry = all[id]
@@ -162,21 +140,6 @@ function loadAdminAlbums() {
   return readJson(KEYS.albums, {})
 }
 
-export function saveAdminAlbum(album) {
-  const all = loadAdminAlbums()
-  const id = album.id || newId('album')
-  const saved = { ...album, id, updatedAt: new Date().toISOString() }
-  all[id] = saved
-  writeJson(KEYS.albums, all)
-  return saved
-}
-
-export function deleteAdminAlbum(id) {
-  const all = loadAdminAlbums()
-  delete all[id]
-  writeJson(KEYS.albums, all)
-}
-
 export function getMergedAlbums(baseAlbums = []) {
   const overrides = loadAdminAlbums()
   const merged = baseAlbums.map((a) => (overrides[a.id] ? { ...a, ...overrides[a.id] } : a))
@@ -201,12 +164,6 @@ export function saveAdminArtist(artist) {
   return saved
 }
 
-export function deleteAdminArtist(id) {
-  const all = loadAdminArtists()
-  delete all[id]
-  writeJson(KEYS.artists, all)
-}
-
 export function getMergedArtists(baseArtists = []) {
   const overrides = loadAdminArtists()
   const merged = baseArtists.map((a) => (overrides[a.id] ? { ...a, ...overrides[a.id] } : a))
@@ -222,21 +179,6 @@ function loadAdminPlaylists() {
   return readJson(KEYS.playlists, {})
 }
 
-export function saveAdminPlaylist(playlist) {
-  const all = loadAdminPlaylists()
-  const id = playlist.id || newId('playlist')
-  const saved = { ...playlist, id, updatedAt: new Date().toISOString() }
-  all[id] = saved
-  writeJson(KEYS.playlists, all)
-  return saved
-}
-
-export function deleteAdminPlaylist(id) {
-  const all = loadAdminPlaylists()
-  delete all[id]
-  writeJson(KEYS.playlists, all)
-}
-
 export function getMergedPlaylists(basePlaylists = []) {
   const overrides = loadAdminPlaylists()
   const merged = basePlaylists.map((p) => (overrides[p.id] ? { ...p, ...overrides[p.id] } : p))
@@ -250,14 +192,6 @@ export function getMergedPlaylists(basePlaylists = []) {
 // ---------------------------------------------------------------- synced lyrics
 export function loadSyncedLyrics() {
   return readJson(KEYS.lyrics, {})
-}
-
-/** lines: [{ time: 'mm:ss', ta: string, en: string }] */
-export function saveSyncedLyrics(trackId, lines) {
-  const all = loadSyncedLyrics()
-  all[trackId] = { trackId, lines, updatedAt: new Date().toISOString() }
-  writeJson(KEYS.lyrics, all)
-  return all[trackId]
 }
 
 // ---------------------------------------------------------------- users

@@ -1,9 +1,9 @@
 // Items 5-12 verification (mobile audit, 27 Nov 2026): the P2 suite.
 // Viewports: 320x568, 390x844 (+390x664 short player), 1280x800.
-// Real server http://localhost:5173 (current source, guest) + demo-mode
-// server http://localhost:5174 (VITE_DEMO_MODE=true, signed-in demo
-// user — the only way to exercise signed-in flows headlessly; no real
-// credentials exist in this environment).
+// Real server http://localhost:5173 (current source, guest) + second
+// server http://localhost:5174 (signed-in flows — only when a real
+// session exists there; demo mode was removed 27 Nov 2026, so without
+// a real sign-in those checks SKIP instead of failing).
 // Puppeteer + Chrome for Testing, proxy 127.0.0.1:18080.
 // Screenshots + results JSON in mobile-verify/audit-p2/.
 //
@@ -20,7 +20,7 @@
 //    Like toast, playlist-create toast
 //  - /settings: sections, persistence across reload, no "coming later"
 //  - 404 <h1>, artist title (no duplication), delete-account confirm
-//    (demo mode), signed-in full playback (demo mode), 34px inset
+//    (signed-in), signed-in full playback (signed-in), 34px inset
 //    (built-CSS rule + computed style — CDP cannot simulate the inset)
 const puppeteer = require('puppeteer-core');
 const path = require('path');
@@ -30,15 +30,28 @@ const OUT = path.join(DIR, 'audit-p2');
 fs.mkdirSync(OUT, { recursive: true });
 const CHROME = path.join(DIR, '.cache/chrome/linux-158.0.8127.88/chrome-linux64/chrome');
 const SITE = 'http://localhost:5173';
-const DEMO = 'http://localhost:5174';
+const LOCAL = 'http://localhost:5174';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const results = {};
 let passCount = 0;
 let failCount = 0;
+let skipCount = 0;
 function check(name, ok, extra) {
   results[name] = ok ? 'PASS' : `FAIL${extra ? ` (${extra})` : ''}`;
   if (ok) passCount += 1; else failCount += 1;
   console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ` — ${extra}` : ''}`);
+}
+function skip(name, reason) {
+  results[name] = `SKIP (${reason})`;
+  skipCount += 1;
+  console.log(`SKIP ${name} — ${reason}`);
+}
+// Signed-in checks run only when a real session exists; otherwise they
+// SKIP (never FAIL). Demo mode was removed 27 Nov 2026, so there is no
+// auto-signed-in user any more.
+function checkOrSkip(signedIn, name, ok, extra) {
+  if (!signedIn) return skip(name, 'no signed-in session (demo mode removed 27 Nov 2026)');
+  check(name, ok, extra);
 }
 
 async function newPage(browser, width, height, lang, { touch = width < 1024 } = {}) {
@@ -561,7 +574,7 @@ const ROUTES = [
       hasClear: [...document.querySelectorAll('button')].some((b) => /Clear local data/i.test(b.textContent)),
       hasExport: [...document.querySelectorAll('button')].some((b) => /Export my data/i.test(b.textContent)),
       // Delete account lives on /profile, not /settings — checked in
-      // the demo-mode section below.
+      // the signed-in section below.
       comingLater: /coming (soon|later)/i.test(text),
     };
   });
@@ -637,17 +650,29 @@ const ROUTES = [
   await page.screenshot({ path: path.join(OUT, '404-390.png') });
   await page.close();
 
-  // ============ DEMO MODE (signed-in): avatar menu, full playback, delete ============
+  // ============ SIGNED-IN: avatar menu + delete confirm ============
+  // Demo mode was removed 27 Nov 2026: there is no auto-signed-in user
+  // any more. The avatar-menu and delete-confirm checks run only when
+  // a real signed-in session exists on the :5174 server; otherwise
+  // they SKIP (never fail). Signed-in playback + delete execution were
+  // written for the demo (1s silent file, local delete path) and SKIP
+  // unconditionally until rewritten for a real session.
   page = await newPage(browser, 390, 844);
-  await loadHome(page, DEMO);
-  const demoHeader = await page.evaluate(() => {
+  let signedIn = false;
+  try {
+    await loadHome(page, LOCAL);
+    signedIn = await page.evaluate(() => !!document.querySelector('.topbar__avatar'));
+  } catch {
+    signedIn = false;
+  }
+  const signedInHeader = await page.evaluate(() => {
     const avatar = document.querySelector('.topbar__avatar');
     const btns = [...document.querySelectorAll('.topbar__auth-btn')].map((b) => b.textContent.trim());
     return { hasAvatar: !!avatar, btns };
   });
-  check('demo signed-in: avatar present, no Sign in/Sign up buttons', demoHeader.hasAvatar && demoHeader.btns.length === 0, JSON.stringify(demoHeader));
+  checkOrSkip(signedIn, 'signed-in: avatar present, no Sign in/Sign up buttons', signedInHeader.hasAvatar && signedInHeader.btns.length === 0, JSON.stringify(signedInHeader));
   // Avatar menu opens with Profile / Settings / Sign out (no Admin —
-  // the demo user is a listener, never admin).
+  // a listener never sees Admin).
   await page.evaluate(() => {
     const a = document.querySelector('.topbar__avatar');
     if (a) a.click();
@@ -658,77 +683,43 @@ const ROUTES = [
     if (!m) return null;
     return { items: [...m.querySelectorAll('button, a')].map((x) => x.textContent.trim()), hasAdmin: /Admin/.test(m.textContent) };
   });
-  check('avatar menu lists Profile/Settings/Sign out, no Admin (demo listener)', menu && menu.items.includes('Profile') && menu.items.includes('Settings') && menu.items.includes('Sign out') && !menu.hasAdmin, JSON.stringify(menu));
+  checkOrSkip(signedIn, 'avatar menu lists Profile/Settings/Sign out, no Admin (demo listener)', menu && menu.items.includes('Profile') && menu.items.includes('Settings') && menu.items.includes('Sign out') && !menu.hasAdmin, JSON.stringify(menu));
   await page.screenshot({ path: path.join(OUT, 'avatar-menu-390.png') });
-  // Close the menu, then play the track. The demo audio is the 1s
-  // silent mp3, so currentTime can never pass 5s — the honest check
-  // is: the track PLAYS (src = the local silent file, currentTime
-  // advances) to its natural end with no gate, no hint and no
-  // "Could not play" notice. The 5s gate itself is proven on the
-  // real server (guest section above).
+  // Close the avatar menu.
   await page.keyboard.press('Escape');
   await sleep(400);
-  await playFirstTrack(page);
-  const demoPlay = await page.evaluate(() => {
-    const a = document.querySelector('audio');
-    const notice = document.querySelector('.player-notice');
-    return {
-      src: a ? (a.currentSrc || '').slice(-45) : null,
-      ct: a ? Math.round(a.currentTime * 100) / 100 : null,
-      paused: a ? a.paused : null,
-      gate: !!document.querySelector('.player-preview'),
-      hint: !!document.querySelector('.player-bar-artist--hint'),
-      notice: notice ? notice.textContent.trim() : null,
-    };
-  });
-  console.log('DEMO PLAYBACK start:', JSON.stringify(demoPlay));
-  check('demo signed-in: track plays from the local silent file', demoPlay.src && demoPlay.src.endsWith('vaazhvinil-orumurayenum.mp3'), JSON.stringify(demoPlay));
-  check('demo signed-in: no gate, no hint, no error notice while playing', !demoPlay.gate && !demoPlay.hint && !(demoPlay.notice && /Could not play/i.test(demoPlay.notice)), JSON.stringify(demoPlay));
-  // Wait for the natural end of the 1s file, then confirm no gate
-  // ever appeared.
-  await sleep(3000);
-  const demoEnd = await page.evaluate(() => {
-    const a = document.querySelector('audio');
-    return {
-      ct: a ? Math.round(a.currentTime * 100) / 100 : null,
-      dur: a && Number.isFinite(a.duration) ? Math.round(a.duration * 100) / 100 : null,
-      paused: a ? a.paused : null,
-      gate: !!document.querySelector('.player-preview'),
-      hint: !!document.querySelector('.player-bar-artist--hint'),
-    };
-  });
-  console.log('DEMO PLAYBACK end:', JSON.stringify(demoEnd));
-  check('demo signed-in: track reaches its natural end, still no gate or hint', demoEnd.paused && demoEnd.ct !== null && demoEnd.dur !== null && demoEnd.ct >= demoEnd.dur - 0.2 && !demoEnd.gate && !demoEnd.hint, JSON.stringify(demoEnd));
-  await page.close();
+  // Signed-in playback checks: SKIP. They were written for the 1s
+  // silent demo file (signed-in, no gate, natural end at ~1s). Demo
+  // mode was removed 27 Nov 2026, so they cannot run headlessly any
+  // more; they need rewriting for a real session (signed URLs,
+  // full-length songs) before they can run again.
+  skip('signed-in: track plays from the local silent file', 'written for the 1s silent file — demo mode removed 27 Nov 2026');
+  skip('signed-in: no gate, no hint, no error notice while playing', 'written for the 1s silent file — demo mode removed 27 Nov 2026');
+  skip('signed-in: track reaches its natural end, still no gate or hint', 'written for the 1s silent file — demo mode removed 27 Nov 2026');
 
-  // Delete-account confirmation (demo mode: the account is entirely
-  // local, so the real demo path — clear local data + sign out — is
-  // safe to exercise end to end; it touches only this browser profile).
-  page = await newPage(browser, 390, 844);
-  await gotoRoute(page, '/profile', DEMO);
-  await page.evaluate(() => {
-    const b = [...document.querySelectorAll('button')].find((x) => /Delete account/i.test(x.textContent));
-    if (b) b.click();
-  });
-  await sleep(600);
-  const confirmShown = await page.evaluate(() => {
-    const section = document.querySelector('.settings-section--danger');
-    if (!section) return null;
-    return { text: section.textContent.slice(0, 200), hasConfirm: [...section.querySelectorAll('button')].some((b) => /Delete my account/i.test(b.textContent)) };
-  });
-  check('delete account asks for confirmation (two-step)', confirmShown && confirmShown.hasConfirm, JSON.stringify(confirmShown));
+  // Delete-account confirmation (two-step) — same page, so a real
+  // session (if one exists) is kept; a fresh context would lose it.
+  // The delete itself is NOT executed here: the demo path deleted a
+  // local account, but with a real session this would attempt a real
+  // account deletion.
+  if (signedIn) {
+    await gotoRoute(page, '/profile', LOCAL);
+    await page.evaluate(() => {
+      const b = [...document.querySelectorAll('button')].find((x) => /Delete account/i.test(x.textContent));
+      if (b) b.click();
+    });
+    await sleep(600);
+  }
+  const confirmShown = signedIn
+    ? await page.evaluate(() => {
+        const section = document.querySelector('.settings-section--danger');
+        if (!section) return null;
+        return { text: section.textContent.slice(0, 200), hasConfirm: [...section.querySelectorAll('button')].some((b) => /Delete my account/i.test(b.textContent)) };
+      })
+    : null;
+  checkOrSkip(signedIn, 'delete account asks for confirmation (two-step)', confirmShown && confirmShown.hasConfirm, JSON.stringify(confirmShown));
   await page.screenshot({ path: path.join(OUT, 'delete-confirm-390.png') });
-  await page.evaluate(() => {
-    const b = [...document.querySelectorAll('.settings-section--danger button')].find((x) => /Delete my account/i.test(x.textContent));
-    if (b) b.click();
-  });
-  await sleep(1500);
-  const afterDelete = await page.evaluate(() => ({
-    url: window.location.pathname,
-    signedOut: !document.querySelector('.topbar__avatar') && [...document.querySelectorAll('.topbar__auth-btn')].length > 0,
-    toast: document.querySelector('.toast-region .toast') ? document.querySelector('.toast-region .toast').textContent.trim() : null,
-  }));
-  check('demo delete: signs out + returns home + toast', afterDelete.url === '/' && afterDelete.signedOut && afterDelete.toast && /deleted/i.test(afterDelete.toast), JSON.stringify(afterDelete));
+  skip('demo delete: signs out + returns home + toast', 'demo local-delete path removed with demo mode; executing delete needs a real session + deployed delete function');
   await page.close();
 
   // ============ 34px BOTTOM INSET — built CSS rule + computed style ============
@@ -761,8 +752,8 @@ const ROUTES = [
   check('player bar bottom = nav height (inset rule in effect)', insetComputed.barBottom === '64px' && insetComputed.navHeight === '64px', JSON.stringify(insetComputed));
   await page.close();
 
-  fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ pass: passCount, fail: failCount, results }, null, 2));
-  console.log(`\n=== P2 SUITE: ${passCount} PASS, ${failCount} FAIL ===`);
+  fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ pass: passCount, fail: failCount, skip: skipCount, results }, null, 2));
+  console.log(`\n=== P2 SUITE: ${passCount} PASS, ${failCount} FAIL, ${skipCount} SKIP ===`);
   console.log(`Screenshots + results in ${OUT}`);
   await browser.close();
 })().catch((e) => { console.error('SUITE ERROR:', e); process.exit(1); });
