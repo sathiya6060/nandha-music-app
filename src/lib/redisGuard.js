@@ -1,9 +1,9 @@
 /**
  * Nandha Music — free-tier Redis guard (Upstash).
  *
- * The Upstash free tier is 500,000 commands/month, 256 MB, 10 GB
- * bandwidth, NO card, NO overage billing possible (the account simply
- * stops serving past the limit). This module makes sure the app stays
+ * The Upstash free tier is 500,000 commands/month, 64 MB engine cap
+ * (250 MB billing), 10 GB bandwidth, NO card, NO overage billing
+ * possible (the account simply stops serving past the limit). This module makes sure the app stays
  * inside that budget and degrades gracefully instead of breaking:
  *
  *   - Monthly budget: 450,000 commands by default (90% of the free
