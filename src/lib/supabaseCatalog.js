@@ -25,6 +25,7 @@ import { supabase, isSupabaseConfigured } from './supabase.js'
 import { cachedFetch } from './redisGuard.js'
 import { queryClientOptions } from './cache.js'
 import { cardCoverUrl } from './coverUrl.js'
+import { foldForSearch, trackMatchesQuery } from './searchMatch.js'
 import {
   tracks as fallbackTracks,
   albums as fallbackAlbums,
@@ -537,13 +538,13 @@ export function usePlaylists({ admin = false } = {}) {
 // override, exactly like catalog.js getSongOfTheDay.
 // ---------------------------------------------------------------------------
 export function searchTracksIn(list, query, { limit = 20 } = {}) {
-  const q = String(query ?? '').trim().toLowerCase()
-  if (!q) return []
+  if (!foldForSearch(query)) return []
   const results = []
   for (const t of list || []) {
     if (t.status !== 'published') continue
-    const haystack = `${t.titleTa} ${t.titleEn} ${t.artist} ${t.album} ${t.genre}`.toLowerCase()
-    if (haystack.includes(q)) {
+    // Item 10: folded match — a Tamil query matches the Latin title
+    // and a Latin query matches the Tamil title/album shown on cards.
+    if (trackMatchesQuery(t, query)) {
       results.push(t)
       if (results.length >= limit) break
     }

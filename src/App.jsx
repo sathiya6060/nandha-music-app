@@ -5,7 +5,7 @@
 // Routes are code-split with React.lazy (performance budget: admin + EPK
 // load only when visited). Mobile: bottom nav + mini-player above it.
 // Desktop (≥1024px): left sidebar; mini-player at the very bottom.
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { LanguageProvider, useI18n } from './lib/i18n.js'
@@ -21,6 +21,9 @@ import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { Skeleton } from './components/EmptyState.jsx'
 import PlayerBar from './player/PlayerBar.jsx'
 import MobilePlayer from './player/MobilePlayer.jsx'
+import AartiAlarmWatcher from './components/AartiAlarmWatcher.jsx'
+import { ToastProvider } from './lib/toast.jsx'
+import { syncAllOnSignIn, clearSyncUser } from './lib/userLibrary.js'
 // Search is imported eagerly (not lazy): it is the most-visited route
 // from the top bar, and a lazy chunk made every search flash a bare
 // "Loading…" before the page's own skeleton appeared.
@@ -41,6 +44,9 @@ const Track = lazy(() => import('./pages/Track.jsx'))
 const MixPage = lazy(() => import('./pages/MixPage.jsx'))
 const EPK = lazy(() => import('./pages/EPK.jsx'))
 const Profile = lazy(() => import('./pages/Profile.jsx'))
+// Item 7 (27 Nov 2026): /settings is its own route — the ONE settings
+// surface (playback, language, notifications, privacy, about).
+const Settings = lazy(() => import('./pages/Settings.jsx'))
 // Login is unlinked in the public UI — the admin opens /login directly.
 const Login = lazy(() => import('./pages/Login.jsx'))
 // Legal pages (lazy — only downloaded when visited).
@@ -153,7 +159,23 @@ function UpdateBanner() {
 
 function AppShell() {
   const location = useLocation()
-  const { role } = useAuth()
+  const { role, user } = useAuth()
+  // Item 8 (27 Nov 2026): sync the user's library (likes, follows,
+  // playlists) to Supabase once per sign-in; forget the sync user on
+  // sign-out so later write-through calls stay local. Guests never
+  // sync. The merge is best-effort — a missing table or a failed
+  // call leaves the local data exactly as it was.
+  const syncedUserRef = useRef(null)
+  useEffect(() => {
+    if (user?.id) {
+      if (syncedUserRef.current === user.id) return
+      syncedUserRef.current = user.id
+      syncAllOnSignIn(user).catch(() => {})
+    } else if (syncedUserRef.current) {
+      syncedUserRef.current = null
+      clearSyncUser()
+    }
+  }, [user])
   // Mobile audit item 1: when no player is active, don't reserve the
   // mini-player share of the bottom chrome — .app-layout.no-player
   // drops --chrome-bottom to the nav alone (mobile) or 0 (desktop),
@@ -216,6 +238,7 @@ function AppShell() {
                 <Route path="/mix/:id" element={<MixPage />} />
                 <Route path="/epk" element={<EPK />} />
                 <Route path="/profile" element={<Profile />} />
+                <Route path="/settings" element={<Settings />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/privacy" element={<Privacy />} />
                 <Route path="/terms" element={<Terms />} />
@@ -232,6 +255,9 @@ function AppShell() {
         <PlayerBar />
         <MobilePlayer />
         <ConsentBanner />
+        {/* Item 7: the Aarti alarm watches from the shell, on every
+            route — it used to live in Home's hero and only fired there. */}
+        <AartiAlarmWatcher />
       </div>
     </>
   )
@@ -253,9 +279,11 @@ export default function App() {
               {/* Top-level boundary: catches provider / router failures
                   above AppShell (the per-Suspense boundaries inside
                   AppShell catch route render + lazy-chunk failures). */}
-              <ErrorBoundary>
-                <AppShell />
-              </ErrorBoundary>
+              <ToastProvider>
+                <ErrorBoundary>
+                  <AppShell />
+                </ErrorBoundary>
+              </ToastProvider>
             </BrowserRouter>
           </PlayerProvider>
         </QueryClientProvider>

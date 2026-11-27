@@ -91,3 +91,25 @@ describe('resolvePlayableUrl', () => {
     await expect(signedAudio.resolvePlayableUrl(SIGNED, '128')).resolves.toBeNull()
   })
 })
+
+describe('resolvePlayableUrl — demo mode (no Supabase configured)', () => {
+  it('falls back to the local silent mp3 for the signed track instead of an empty src', async () => {
+    // Demo mode: config.supabaseUrl is '' so getSignedAudioUrl throws
+    // 'supabase_not_configured'. The signed file name is also the local
+    // 1s silent mp3 — the player must get that path, not null (null
+    // leaves the <audio> with no src and demo playback silently dead).
+    vi.resetModules()
+    vi.doMock('../config.js', async (importOriginal) => {
+      const actual = await importOriginal()
+      return {
+        ...actual,
+        config: { ...actual.config, supabaseUrl: '', supabaseAnonKey: '' },
+      }
+    })
+    const demoSignedAudio = await import('../signedAudio.js')
+    const fetchMock = mockFetch()
+    const demoTrack = { id: 't1', audio128: '/assets/vaazhvinil-orumurayenum.mp3', audio320: '/assets/vaazhvinil-orumurayenum.mp3' }
+    await expect(demoSignedAudio.resolvePlayableUrl(demoTrack, '128')).resolves.toBe('/assets/vaazhvinil-orumurayenum.mp3')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})

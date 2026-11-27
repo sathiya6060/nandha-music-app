@@ -804,9 +804,178 @@ input[type="search"]::-webkit-search-decoration {
   margin-top: 20px;
 }
 
+/* ---------- Settings page (mobile audit, item 7) ---------- */
+.settings-page { max-width: 720px; margin: 0 auto; }
+.settings-section {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+.settings-section h2 { font-size: 16px; margin: 0 0 4px; }
+.settings-section--danger { border-color: rgba(245, 158, 11, 0.45); }
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.settings-row:first-of-type { border-top: 0; }
+.settings-row__label { flex: 1; min-width: 0; font-weight: 600; }
+.settings-row__hint {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  font-weight: 400;
+}
+.settings-hint { font-size: 13px; line-height: 1.55; color: var(--muted); }
+.settings-seg {
+  display: inline-flex;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.settings-seg button {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.settings-seg button.is-active { background: var(--gold); color: var(--slate); }
+/* Narrow screens: the quality segmented control ("128 kbps — Data
+   saver" / "320 kbps — Best quality") is ~330px wide — it overflowed
+   the 320px viewport (right edge 402px, found by the item-12
+   diagnostic). Let settings rows wrap and give the seg the full row
+   width so its buttons share it and their labels wrap instead. */
+@media (max-width: 480px) {
+  .settings-row { flex-wrap: wrap; }
+  .settings-seg { width: 100%; }
+  .settings-seg button { flex: 1; white-space: normal; }
+}
+.settings-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.settings-check input {
+  accent-color: var(--gold);
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  cursor: pointer;
+}
+.settings-select { width: auto; min-width: 0; }
+.settings-version { font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.settings-links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.settings-links a { color: var(--gold); font-weight: 600; }
+
+/* ---------- Toast (item 9) ---------- */
+.toast-region {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--chrome-bottom) + 12px);
+  z-index: 300;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  pointer-events: none;
+}
+.toast {
+  background: var(--slate);
+  color: var(--sand);
+  border: 1px solid var(--gold);
+  border-radius: var(--radius-sm);
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  animation: toast-in 0.2s ease-out;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* ---------- Top bar ---------- */
 .topbar__search { display: none; flex: 1; max-width: 480px; }
 .topbar__actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+/* Item 6 (27 Nov 2026): header auth. Guests get Sign in / Sign up;
+   signed-in users get an avatar button + dropdown menu (Profile,
+   Settings, Admin for the allowlisted admin, Sign out). The buttons
+   are compact (40px) so the common 390px case still fits one row
+   with the logo + language switcher; the ≤1024px media query below
+   already wraps the topbar when it cannot fit. */
+.topbar__auth { display: flex; align-items: center; gap: 8px; }
+.topbar__auth-btn { min-height: 40px; padding: 8px 14px; font-size: 14px; white-space: nowrap; }
+.topbar__account { position: relative; display: flex; }
+.topbar__avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid var(--gold);
+  background: var(--gold);
+  color: var(--slate);
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.topbar__menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 200px;
+  max-width: calc(100vw - 24px);
+  background: var(--slate);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  padding: 6px;
+  z-index: 120;
+}
+.topbar__menu-email {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.topbar__menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+.topbar__menu-item:hover,
+.topbar__menu-item:focus-visible { background: var(--surface-2); color: var(--text-strong); outline: none; }
 .topbar__notice {
   width: auto;
   margin: 0;
@@ -1001,10 +1170,6 @@ input[type="search"]::-webkit-search-decoration {
      hides on mobile (it is still on the track page and in the player);
      the title keeps its ellipsis room. */
   .track-row__duration { display: none; }
-  /* Top bar: logo + language + Admin + sign-in cannot fit one 390px row
-     in every language — wrap instead of overflowing. Tighten padding/gap
-     first so the common case still fits one row (36 logo + 8 gap +
-     ~85 select + 8 + 75 log in + 8 + 138 sign up + 24 padding ≈ 382). */
   .topbar {
     flex-wrap: wrap;
     height: auto;
@@ -1488,7 +1653,6 @@ input[type="search"]::-webkit-search-decoration {
 .mix-card--gold { background: linear-gradient(135deg, #F59E0B, #D97706); color: #1E293B; }
 .mix-card--slate { background: linear-gradient(135deg, #1E293B, #0F172A); color: #FFFFFF; }
 .mix-card--sand { background: linear-gradient(135deg, #FEF3C7, #FDE68A); color: #1E293B; }
-.mix-card--steel { background: linear-gradient(135deg, #64748B, #475569); color: #FFFFFF; }
 .mix-card__link {
   position: absolute;
   inset: 0;

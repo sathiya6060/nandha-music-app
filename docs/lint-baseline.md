@@ -1,8 +1,25 @@
-# Lint baseline (S10, 27 Nov 2026)
+# Lint baseline (S10, 27 Nov 2026 — updated for the items 5–12 batch)
 
-`npx oxlint` — **34 warnings, 0 errors** (was 233 warnings on 27 Nov
+`npx oxlint` — **36 warnings, 0 errors** (was 233 warnings on 27 Nov
 2026 before this pass). `scripts/pre-deploy-check.sh` gates on
 `--max-warnings 40`, so the count cannot silently grow again.
+
+## Items 5–12 batch (27 Nov 2026) — count 34 → 36
+
+The Ponytail audit of this batch added two new accepted warnings
+(+3 gross, −1 fixed by the approved deletions):
+
+- `src/lib/toast.jsx:42` — `react(only-export-components)` (+1): `useToast`
+  exported alongside `ToastProvider`, same accepted pattern as the
+  other 14. The hook is used (App.jsx + 6 pages), not dead.
+- `src/pages/MixPage.jsx:77` — `react-hooks(exhaustive-deps)` (+1,
+  **false positive**, DO NOT "fix"): the subtitle memo reads `lang`
+  but lists `[mix, id, t, tp]`; `t`/`tp` identities change with `lang`
+  via the i18n `useMemo(..., [lang])`, so the memo recomputes on
+  language switch.
+- `src/lib/__tests__/localData.test.js:3` — unused `beforeEach` import
+  (−1): deleted by the approved Ponytail delete-list, so the count
+  drops from 37 to **36**.
 
 ## Spotify batch (27 Nov 2026) — count held at 34
 
@@ -33,9 +50,9 @@ was fixed in the batch, not documented away:
 | `react(use-memo)` in `PlayerContext.jsx` | 1 | `useMemo(readQueue, [])` → `useMemo(() => readQueue(), [])`. |
 | New test exports in `PlayerContext.jsx` | +2 | `guestPreviewEnded` and `stoppedPlayerState` are exported for the Vitest suite; each adds one `only-export-components` warning (accepted, see below). (`PREVIEW_SECONDS` is a const export, allowed by `.oxlintrc.json`.) Net: 233 − 187 − 13 − 1 + 2 = **34**. |
 
-## Remaining 34 warnings (accepted — documented, not ignored)
+## Remaining 36 warnings (accepted — documented, not ignored)
 
-All 34 are in `src/`; there are 0 in `mobile-verify/` now.
+All 36 are in `src/`; there are 0 in `mobile-verify/` now.
 
 ### `react(set-state-in-effect)` — 10 (accepted)
 
@@ -53,12 +70,14 @@ effects are for. Refactoring them into render would break the sync.
   player-state mirrors (same pattern: an outside change lands in
   state via an effect).
 
-### `react(only-export-components)` — 14 (accepted)
+### `react(only-export-components)` — 15 (accepted)
 
 Fast Refresh only. The modules deliberately export constants and
 helpers alongside components — splitting them into separate files
 would churn every importer for a dev-only warning.
 
+- `src/lib/toast.jsx:42` — `useToast` alongside `ToastProvider` (items
+  5–12 batch; same accepted pattern as the other 14).
 - `src/lib/auth.jsx` (3): `ADMIN_EMAILS`, `DEMO_ROLES`, `useAuth`.
 - `src/components/TrackRow.jsx` (4): `getLikedIds` + helpers.
 - `src/pages/Library.jsx` (2): `getFollowedArtistIds`, `FOLLOWED_KEY`.
@@ -66,13 +85,17 @@ would churn every importer for a dev-only warning.
   `guestPreviewEnded`, `stoppedPlayerState`, `formatTime`,
   `usePlayer`. (The first three are test exports added by S10.)
 
-### `react-hooks(exhaustive-deps)` — 6 (accepted, DO NOT "fix")
+### `react-hooks(exhaustive-deps)` — 7 (accepted, DO NOT "fix")
 
-All six are the same deliberate pattern: an admin `useMemo` lists a
+All seven are the same deliberate pattern: an admin `useMemo` lists a
 `version` / `sotdVersion` state value it does not read, because
 bumping that value is how the admin forces the memo to recompute
 after a localStorage-backed edit. Removing the dep would break the
-admin refresh (stale lists after save).
+admin refresh (stale lists after save). The seventh is a false
+positive: `src/pages/MixPage.jsx:77` — the subtitle memo reads `lang`
+but lists `[mix, id, t, tp]`; `t`/`tp` identities change with `lang`
+via the i18n `useMemo(..., [lang])`, so the memo recomputes on
+language switch.
 
 - `src/admin/TracksAdmin.jsx:59`, `AlbumsAdmin.jsx:41`,
   `ArtistsAdmin.jsx:59`, `PlaylistsAdmin.jsx:44`,

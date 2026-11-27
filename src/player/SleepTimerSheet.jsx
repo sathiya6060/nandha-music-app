@@ -1,6 +1,6 @@
 import { usePlayer } from './PlayerContext.jsx'
 import { useI18n } from '../lib/i18n.js'
-import { SLEEP_OPTIONS_MINUTES, formatSleepRemaining } from '../lib/sleepTimer.js'
+import { SLEEP_OPTIONS_MINUTES, formatSleepRemaining, loadSleepDefault } from '../lib/sleepTimer.js'
 import Icon from '../components/Icons.jsx'
 
 /**
@@ -18,6 +18,12 @@ export default function SleepTimerSheet({ open, onClose }) {
   if (!open) return null
 
   const active = sleepTimer?.mode === 'minutes' ? sleepTimer.minutes : sleepTimer?.mode === 'end-of-track' ? 'end-of-track' : null
+  // Item 7: the /settings sleep default — highlighted here (as a tag)
+  // when no timer is running. It never starts a timer on its own.
+  const sleepDefault = loadSleepDefault()
+  const defaultTag = (value) => (!sleepTimer && sleepDefault === value ? (
+    <span className="sleep-option__default">{t('settings.sleepDefaultTag')}</span>
+  ) : null)
 
   return (
     <div className="sheet-backdrop" onClick={onClose}>
@@ -52,6 +58,7 @@ export default function SleepTimerSheet({ open, onClose }) {
               aria-pressed={active === null}
             >
               {t('player.sleepOff')}
+              {defaultTag('off')}
             </button>
           </li>
           {SLEEP_OPTIONS_MINUTES.map((min) => (
@@ -63,6 +70,7 @@ export default function SleepTimerSheet({ open, onClose }) {
                 aria-pressed={active === min}
               >
                 {t('player.sleepSet', { n: min })}
+                {defaultTag(min)}
               </button>
             </li>
           ))}
@@ -74,6 +82,7 @@ export default function SleepTimerSheet({ open, onClose }) {
               aria-pressed={active === 'end-of-track'}
             >
               {t('player.sleepEndOfTrack')}
+              {defaultTag('end')}
             </button>
           </li>
         </ul>

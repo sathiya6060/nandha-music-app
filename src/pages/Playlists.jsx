@@ -4,6 +4,8 @@ import { useI18n, localizedTitle } from '../lib/i18n.js'
 import { playlists as fallbackPlaylists } from '../data/catalog.js'
 import { usePlaylists } from '../lib/supabaseCatalog.js'
 import { getUserPlaylists, USER_PLAYLISTS_KEY } from './Library.jsx'
+import { useToast } from '../lib/toast.jsx'
+import { syncPlaylists } from '../lib/userLibrary.js'
 import EmptyState from '../components/EmptyState.jsx'
 
 function saveUserPlaylists(list) {
@@ -22,6 +24,7 @@ function saveUserPlaylists(list) {
  */
 export default function Playlists() {
   const { t, tp, lang } = useI18n()
+  const showToast = useToast()
   // Supabase read layer (B1); static catalog is the fallback.
   const { data: sbPlaylists } = usePlaylists()
   const playlists = sbPlaylists || fallbackPlaylists
@@ -54,6 +57,12 @@ export default function Playlists() {
     setName('')
     setError('')
     setShowForm(false)
+    // Item 9: toast on create; the write-through syncs the new
+    // playlist to Supabase for signed-in users. (There is no
+    // add-to-playlist UI in the app yet, so "playlist add" toasts
+    // cover creation here.)
+    showToast?.(t('toast.playlistCreated'))
+    syncPlaylists().catch(() => {})
   }
 
   function playlistCard(p) {

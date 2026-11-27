@@ -124,6 +124,7 @@ export default function MobilePlayer() {
     isPlayerOpen,
     notice,
     previewEnded,
+    previewSecondsLeft,
     playPause,
     next,
     prev,
@@ -438,6 +439,24 @@ export default function MobilePlayer() {
               )}
               <span className="mobile-player-canvas-overlay" aria-hidden="true" />
             </div>
+            {/* Item 6 (27 Nov 2026): pre-end sign-in hint with the
+                countdown to the 5s gate. Absolutely positioned over
+                the cover's top-left corner — zero layout change, so
+                the P1 full-player geometry (seek + controls in view)
+                is untouched. The Canvas toggle stays bottom-right. */}
+            {previewSecondsLeft != null && (
+              <Link
+                to="/login"
+                className="mobile-player-preview-hint"
+                aria-label={t('player.signInHint')}
+              >
+                <span>{t('player.signInHint')}</span>
+                {' · '}
+                <span className="mobile-player-preview-hint__time" aria-hidden="true">
+                  {formatTime(previewSecondsLeft)}
+                </span>
+              </Link>
+            )}
             <button
               type="button"
               className="mobile-player-canvas-toggle"

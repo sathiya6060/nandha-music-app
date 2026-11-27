@@ -4,6 +4,33 @@
 // survive a reload, exactly like a bedtime timer should not.
 export const SLEEP_OPTIONS_MINUTES = [5, 10, 15, 30, 60]
 
+// Item 7 (27 Nov 2026): the sleep-timer DEFAULT from /settings.
+// 'off' | 'end' | one of SLEEP_OPTIONS_MINUTES. The default only
+// highlights that option in the sleep sheet when no timer is running
+// — it never starts a timer on its own, and the timer itself stays
+// per-session.
+export const SLEEP_DEFAULT_KEY = 'nandha-sleep-default'
+
+export function loadSleepDefault() {
+  try {
+    const raw = localStorage.getItem(SLEEP_DEFAULT_KEY)
+    if (raw === 'end') return 'end'
+    const n = Number(raw)
+    if (SLEEP_OPTIONS_MINUTES.includes(n)) return n
+  } catch {
+    // ignore — fall through to 'off'
+  }
+  return 'off'
+}
+
+export function saveSleepDefault(value) {
+  try {
+    localStorage.setItem(SLEEP_DEFAULT_KEY, String(value))
+  } catch {
+    // ignore — the in-memory state still applies for this session
+  }
+}
+
 /** Absolute end time for a timer started now. */
 export function sleepEndsAt(minutes, now = Date.now()) {
   return now + Number(minutes) * 60000

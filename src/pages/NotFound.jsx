@@ -53,7 +53,7 @@ export default function NotFound() {
   return (
     <div style={PAGE_STYLE} role="alert">
       <img src="/assets/nandha-logo.png" alt="Nandha Music" width={72} height={72} />
-      <div style={{ fontSize: 20, fontWeight: 700 }}>Page not found</div>
+      <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Page not found</h1>
       <div style={{ fontSize: 14, opacity: 0.85, maxWidth: 420 }}>
         This link doesn&apos;t lead anywhere on Nandha Music any more —
         it may have moved, or the address was mistyped.

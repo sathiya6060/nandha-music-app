@@ -284,3 +284,187 @@ is 15 lines of straightforward `useAuth()` rendering.
   the check passes. The remaining warnings are pre-existing (including
   `set-state-in-effect` in the untouched ConsentBanner/MobilePlayer
   effects).
+
+## Live deploy verification (27 Nov 2026, build mwyrrp61-86e96322)
+
+Deployment `ceff77de-36b3-4a53-94b9-fb7d77574f55`, live at https://nandha-music.pages.dev.
+Script `mobile-verify/check-deploy-p1-live.js` (live variant of `check-audit-p1.js` +
+15 regression checks), screenshots + `results.json` in `mobile-verify/deploy-verify-p1/`.
+
+**Result: 75/75 PASS, 1 RECORDED** (More button 47px below the fold @664 — same
+recorded item as the preview run; seek + controls are in view, per spec).
+
+First run was 67/75 with 8 failures — all 8 were **probe bugs, not app bugs**,
+diagnosed and fixed in the probe, then re-run green:
+- 2d/2e/2f (safe-area rule read returned null): the probe searched the live
+  stylesheet for `max-width: 1023px`, but the minifier rewrites it to
+  `width<=1023px`. The rule itself is correct in the built CSS
+  (`padding-bottom:8px`, `bottom:calc(var(--bottomnav-h,64px) + env(...))`),
+  and the computed-style checks (2a/2b/2c) passed in both runs.
+- 4e–4h (Profile tab tap showed Home at /profile): one-off probe race — the
+  evaluate 1200ms after the tap caught the pre-navigation DOM. Reproduced
+  with `mobile-verify/diag-profile-tap.cjs`: el.click() and real mouse tap
+  both render Profile (h1 "Profile", title "Profile | Nandha Music",
+  active=["/profile"]) within 1s and stable for 8s; no reload. Probe now
+  waits for the Profile h1 instead of a fixed sleep.
+- R7 (gate wall-clock 9.06s): the gate pauses at **5.20s of audio time**
+  (signed-URL fetch through the egress proxy adds ~4s of wall clock before
+  playback starts). Check now asserts on audio `currentTime`.
+
+**Live evidence (all measured, screenshots viewed):** banner 92px @390 en,
+92px @320 en/ta/hi, 74px @390 ta/hi, 54px @1280; links never overlap buttons;
+banner hidden during gate, returns after dismiss; bar padding-bottom 8px,
+bar bottom = nav top (780=780), height 65px; cover 226×226 @390×664,
+192×192 @320×568, 234×234 @390×844; seek + controls in view at all three
+heights; More sheet 9 rows, Lyrics/Quality/Sleep exercised; Profile tab →
+/profile (guest h1 + Sign in → /login), labels 12px, single aria-current;
+covers 134×134 @390 / 161×161 @1280 in all Home sections; no h-overflow at
+320/390/1280; gate pauses at 5.20s audio time over a signed Supabase URL,
+dismiss rewinds to 0 + stays paused, replay re-gates; mix page 1 row; hub 4
+cards; zero page/console errors. Perf (live, 390px, median of 3): DCL 680ms,
+FCP 804ms, first cover 4054ms (catalog fetch through the proxy dominates);
+dist 2,839,831 bytes; index chunk 710,577 bytes raw.
+
+**Visual note (pre-existing, not a Priority 1 item):** the "❚❚ Canvas" pill
+overlaps the cover art's baked-in "VAAZHVINIL ORUMURAYENUM" text in the full
+player — the Canvas badge sits on top of the cover image. Cosmetic only.
+
+**GitHub re-push:** head `fe13b7a91a187edb2e887fbf83e8479b26e3f177` (127 paths:
+previous 124 + `src/pages/Profile.jsx`, `docs/audit-2026-11-27-mobile-account.md`,
+`mobile-verify/check-audit-p1.js`), sync record now 9 entries. PNG screenshots
+were NOT pushed (binary — push_files rejects them); `.env` and build-generated
+`version.json` files were NOT pushed. The other new mobile-verify scripts from
+this round (`check-deploy-p1-live.js`, `diag-profile-tap.cjs`,
+`perf-deploy-p1-live.cjs`) were NOT pushed, matching the previous round
+(`check-deploy-spotify-live.js` was not pushed either).
+
+## Items 5–12 implementation + verification (27 Nov 2026, local only — NOT deployed)
+
+Implementation order 6, 7, 5, 9, 11, 10, 8, 12. All code complete; verified
+headless (P2 suite `mobile-verify/check-audit-p2.js`, puppeteer + Chrome for
+Testing, real server :5173 guest + demo-mode server :5174 signed-in demo
+user). **Final run 4: 89 PASS, 0 FAIL** (log `/tmp/p2-run4.log`).
+Run 2 was 83 PASS / 6 FAIL; run 3 was 88 PASS / 1 FAIL — every failure was
+triaged to a real app bug, a probe bug, or a probe criterion, and fixed.
+
+### Item 12 — the 320px/390px viewport expansion: ROOT CAUSE + FIX
+- **Root cause (proven by bisection on a static replica with the real
+  CSS):** the `<span class="sr-only">Loading</span>` inside each `Skeleton`
+  (`src/components/EmptyState.jsx`). `.sr-only` is `position: absolute`
+  with no positioned ancestor inside the card, so its containing block is
+  the initial containing block; inside the 4th skeleton card its static
+  position sits at x≈544 and the 1px span pushes the document's scrollWidth
+  to 546, expanding the layout viewport to 545px while the skeletons show
+  (catalog-loading phase, ~600ms–2.4s). The replica: baseline vw=390,
+  + sr-only span only → vw=545, + role=status wrapper only → vw=390.
+  `contain: inline-size` on `.section-row` was proven INEFFECTIVE (present
+  in served CSS, expansion persisted) and was REVERTED. `overflow-x: hidden`
+  on the row / `.main` / `.section`, removing scroll-snap, and
+  `html, body { overflow-x: clip }` (already present) all also failed.
+- **Fix:** `style={{ position: 'relative' }}` on the Skeleton's
+  `role="status"` wrapper div — the span is now contained inside the card
+  (a layout no-op for the static bars). Verified with
+  `mobile-verify/diag-skeleton-expand.js`: vw holds 390 through the whole
+  skeleton phase in 4 separate runs (the bug reproduced 1-in-20 before the
+  fix). P2 overflow checks pass on every route at 320/390/1280.
+- **Other sr-only spans audited:** Sidebar (fixed sidebar, contained),
+  LanguageSwitcher (sticky topbar, contained), Discover h1/p (page left
+  edge, inside viewport), Playlists label (in viewport), PlayerBar volume
+  (fixed bar, contained) — the Skeleton span was the only one inside a
+  horizontal scroller.
+- **Probe criterion fix (run 3→4):** `measureOverflow` now excludes
+  elements inside a horizontal-scroll ancestor (`overflow-x: auto/scroll`) —
+  a scrolled card at right=692 is scroll content, not page overflow. The
+  real expansion is still caught by `docW > vw`.
+
+### Two real app bugs found + fixed during verification
+1. **Demo-mode playback broken** (`src/lib/signedAudio.js`):
+   `isSignedTrack` is true for ANY track whose audio file is
+   `vaazhvinil-orumurayenum.mp3` — including the fallback-catalog track in
+   demo mode, whose audio128 is the LOCAL silent mp3. `resolvePlayableUrl`
+   tried to mint a signed URL; `getSignedAudioUrl` throws
+   `supabase_not_configured` when `config.supabaseUrl` is empty (demo mode)
+   → caught → null → empty `<audio>` src, silent failure. Fix: on catch,
+   if `!config.supabaseUrl` return the local audio path (it is silence, so
+   nothing protected is exposed); production always has Supabase configured,
+   so the signed path stays mandatory there. New unit test
+   (`signedAudio.test.js`, demo-mode describe block) — 11/11 in that file.
+   Demo check is now honest: the 1s silent file plays to its natural end
+   (ct=1, dur=1, paused by onEnded) with no gate, no hint, no notice.
+2. **Full-player hint chip missing separator** (MobilePlayer.jsx):
+   rendered "Sign in for full songs0:05"; fixed with `{' · '}` between the
+   spans (mini player already had it).
+
+### Probe findings (NOT app bugs — suite restructured)
+- **Gate section:** closing the full player STOPS playback by design
+  (`requestClose` pauses + `stopPlayback()` after 240ms — "stop means
+  stop"), so opening + closing it mid-preview killed the gate test (hint
+  went null, no gate). Restructured: hint countdown + gate run on the mini
+  player only (hint1 0:04 → hint2 0:03, gate fires, prompt → /login); the
+  chip is checked on a separate page that is discarded without touching X.
+- **Like toast:** Home has NO Like button at some hours — its only TrackRows
+  are the Daylist section, empty when the current daypart's genres don't
+  include the track's genre (Devotional). The Like toast is now exercised
+  on /search results (same TrackRow handleLike + toast). Verified:
+  "Added to Liked Songs".
+- **Toast region** only renders while a toast is active (`{toast && ...}`)
+  — absence before any toast is expected, not a bug.
+
+### Per-item verification (run 4, 89/89)
+- **Item 6:** header Sign in/Sign up guest @390 + @1280, Sign up →
+  `/login?mode=signup`; avatar menu demo signed-in (Profile/Settings/Sign
+  out, no Admin — demo user is a listener); pre-end hint 0:04→0:03, chip
+  "Sign in for full songs · 0:03" top-left of cover; gate fires at 5s
+  (prompt "Preview ended — sign in to hear the full song", Sign in →
+  /login). Screenshots viewed: gate-390, hint-fullplayer-390.
+- **Item 7:** /settings sections (Playback quality 128/320, autoplay,
+  sleep default; Language; Morning Aarti Alarm; Privacy clear/export;
+  About build id + legal links) + persistence across reload (quality 320,
+  sleep 15, alarm 06:30); delete-account two-step confirm on /profile
+  (demo); no "coming later" text anywhere on the surface.
+- **Item 5:** autofocus off on touch (`pointer: coarse`, activeElement
+  BODY), on on desktop.
+- **Item 9:** Follow toggle Follow→Following→Follow + toast; album/artist
+  Share toasts; Like toast "Added to Liked Songs" (screenshot viewed:
+  like-toast-390 — heart filled gold, toast above bottom chrome).
+- **Item 11:** 404 `<h1>` + title "Page not found | Nandha Music"; artist
+  title single suffix; stale topbar comment removed.
+- **Item 10:** all 4 queries find the track (Tamil `வாழ்வினில்`, Latin
+  `vaazhvinil`, folded `valvinil`, upper-case `VAALVINIL`); 15 search unit
+  tests pass.
+- **Item 8:** sync engine + migration `003_user_library.sql` written
+  (**NOT applied live** — needs the Supabase SQL Editor dashboard step);
+  privacy policy updated to match (27 Nov 2026). Client handles the
+  missing-table case (remote sync off for the session, local-only).
+- **Item 12:** E2E coverage in the puppeteer harness (89 checks) + the
+  545px expansion fixed (see above). CDP 34px-bottom-inset simulation not
+  possible in this Chrome — proven via built-CSS rule (16
+  `env(safe-area-inset-bottom,0px)` uses in FRESH dist) + computed style
+  (bar bottom 64px = nav height, env()=0 headless).
+
+### Gates (27 Nov 2026, after the fix)
+`npm test` 18 files / **112 tests PASS**; `npm run build` green, buildId
+**mwyvq496-b7712c17**; `scripts/pre-deploy-check.sh` OK; oxlint 37 warnings,
+0 errors; `npx impeccable detect src/` baseline only (Inter font
+anti-pattern — brand decision, untouched; bounce-easing advisory — user
+decides, untouched). No new findings. Silent mp3 intact in dist (4,413
+bytes). **NOT deployed, NOT pushed — implementation + verification only.**
+
+### Still NOT completed (exact reason + what is needed)
+- Migration 003 (`followed_artists`) not applied live — needs the Supabase
+  SQL Editor dashboard step (file `supabase/migrations/003_user_library.sql`).
+- Delete-account Edge Function not deployed — needs dashboard: create
+  function, Verify JWT ON, SERVICE_ROLE_KEY secret
+  (`supabase/functions/delete-account/index.ts`, steps in its header).
+- Signed-in full-song play + admin write E2E unverified with real
+  credentials — needs Sathiya's /login sign-in (demo mode is the headless
+  substitute). Signed-in /profile view unverified for the same reason.
+- Upstash Redis connection blocked awaiting Sathiya's go-ahead.
+
+### Known cosmetic notes (not fixed in this batch)
+- Toast overlaps the consent banner's descriptive text while the banner is
+  up (transient 3.5s; Accept/Decline stay visible/tappable) — see
+  like-toast-390.png.
+- "Canvas" pill overlaps cover art's baked-in text in the full player
+  (pre-existing).
+- More button 47px below fold @664 (spec produces it; controls in view).

@@ -9,6 +9,7 @@ import TrackRow from '../components/TrackRow.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import Icon from '../components/Icons.jsx'
 import { usePlayer } from '../player/PlayerContext.jsx'
+import { syncPlaylists } from '../lib/userLibrary.js'
 import { setPageMeta, resetPageMeta } from '../lib/pageMeta.js'
 
 function findPlaylist(id, curatedList) {
@@ -103,6 +104,8 @@ export default function PlaylistDetail() {
       const all = getUserPlaylists().map((p) => (String(p.id) === String(id) ? { ...p, trackIds: next } : p))
       try { localStorage.setItem(USER_PLAYLISTS_KEY, JSON.stringify(all)) } catch { /* ignore */ }
       window.dispatchEvent(new CustomEvent('nandha-playlists-changed'))
+      // Item 8: a reorder is a playlist mutation — sync it through.
+      syncPlaylists().catch(() => {})
     }
   }
 

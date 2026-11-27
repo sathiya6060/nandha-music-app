@@ -7,6 +7,9 @@ import TrackRow from '../components/TrackRow.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import { getFollowedArtistIds, FOLLOWED_KEY } from './Library.jsx'
 import { usePlayer } from '../player/PlayerContext.jsx'
+import { useToast } from '../lib/toast.jsx'
+import { shareLink } from '../lib/share.js'
+import { syncFollow } from '../lib/userLibrary.js'
 import { setPageMeta, resetPageMeta } from '../lib/pageMeta.js'
 
 function toggleFollow(artistId) {
@@ -27,6 +30,7 @@ export default function Artist() {
   const { t, tp } = useI18n()
   const { id } = useParams()
   const player = usePlayer()
+  const showToast = useToast()
   // Supabase read layer (B1); static catalog is the fallback.
   const { data: sbArtists } = useArtists()
   const { data: sbAlbums } = useAlbums()
@@ -45,7 +49,7 @@ export default function Artist() {
   useEffect(() => {
     if (!artist) return undefined
     setPageMeta({
-      title: `${artist.name} | Nandha Music`,
+      title: artist.name,
       description: `${artist.name} — ${artist.bioEn || artist.bioTa || 'Nandha Music'} | Nandha Music`,
       image: artist.photo,
       url: `/artist/${artist.id}`,
@@ -81,6 +85,30 @@ export default function Artist() {
     if (artistTracks.length > 0) player?.play?.(artistTracks[0], artistTracks)
   }
 
+  // Item 9: the button says Follow/Following (not Like/Liked), with
+  // toast feedback; the write-through syncs the follow to Supabase
+  // for signed-in users.
+  function handleFollow() {
+    const nowFollowing = toggleFollow(artist.id)
+    setFollowing(nowFollowing)
+    showToast?.(nowFollowing ? t('toast.followed') : t('toast.unfollowed'))
+    syncFollow(artist.id, nowFollowing).catch(() => {})
+  }
+
+  async function handleShare() {
+    const url = typeof window !== 'undefined'
+      ? `${window.location.origin}/artist/${artist.id}`
+      : `/artist/${artist.id}`
+    const result = await shareLink({
+      title: artist.name,
+      text: `${artist.name} | Nandha Music`,
+      url,
+    })
+    if (result === 'copied') showToast?.(t('player.linkCopied'))
+    else if (result === 'failed') showToast?.(t('player.shareFailed'))
+    else if (result === 'shared') showToast?.(t('share.shared'))
+  }
+
   return (
     <div>
       <div className="detail-head">
@@ -99,8 +127,11 @@ export default function Artist() {
             <button type="button" className="btn btn-primary" onClick={playTop} disabled={artistTracks.length === 0}>
               {t('common.playAll')}
             </button>
-            <button type="button" className="btn btn-ghost" onClick={() => setFollowing(toggleFollow(artist.id))} aria-pressed={following}>
-              {following ? t('common.liked') : t('common.like')}
+            <button type="button" className="btn btn-ghost" onClick={handleFollow} aria-pressed={following}>
+              {following ? t('artist.following') : t('artist.follow')}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={handleShare}>
+              {t('common.share')}
             </button>
             <Link className="btn btn-ghost" to="/epk">{t('artist.pressKit')}</Link>
           </div>

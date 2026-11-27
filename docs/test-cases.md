@@ -336,3 +336,61 @@ the fold at 320x568 — short-height margins trimmed (controls bottom now
 `scripts/pre-deploy-check.sh` OK (39 warnings, 0 errors); `npx impeccable
 detect src/` same as baseline (Inter anti-pattern + bounce-easing
 false-positive advisory, no new findings).
+
+## Audit P2 verification — items 5-12 (27 Nov 2026)
+
+Suite `mobile-verify/check-audit-p2.js` (puppeteer + Chrome for Testing;
+real server :5173 guest + demo-mode server :5174 signed-in demo user;
+screenshots + results.json in `mobile-verify/audit-p2/`).
+**Run 4 (final): 89 PASS, 0 FAIL** (log `/tmp/p2-run4.log`). Run 2: 83/6.
+Run 3: 88/1.
+
+**Coverage (all in run 4):** no horizontal overflow on every route
+(/, /search, /library, /discover, /track/:slug, /artist/1, /album/1,
+/profile, /settings, /login, /privacy, /nope-404) at 320x568, 390x844,
+1280x800; consent banner ≤96px, never over Accept/Decline or Play; mini
+player vs nav gap (bar bottom = nav top); full-player seek + controls in
+view at 390x664 and 320x568; Profile tab → /profile; header Sign in/Sign
+up + avatar menu; guest 5s gate (pre-end hint countdown 0:04→0:03 → gate
+prompt → /login); full-player hint chip with separator; Search autoFocus
+off on touch / on on desktop; Tamil/Latin search (4 queries); Follow
+toggle + toast; album/artist Share toasts; Like toast; playlist-create
+toast; settings sections + persistence across reload; 404 `<h1>` + artist
+title (no duplication); delete-account two-step confirm (demo); demo
+signed-in playback (local silent file to natural end, no gate/hint/notice);
+34px inset via built-CSS rule + computed style (CDP cannot simulate it).
+
+**Bugs found by this verification (all fixed in the round):** (1) The
+320px/390px viewport expansion to 545px — root cause was the sr-only
+"Loading" span inside each `Skeleton` (uncontained absolute positioning
+inside the horizontal `.section-row`); fixed with `position: relative` on
+the Skeleton wrapper; the `contain: inline-size` rule on `.section-row`
+was proven ineffective and reverted. Verified: vw holds 390 through the
+skeleton phase in 4 runs of `diag-skeleton-expand.js`. (2) Demo-mode
+playback broken — `isSignedTrack` matched the local silent mp3 and the
+signed-URL mint threw with no Supabase configured; fixed with a local-file
+fallback in `resolvePlayableUrl` (demo only) + new unit test. (3)
+Full-player hint chip missing the ' · ' separator — fixed in MobilePlayer.
+(4) Probe bugs (not app bugs): the full-player close stops playback by
+design, so the gate test no longer opens/closes it mid-preview; Home has
+no Like button at some hours (Daylist daypart), so the Like toast is
+exercised on /search; `measureOverflow` now excludes elements inside a
+horizontal scroller (a scrolled card at right=692 is scroll content, not
+page overflow — the real expansion is still caught by `docW > vw`).
+
+**Screenshots viewed (run 3):** gate-390 (gold gate banner + Sign in to
+listen + Maybe later, above the mini player), hint-fullplayer-390 (chip
+"Sign in for full songs · 0:03" top-left of cover, seek + controls in
+view), like-toast-390 (search "vaazhvinil" → heart filled gold + toast
+"Added to Liked Songs"). **Recorded cosmetic:** the toast overlaps the
+consent banner's descriptive text while the banner is up (transient 3.5s;
+Accept/Decline stay visible/tappable).
+
+**Gates:** `npm test` 18 files / 112 tests PASS; `npm run build` green
+(buildId mwyvq496-b7712c17); `scripts/pre-deploy-check.sh` OK; oxlint 37
+warnings, 0 errors; `npx impeccable detect src/` baseline only (Inter
+font + bounce easing, both user decisions, untouched). **NOT deployed,
+NOT pushed** — implementation + verification only. Still blocked: migration
+003 not applied live (Supabase SQL Editor step), delete-account Edge
+Function not deployed (dashboard step), signed-in full-song play + admin
+write E2E unverified (needs Sathiya's /login sign-in).

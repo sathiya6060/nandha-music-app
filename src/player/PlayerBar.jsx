@@ -81,6 +81,7 @@ export default function PlayerBar() {
     repeat,
     notice,
     previewEnded,
+    previewSecondsLeft,
     playPause,
     next,
     prev,
@@ -162,10 +163,22 @@ export default function PlayerBar() {
           <span className="player-bar-title">
             {track.titleTa || track.titleEn}
           </span>
-          <span className="player-bar-artist">
-            {track.artist}
-            {track.titleEn && track.titleTa ? ` · ${track.titleEn}` : ''}
-          </span>
+          {/* Item 6 (27 Nov 2026): during a guest preview the artist
+              line becomes the sign-in hint with the countdown to the
+              5s gate. Same line, same height — zero layout change.
+              It is a span (not a link) because this whole area is
+              already a button that opens the full player, where the
+              hint is a real link on the cover. */}
+          {previewSecondsLeft != null ? (
+            <span className="player-bar-artist player-bar-artist--hint">
+              {t('player.signInHint')} · {formatTime(previewSecondsLeft)}
+            </span>
+          ) : (
+            <span className="player-bar-artist">
+              {track.artist}
+              {track.titleEn && track.titleTa ? ` · ${track.titleEn}` : ''}
+            </span>
+          )}
         </span>
       </button>
 

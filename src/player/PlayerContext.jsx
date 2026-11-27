@@ -227,6 +227,19 @@ export function PlayerProvider({ children }) {
 
   const track = queue.length > 0 ? queue[queueIndex] || null : null
 
+  // Item 6 (27 Nov 2026): seconds left in the guest 5s preview, or null
+  // when there is no live preview (signed in, no track, preview already
+  // ended). The mini player + full player show a "Sign in for full
+  // songs" hint with this countdown BEFORE the gate fires; the 5s gate
+  // itself is unchanged.
+  const previewSecondsLeft = useMemo(() => {
+    if (isGuest && track && !previewEnded) {
+      const left = PREVIEW_SECONDS - currentTime
+      return left > 0 ? Math.ceil(left) : null
+    }
+    return null
+  }, [isGuest, track, previewEnded, currentTime])
+
   // Keep refs in sync (event handlers read refs, not stale closures).
   useEffect(() => {
     queueRef.current = queue
@@ -1306,6 +1319,7 @@ export function PlayerProvider({ children }) {
       isPlayerOpen,
       notice,
       previewEnded,
+      previewSecondsLeft,
       isGuest,
       play,
       playPause,
@@ -1354,6 +1368,7 @@ export function PlayerProvider({ children }) {
       isPlayerOpen,
       notice,
       previewEnded,
+      previewSecondsLeft,
       isGuest,
       play,
       playPause,

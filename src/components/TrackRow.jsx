@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '../lib/i18n.js'
 import { usePlayer } from '../player/PlayerContext.jsx'
+import { useToast } from '../lib/toast.jsx'
+import { syncLike } from '../lib/userLibrary.js'
 import Icon, { HeartIcon } from './Icons.jsx'
 
 const LIKED_KEY = 'nandha-liked'
@@ -53,6 +55,7 @@ export function formatDuration(totalSec) {
 export default function TrackRow({ track, index, queue, onPlay }) {
   const { t } = useI18n()
   const player = usePlayer()
+  const showToast = useToast()
   const [liked, setLiked] = useState(() => isLiked(track.id))
 
   useEffect(() => {
@@ -77,8 +80,13 @@ export default function TrackRow({ track, index, queue, onPlay }) {
     player?.play?.(track, queue && queue.length ? queue : [track])
   }
 
+  // Item 9: like feedback is a toast (the heart itself is the state);
+  // the write-through syncs the like to Supabase for signed-in users.
   function handleLike() {
-    setLiked(toggleLiked(track.id))
+    const nowLiked = toggleLiked(track.id)
+    setLiked(nowLiked)
+    showToast?.(nowLiked ? t('toast.likedAdded') : t('toast.likedRemoved'))
+    syncLike(track.id, nowLiked).catch(() => {})
   }
 
   // Add to queue (PT-015): the user queue plays before the context

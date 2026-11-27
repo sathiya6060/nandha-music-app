@@ -7,6 +7,8 @@ import { useAlbums, useTracks } from '../lib/supabaseCatalog.js'
 import TrackRow from '../components/TrackRow.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import { usePlayer } from '../player/PlayerContext.jsx'
+import { useToast } from '../lib/toast.jsx'
+import { shareLink } from '../lib/share.js'
 
 /**
  * Route '/album/:id' — album header, track list in album order, play-all.
@@ -15,6 +17,7 @@ export default function Album() {
   const { t, tp } = useI18n()
   const { id } = useParams()
   const player = usePlayer()
+  const showToast = useToast()
   // Supabase read layer (B1); static catalog is the fallback.
   const { data: sbAlbums } = useAlbums()
   const { data: sbTracks } = useTracks()
@@ -60,6 +63,23 @@ export default function Album() {
     if (albumTracks.length > 0) player?.play?.(albumTracks[0], albumTracks)
   }
 
+  // Item 9: Share (Web Share API + copy-link fallback) with toast
+  // feedback for the copy path.
+  async function handleShare() {
+    const name = album.titleTa || album.title || album.titleEn || 'Nandha Music'
+    const url = typeof window !== 'undefined'
+      ? `${window.location.origin}/album/${album.id}`
+      : `/album/${album.id}`
+    const result = await shareLink({
+      title: name,
+      text: `${name} — ${album.artist || 'Nandha Music'} | Nandha Music`,
+      url,
+    })
+    if (result === 'copied') showToast?.(t('player.linkCopied'))
+    else if (result === 'failed') showToast?.(t('player.shareFailed'))
+    else if (result === 'shared') showToast?.(t('share.shared'))
+  }
+
   return (
     <div>
       <div className="detail-head">
@@ -80,6 +100,9 @@ export default function Album() {
           <div className="detail-head__actions">
             <button type="button" className="btn btn-primary" onClick={playAll} disabled={albumTracks.length === 0}>
               {t('common.playAll')}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={handleShare}>
+              {t('common.share')}
             </button>
           </div>
         </div>

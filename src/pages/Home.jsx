@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useI18n } from '../lib/i18n.js'
-import { REAL_TRACK_ID, getDaypart } from '../data/catalog.js'
+import { getDaypart } from '../data/catalog.js'
 import {
   useTracks,
   useAlbums,
@@ -17,10 +17,7 @@ import {
   getStreak,
   isLampLit,
   loadAlarm,
-  markAartiFired,
   markDevotionalListen,
-  saveAlarm,
-  shouldFireAarti,
 } from '../lib/streak.js'
 import { shareOrDownloadStoryCard } from '../lib/shareCard.js'
 import { buildMix, MIX_IDS } from '../lib/mixes.js'
@@ -40,17 +37,14 @@ function byReleaseDateDesc(a, b) {
   return String(b.releaseDate || '').localeCompare(String(a.releaseDate || ''))
 }
 
-function StreakHero({ tracksList }) {
+function StreakHero() {
   const { t } = useI18n()
   const player = usePlayer()
   const [streak, setStreak] = useState(() => getStreak())
+  // The alarm itself lives in /settings now (item 7) and fires from
+  // the app shell (AartiAlarmWatcher) on every route. Home only shows
+  // today's alarm time, kept in sync via the change event.
   const [alarm, setAlarm] = useState(() => loadAlarm())
-  const [alarmTime, setAlarmTime] = useState(alarm.time || DEFAULT_ALARM_TIME)
-  const [alarmTrackId, setAlarmTrackId] = useState(alarm.trackId || REAL_TRACK_ID)
-  const [alarmMsg, setAlarmMsg] = useState('')
-  const [notifState, setNotifState] = useState(() =>
-    typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
-  )
   const markedRef = useRef('')
 
   useEffect(() => {
@@ -61,6 +55,12 @@ function StreakHero({ tracksList }) {
       window.removeEventListener('nandha-streak-changed', sync)
       window.removeEventListener('storage', sync)
     }
+  }, [])
+
+  useEffect(() => {
+    const onAlarmChange = () => setAlarm(loadAlarm())
+    window.addEventListener('nandha-alarm-changed', onAlarmChange)
+    return () => window.removeEventListener('nandha-alarm-changed', onAlarmChange)
   }, [])
 
   // Mark a qualifying devotional listen: current track is Devotional and
@@ -76,46 +76,6 @@ function StreakHero({ tracksList }) {
     setStreak(markDevotionalListen())
   }, [currentTrack, currentTime])
 
-  // Aarti alarm: fires while the app/tab is open at the alarm time.
-  // (True background alarms need a push server — P2; see streak.js.)
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (!shouldFireAarti(alarm)) return
-      markAartiFired()
-      const song = (alarm.trackId && tracksList.find((tr) => tr.id === alarm.trackId)) || tracksList.find((tr) => tr.id === REAL_TRACK_ID)
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && song) {
-        try {
-          new Notification('Nandha Music', {
-            body: `${song.titleTa || song.titleEn || ''} — ${t('streak.aartiAlarm')}`,
-          })
-        } catch {
-          // notifications blocked — playback below still runs
-        }
-      }
-      if (song) player?.play?.(song, [song])
-    }, 30000)
-    return () => clearInterval(id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [alarm])
-
-  function saveAartiAlarm(e) {
-    e.preventDefault()
-    const next = { time: alarmTime, trackId: alarmTrackId }
-    saveAlarm(next)
-    setAlarm(next)
-    setAlarmMsg(t('streak.alarmSaved'))
-  }
-
-  async function enableNotifications() {
-    if (typeof Notification === 'undefined') return
-    const result = await Notification.requestPermission()
-    setNotifState(result)
-  }
-
-  const devotionalTracks = useMemo(
-    () => (tracksList || []).filter((tr) => tr.genre === 'Devotional' && tr.status === 'published').slice(0, 12),
-    [tracksList],
-  )
   const lamp = isLampLit(streak)
 
   return (
@@ -134,47 +94,13 @@ function StreakHero({ tracksList }) {
           )}
         </div>
       </div>
-      <form className="streak-hero__alarm" onSubmit={saveAartiAlarm}>
-        <h2>{t('streak.aartiAlarm')}</h2>
-        <p className="streak-hero__hint" style={{ margin: 0 }}>
-          {t('streak.todayAarti', { time: alarm.time || DEFAULT_ALARM_TIME })}
-        </p>
-        <div className="streak-hero__alarm-row">
-          <div className="streak-hero__field">
-            <label htmlFor="aarti-time">{t('streak.alarmTime')}</label>
-            <input
-              id="aarti-time"
-              className="input"
-              type="time"
-              value={alarmTime}
-              onChange={(e) => setAlarmTime(e.target.value)}
-            />
-          </div>
-          <div className="streak-hero__field" style={{ flex: 1, minWidth: 180 }}>
-            <label htmlFor="aarti-song">{t('streak.alarmSong')}</label>
-            <select
-              id="aarti-song"
-              className="input"
-              value={alarmTrackId}
-              onChange={(e) => setAlarmTrackId(e.target.value)}
-            >
-              {devotionalTracks.map((tr) => (
-                <option key={tr.id} value={tr.id}>
-                  {tr.titleTa || tr.titleEn} — {tr.artist}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button type="submit" className="btn btn-primary">{t('common.save')}</button>
-          {notifState !== 'granted' && notifState !== 'unsupported' && (
-            <button type="button" className="btn btn-ghost" onClick={enableNotifications}>
-              {t('streak.enableNotifications')}
-            </button>
-          )}
-        </div>
-        <p className="streak-hero__hint" style={{ marginTop: 8 }}>{t('streak.alarmNote')}</p>
-        {alarmMsg && <p role="status" className="streak-hero__hint">{alarmMsg}</p>}
-      </form>
+      {/* Item 7: the alarm form moved to /settings; Home only shows
+          today's alarm time, with a link to change it. */}
+      <p className="streak-hero__hint" style={{ margin: '8px 0 0' }}>
+        {t('streak.todayAarti', { time: alarm.time || DEFAULT_ALARM_TIME })}
+        {' · '}
+        <Link to="/settings">{t('nav.settings')}</Link>
+      </p>
     </section>
   )
 }
@@ -419,7 +345,7 @@ export default function Home() {
         <p className="tagline">{t('app.tagline')}</p>
       </div>
 
-      <StreakHero tracksList={homeTracks} />
+      <StreakHero />
 
       <div className="home-tabs" role="tablist" aria-label={t('home.forYou')}>
         <button

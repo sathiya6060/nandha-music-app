@@ -9,8 +9,8 @@ export default function Privacy() {
   return (
     <LegalPage
       title="Privacy Policy"
-      updated="Last updated: 26 November 2026"
-      tamilSummary="இந்தச் செயலி கணக்குக்காக உங்கள் மின்னஞ்சல் மற்றும் கடவுச்சொல்லை மட்டுமே சேமிக்கிறது. நீங்கள் விரும்பும் பாடல்களும் கேட்கும் வரலாறும் உங்கள் சாதனத்தில் மட்டுமே இருக்கும் — வேறு சாதனத்திற்கு மாறாது. விளம்பர குக்கீகள் இல்லை, உங்கள் தகவல் யாருக்கும் விற்கப்படுவதில்லை. உங்கள் தகவலைப் பார்க்க, திருத்த அல்லது நீக்க விரும்பினால் officialnandhamusic@gmail.com என்ற முகவரிக்கு மின்னஞ்சல் அனுப்புங்கள்."
+      updated="Last updated: 27 November 2026"
+      tamilSummary="இந்தச் செயலி கணக்குக்காக உங்கள் மின்னஞ்சல் மற்றும் கடவுச்சொல்லை மட்டுமே சேமிக்கிறது. உள்நுழைந்திருந்தால், நீங்கள் விரும்பும் பாடல்கள், பின்தொடர்வுகள் மற்றும் பட்டியல்கள் சேவையகத்தில் ஒத்திசைக்கப்படும் — விருந்தினராக இருந்தால் அவை உங்கள் சாதனத்தில் மட்டுமே இருக்கும். விளம்பர குக்கீகள் இல்லை, உங்கள் தகவல் யாருக்கும் விற்கப்படுவதில்லை. உங்கள் தகவலைப் பார்க்க, திருத்த அல்லது நீக்க விரும்பினால் officialnandhamusic@gmail.com என்ற முகவரிக்கு மின்னஞ்சல் அனுப்புங்கள்."
     >
       <h2>What we collect</h2>
       <ul>
@@ -20,21 +20,22 @@ export default function Privacy() {
           authentication provider and are never visible to us in plain text.
         </li>
         <li>
-          <strong>Likes and listening history — on your device only:</strong>{' '}
-          songs you like, your queue, your play history and your
-          preferences are kept in your browser&apos;s local storage. They
-          do <strong>not</strong> follow you across devices — signing in
-          does not move them to our servers, and a new device starts
-          with an empty library. Play counts are anonymous totals per
-          song (how many times a song was played overall); they carry no
-          account, email or device information and cannot be traced
-          back to you.
+          <strong>Likes, follows and playlists — synced when you sign in:</strong>{' '}
+          if you are signed in, the songs you like, the artists you
+          follow and the playlists you create are saved to our servers
+          (Supabase) so they follow you across devices. If you use the
+          app as a guest, they are kept only in your browser&apos;s local
+          storage on this device and do <strong>not</strong> follow you
+          across devices. Your queue, your play history and your
+          preferences always stay on your device. Play counts are
+          anonymous totals per song (how many times a song was played
+          overall); they carry no account, email or device information
+          and cannot be traced back to you.
         </li>
         <li>
           <strong>On your device only:</strong> your language choice,
-          liked songs, queue, volume and cookie-consent choice are kept
-          in your browser&apos;s local storage. They never leave your
-          device.
+          queue, volume and cookie-consent choice are kept in your
+          browser&apos;s local storage. They never leave your device.
         </li>
       </ul>
       <p>
@@ -48,8 +49,10 @@ export default function Privacy() {
       <ul>
         <li>
           <strong>Supabase</strong> (authentication, database and storage):
-          receives your email address and your hashed password. It also
-          receives anonymous play counts — totals per song, with no
+          receives your email address and your hashed password. If you
+          are signed in it also receives your liked songs, followed
+          artists and playlists, so they sync across your devices. It
+          also receives anonymous play counts — totals per song, with no
           account or device attached.
         </li>
         <li>
@@ -73,9 +76,12 @@ export default function Privacy() {
         </a>{' '}
         from the email address on your account. We will act on verified
         requests within a reasonable time. Deleting your account removes
-        your email from our servers. Likes and listening history live
-        only on your device, so deleting the app or clearing its storage
-        removes them; anonymous play totals cannot be traced back to you.
+        your email and your synced likes, follows and playlists from our
+        servers. Anything kept only on your device (language, queue,
+        volume, and — for guests — likes, follows and playlists) is
+        removed by clearing the app&apos;s data in Settings or by
+        clearing your browser storage; anonymous play totals cannot be
+        traced back to you.
       </p>
 
       <h2>Children</h2>

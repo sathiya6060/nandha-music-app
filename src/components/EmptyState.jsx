@@ -26,8 +26,16 @@ export function Skeleton({ width = '100%', height = 16, lines = 1, style }) {
       aria-hidden="true"
     />
   ))
+  // Item 12 (27 Nov 2026): the wrapper is positioned so the sr-only
+  // "Loading" span (position: absolute) is contained inside the card.
+  // Before this, the span's containing block was the initial containing
+  // block — inside a horizontal .section-row its static position sat at
+  // x≈544 (4th skeleton card) and the 1px span pushed the document's
+  // scrollWidth to 546, expanding the layout viewport to 545px on
+  // phones while the skeletons showed. position: relative here is a
+  // no-op for layout (bars are static); it only contains the span.
   return (
-    <div role="status" aria-label={t('common.loading')}>
+    <div role="status" aria-label={t('common.loading')} style={{ position: 'relative' }}>
       {bars}
       <span className="sr-only">{t('common.loading')}</span>
     </div>

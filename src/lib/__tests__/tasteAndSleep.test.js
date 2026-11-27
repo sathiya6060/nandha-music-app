@@ -3,7 +3,7 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { getHiddenIds, isHidden, hideTrack, unhideTrack } from '../hiddenTracks.js'
 import { getRecentSearches, addRecentSearch, removeRecentSearch, clearRecentSearches } from '../recentSearches.js'
-import { sleepEndsAt, sleepRemainingMs, formatSleepRemaining, SLEEP_OPTIONS_MINUTES } from '../sleepTimer.js'
+import { sleepEndsAt, sleepRemainingMs, formatSleepRemaining, SLEEP_OPTIONS_MINUTES, loadSleepDefault, saveSleepDefault } from '../sleepTimer.js'
 
 function stubStorage() {
   const store = new Map()
@@ -63,5 +63,22 @@ describe('sleepTimer helpers', () => {
     expect(formatSleepRemaining(61000)).toBe('1:01')
     expect(formatSleepRemaining(500)).toBe('0:01')
     expect(formatSleepRemaining(0)).toBe('0:00')
+  })
+})
+
+describe('sleepTimer default (item 7)', () => {
+  it('defaults to off, round-trips minutes and end-of-track, rejects junk', () => {
+    const store = stubStorage()
+    expect(loadSleepDefault()).toBe('off')
+    saveSleepDefault(15)
+    expect(loadSleepDefault()).toBe(15)
+    saveSleepDefault('end')
+    expect(loadSleepDefault()).toBe('end')
+    saveSleepDefault('off')
+    expect(loadSleepDefault()).toBe('off')
+    store.set('nandha-sleep-default', '45')
+    expect(loadSleepDefault()).toBe('off')
+    store.set('nandha-sleep-default', 'nonsense')
+    expect(loadSleepDefault()).toBe('off')
   })
 })

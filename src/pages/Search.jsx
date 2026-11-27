@@ -31,6 +31,15 @@ const TILE_TONES = ['gold', 'slate', 'sand', 'steel']
 export default function Search() {
   const { t, tp } = useI18n()
   const player = usePlayer()
+  // Item 5 (27 Nov 2026): autoFocus only on fine-pointer devices.
+  // On touch (pointer: coarse) autoFocus pops the keyboard the moment
+  // the Search tab opens and shoves the content up — focus on tap
+  // only. Desktop keeps the current behaviour.
+  const [autoFocusSearch] = useState(
+    () =>
+      typeof window === 'undefined' ||
+      !window.matchMedia?.('(pointer: coarse)').matches,
+  )
   // Supabase read layer (B1); static catalog is the fallback.
   const { data: sbTracks } = useTracks()
   const allTracks = sbTracks || fallbackTracks
@@ -130,7 +139,7 @@ export default function Search() {
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t('common.searchPlaceholder')}
           aria-label={t('common.searchPlaceholder')}
-          autoFocus
+          autoFocus={autoFocusSearch}
         />
         {query && (
           <button
