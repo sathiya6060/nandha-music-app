@@ -243,8 +243,10 @@ function ensureVisibilityFlush() {
 
 /**
  * Record a play locally. Buffered in memory; flushed to Supabase
- * `play_events` every 5 min or when the tab is hidden/closed — never on
- * every play. No-op when Supabase is unconfigured — counts stay local only.
+ * `play_events` every 5 min or when the tab is hidden/closed — and
+ * promptly by the player when a play is counted (30s threshold or track
+ * end, see PlayerContext), so admin stats move at once. Never on every
+ * play. No-op when Supabase is unconfigured — counts stay local only.
  */
 export function recordPlay(trackId) {
   if (!trackId) return;

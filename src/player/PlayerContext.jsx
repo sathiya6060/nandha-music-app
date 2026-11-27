@@ -9,7 +9,7 @@ import {
 } from 'react'
 import { useMediaSession } from './useMediaSession.js'
 import { useAuth } from '../lib/auth.jsx'
-import { recordPlay } from '../lib/cache.js'
+import { recordPlay, flushPlays } from '../lib/cache.js'
 import { audioUrl } from '../lib/config.js'
 import { useTracks } from '../lib/supabaseCatalog.js'
 import { getRadioCandidates } from '../lib/mixes.js'
@@ -1102,6 +1102,9 @@ export function PlayerProvider({ children }) {
         playCountedRef.current = current.id
         try {
           recordPlay(current.id)
+          // Flush promptly (not only on the 5-min timer): a play that is
+          // counted should reach the DB now, so admin stats move at once.
+          void flushPlays()
         } catch {
           /* never let analytics break playback */
         }
@@ -1157,6 +1160,9 @@ export function PlayerProvider({ children }) {
         playCountedRef.current = current.id
         try {
           recordPlay(current.id)
+          // Flush promptly (see the 30s branch above): a completed play
+          // should reach the DB now, not on the 5-min timer.
+          void flushPlays()
         } catch {
           /* ignore */
         }
