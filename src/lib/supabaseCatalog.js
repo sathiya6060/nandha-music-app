@@ -483,7 +483,12 @@ export async function fetchLyricsForTrack(trackDbId) {
 // ---------------------------------------------------------------------------
 export function useTracks({ publishedOnly = true, guardKey = null } = {}) {
   return useQuery({
-    queryKey: ['tracks', { publishedOnly }],
+    // A guarded query gets its own key: without the `cache` field it
+    // collides with the plain ['tracks', {publishedOnly}] query that
+    // PlayerContext / AartiAlarmWatcher mount globally, and React Query
+    // runs only one queryFn for the shared key — the unguarded one —
+    // so the guarded cachedFetch (and Redis) never executed at all.
+    queryKey: ['tracks', { publishedOnly, ...(guardKey ? { cache: guardKey } : {}) }],
     queryFn: async () => {
       const loader = () => fetchTracks({ publishedOnly })
       if (guardKey) return cachedFetch(guardKey, loader, { ttlSeconds: 600, priority: 'high' })

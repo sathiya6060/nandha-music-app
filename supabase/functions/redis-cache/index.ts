@@ -99,6 +99,9 @@ async function upstash(
   command: unknown[],
 ): Promise<{ ok: boolean; detail?: string }> {
   try {
+    // redis-connections skill §5: explicit timeout so a hung Upstash
+    // call fails fast (502) instead of hanging the function — the app
+    // falls back to memory/localStorage/source on any proxy failure.
     const res = await fetch(url, {
       method: "POST",
       headers: {
@@ -106,6 +109,10 @@ async function upstash(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(command),
+      signal:
+        typeof AbortSignal?.timeout === "function"
+          ? AbortSignal.timeout(5_000)
+          : undefined,
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
