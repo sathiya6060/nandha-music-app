@@ -20,7 +20,8 @@ import {
   resolvePlayableUrl,
   isSignedTrack,
   dropSignedAudioUrl,
-  SIGNED_TRACK_FILE,
+  dropAllSignedAudioUrls,
+  fileNameOf,
 } from '../lib/signedAudio.js'
 
 // Static imports (S9, 27 Nov 2026): cache.js and config.js used to be
@@ -965,7 +966,7 @@ export function PlayerProvider({ children }) {
       prefetchRef.current.src = ''
       prefetchRef.current = null
     }
-    dropSignedAudioUrl(SIGNED_TRACK_FILE)
+    dropAllSignedAudioUrls()
     // Stop means stop: the sleep timer dies with playback, and the
     // user queue is cleared with the context queue.
     if (sleepTimeoutRef.current) {
@@ -1214,7 +1215,7 @@ export function PlayerProvider({ children }) {
         const resumeAt = guestRef.current
           ? Math.min(audio.currentTime || 0, PREVIEW_SECONDS)
           : audio.currentTime || 0
-        dropSignedAudioUrl(SIGNED_TRACK_FILE)
+        dropSignedAudioUrl(fileNameOf(current, qualityRef.current))
         loadSeqRef.current += 1
         const seq = loadSeqRef.current
         resolvePlayableUrl(current, qualityRef.current).then((url) => {

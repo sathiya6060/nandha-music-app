@@ -14,6 +14,10 @@ vi.mock('../config.js', async (importOriginal) => {
 
 const SIGNED = { id: 't1', audio128: 'vaazhvinil-orumurayenum.mp3', audio320: 'vaazhvinil-orumurayenum.mp3' }
 const OTHER = { id: 't2', audio128: 'other-song.mp3', audio320: 'other-song.mp3' }
+// Seeded path form (audio_128_url / audio_320_url in the DB rows):
+// the client must extract the bare file name and treat these as signed.
+const MALAIYORAM = { id: 't3', audio128: 'audio/malaiyoram-veesiya-kaatre.mp3', audio320: 'audio/malaiyoram-veesiya-kaatre.mp3' }
+const MARAKKA = { id: 't4', audio128: 'audio/marakka-mudiyuma.mp3', audio320: 'audio/marakka-mudiyuma.mp3' }
 
 let signedAudio
 
@@ -32,6 +36,13 @@ describe('isSignedTrack', () => {
   it('is true for the signed track file at either quality', () => {
     expect(signedAudio.isSignedTrack(SIGNED, '128')).toBe(true)
     expect(signedAudio.isSignedTrack(SIGNED, '320')).toBe(true)
+  })
+
+  it('is true for Malaiyoram and Marakka (seeded audio/ path form), at either quality', () => {
+    expect(signedAudio.isSignedTrack(MALAIYORAM, '128')).toBe(true)
+    expect(signedAudio.isSignedTrack(MALAIYORAM, '320')).toBe(true)
+    expect(signedAudio.isSignedTrack(MARAKKA, '128')).toBe(true)
+    expect(signedAudio.isSignedTrack(MARAKKA, '320')).toBe(true)
   })
 
   it('is false for any other file, and picks the right quality field', () => {
@@ -71,6 +82,24 @@ describe('resolvePlayableUrl', () => {
     const [calledUrl, opts] = fetchMock.mock.calls[0]
     expect(calledUrl).toContain('/functions/v1/get-audio-url')
     expect(JSON.parse(opts.body).track).toBe('vaazhvinil-orumurayenum.mp3')
+  })
+
+  it('mints a signed URL for Malaiyoram, sending the bare file name', async () => {
+    const signedUrl = 'https://example.supabase.co/storage/v1/object/sign/audio/malaiyoram-veesiya-kaatre.mp3?token=abc'
+    const fetchMock = mockFetch({ ok: true, json: async () => ({ url: signedUrl }) })
+    await expect(signedAudio.resolvePlayableUrl(MALAIYORAM, '320')).resolves.toBe(signedUrl)
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const [, opts] = fetchMock.mock.calls[0]
+    expect(JSON.parse(opts.body).track).toBe('malaiyoram-veesiya-kaatre.mp3')
+  })
+
+  it('mints a signed URL for Marakka, sending the bare file name', async () => {
+    const signedUrl = 'https://example.supabase.co/storage/v1/object/sign/audio/marakka-mudiyuma.mp3?token=abc'
+    const fetchMock = mockFetch({ ok: true, json: async () => ({ url: signedUrl }) })
+    await expect(signedAudio.resolvePlayableUrl(MARAKKA, '128')).resolves.toBe(signedUrl)
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const [, opts] = fetchMock.mock.calls[0]
+    expect(JSON.parse(opts.body).track).toBe('marakka-mudiyuma.mp3')
   })
 
   it('reuses a still-fresh signed URL without a second fetch', async () => {

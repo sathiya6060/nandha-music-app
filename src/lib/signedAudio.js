@@ -18,8 +18,16 @@
 
 import { config, audioUrl } from './config.js'
 
-/** The one real track whose audio is served signed, never public. */
-export const SIGNED_TRACK_FILE = 'vaazhvinil-orumurayenum.mp3'
+/** The real tracks whose audio is served signed, never public.
+ *  Keep in sync with ALLOWED_TRACKS in
+ *  supabase/functions/get-audio-url/index.ts — a track added to one
+ *  and not the other can never play (the client never asks the
+ *  function) or is refused by it (403 track_not_allowed). */
+const SIGNED_TRACK_FILES = new Set([
+  'vaazhvinil-orumurayenum.mp3',
+  'malaiyoram-veesiya-kaatre.mp3',
+  'marakka-mudiyuma.mp3',
+])
 
 const SIGNED_URL_TTL_MS = 300_000
 // Reuse a cached URL until 60 s before expiry, so a play/pause or a
@@ -34,7 +42,7 @@ function functionUrl() {
   return `${config.supabaseUrl.replace(/\/+$/, '')}/functions/v1/get-audio-url`
 }
 
-function fileNameOf(track, quality = '128') {
+export function fileNameOf(track, quality = '128') {
   const localPath = quality === '320' ? track?.audio320 : track?.audio128
   if (!localPath) return ''
   return String(localPath).split('/').filter(Boolean).pop() || ''
@@ -42,7 +50,7 @@ function fileNameOf(track, quality = '128') {
 
 /** True when this track's audio must come from a signed URL. */
 export function isSignedTrack(track, quality = '128') {
-  return fileNameOf(track, quality) === SIGNED_TRACK_FILE
+  return SIGNED_TRACK_FILES.has(fileNameOf(track, quality))
 }
 
 /** Mint (or reuse a still-fresh) signed URL for a file name. */
@@ -79,6 +87,11 @@ async function getSignedAudioUrl(fileName) {
 /** Drop a cached signed URL (after an expiry error, so the next fetch mints fresh). */
 export function dropSignedAudioUrl(fileName) {
   cache.delete(fileName)
+}
+
+/** Drop every cached signed URL (stop: no track keeps a live URL). */
+export function dropAllSignedAudioUrls() {
+  for (const file of SIGNED_TRACK_FILES) cache.delete(file)
 }
 
 /**

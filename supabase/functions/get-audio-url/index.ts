@@ -1,6 +1,6 @@
 // Nandha Music — get-audio-url Edge Function (Deno, Supabase).
 //
-// Mints a SHORT-LIVED signed URL (300 s) for the one real track stored in
+// Mints a SHORT-LIVED signed URL (300 s) for the real tracks stored in
 // the PRIVATE Supabase Storage bucket "audio". The browser never sees a
 // permanent audio URL: the player asks this function when playback starts,
 // and the URL dies 5 minutes later, so a shared/copied link stops working.
@@ -10,7 +10,7 @@
 //   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY. It is NEVER hard-coded,
 //   NEVER sent to the client, and NEVER put in .env.
 // - Authorization is checked server-side on EVERY request: the track name
-//   is allowlisted (one file only), and the signed URL itself is validated
+//   is allowlisted (three files only), and the signed URL itself is validated
 //   by Supabase Storage (signature + expiry) on every Range request.
 // - The anon key the player sends as `apikey` / Authorization is the
 //   public publishable key (safe in the client by design); it only passes
@@ -32,8 +32,13 @@ const ALLOWED_ORIGINS = new Set([
   "http://localhost:5173",
 ]);
 
-// Allowlist: the ONLY audio file this function will ever sign.
-const ALLOWED_TRACKS = new Set(["vaazhvinil-orumurayenum.mp3"]);
+// Allowlist: the ONLY audio files this function will ever sign.
+// (27 Nov 2026: Vaazhvinil + Malaiyoram + Marakka — the three real tracks.)
+const ALLOWED_TRACKS = new Set([
+  "vaazhvinil-orumurayenum.mp3",
+  "malaiyoram-veesiya-kaatre.mp3",
+  "marakka-mudiyuma.mp3",
+]);
 
 // Candidate object paths inside bucket "audio", in order. The dashboard
 // upload stored the file under an "audio/" folder ("audio/<file>"); if a

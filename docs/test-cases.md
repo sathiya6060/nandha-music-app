@@ -539,3 +539,11 @@ headers still out of scope (direct-upload path).
 - Screenshots viewed: fullplayer-664-reprobe.png, l3-live.png, toast-consent-real.png, escape-after-live.png, home-390-live.png, home-1280-live.png.
 
 Still outstanding (unchanged): migration 003 not applied live; delete-account Edge Function not deployed (+ SERVICE_ROLE_KEY secret); signed-in full-song play + admin write E2E unverified (needs Sathiya's /login sign-in); M1 different-track close-race blocked on a 2nd song; Upstash Redis connection still blocked awaiting go-ahead; S7 security headers still out of scope (direct-upload path).
+
+## 3-song batch — app deploy (27 Nov 2026 19:31 IST)
+- Deletion: `signedAudio.js:26` `export` removed from `SIGNED_TRACK_FILES` (user-approved, Ponytail LOW). Gates: npm test 19/116 PASS, build green, pre-deploy OK, oxlint 37 warnings.
+- Deploy `37aa6512-cb6a-4089-8094-2e6e8c9d1b63`, build **mwz1vtbq-53514955**, 49 files. Bundle check: live JS contains the 3-file Set literal; old singular constant 0 hits.
+- P1 live **75/75 PASS, 1 RECORDED** (More @664; R1 "FAIL" = stale probe buildId, live buildId is the new one). P2 live **85 PASS / 0 FAIL / 3 SKIP** (demo-only). Perf: DCL 738ms / FCP 828ms median @390px. Gate 5.24s + dismiss rewinds + re-gates; 320px stays 320px; zero page errors.
+- Function probe live (pre-redeploy, expected): Vaazhvinil 200, Malaiyoram 403, Marakka 403 — redeploy still required.
+- Screenshots viewed: home-390-live.png, home-1280-live.png, gate-prompt-390.png, player-390x664.png.
+- NOT yet verified (awaits dashboard steps): new tracks in catalog, seed SQL applied, function redeployed, 3-song live playback.
