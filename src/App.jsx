@@ -18,6 +18,7 @@ import TopBar from './components/TopBar.jsx'
 import Footer from './components/Footer.jsx'
 import ConsentBanner from './components/ConsentBanner.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
+import { Skeleton } from './components/EmptyState.jsx'
 import PlayerBar from './player/PlayerBar.jsx'
 import MobilePlayer from './player/MobilePlayer.jsx'
 // Search is imported eagerly (not lazy): it is the most-visited route
@@ -37,6 +38,7 @@ const Album = lazy(() => import('./pages/Album.jsx'))
 // Track deep link (H1): shared /track/:id URLs used to hit the catch-all
 // and bounce home. The page resolves the track and opens the player.
 const Track = lazy(() => import('./pages/Track.jsx'))
+const MixPage = lazy(() => import('./pages/MixPage.jsx'))
 const EPK = lazy(() => import('./pages/EPK.jsx'))
 // Login is unlinked in the public UI — the admin opens /login directly.
 const Login = lazy(() => import('./pages/Login.jsx'))
@@ -70,10 +72,21 @@ const queryClient = new QueryClient(queryClientOptions)
 bindQueryClient(queryClient)
 
 function LoadingFallback() {
-  const { t } = useI18n()
+  // Page-shaped skeleton (Spotify batch, 27 Nov 2026 — no-flicker rule):
+  // the old fallback was a bare "Loading…" line, so every lazy route
+  // change flashed a one-line stub before the page's own skeleton
+  // appeared (the same flash that made Search eager). These bars match
+  // the standard page layout — page-head title + subtitle + list rows —
+  // so the chunk swap has no layout jump.
   return (
-    <div className="loading-skeleton" role="status" aria-live="polite">
-      <p>{t('common.loading')}</p>
+    <div aria-live="polite">
+      <div className="page-head">
+        <Skeleton width="55%" height={28} />
+        <div style={{ marginTop: 8 }}><Skeleton width="40%" height={16} /></div>
+      </div>
+      <div className="section" aria-label="loading">
+        <Skeleton height={64} lines={4} />
+      </div>
     </div>
   )
 }
@@ -194,6 +207,7 @@ function AppShell() {
                 <Route path="/artist/:id" element={<Artist />} />
                 <Route path="/album/:id" element={<Album />} />
                 <Route path="/track/:id" element={<Track />} />
+                <Route path="/mix/:id" element={<MixPage />} />
                 <Route path="/epk" element={<EPK />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/privacy" element={<Privacy />} />

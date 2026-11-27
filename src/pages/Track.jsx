@@ -3,8 +3,12 @@ import { Link, useParams } from 'react-router-dom'
 import { useI18n } from '../lib/i18n.js'
 import { getTrack as getFallbackTrack } from '../data/catalog.js'
 import { useTrack, useTracks } from '../lib/supabaseCatalog.js'
+import { shareOrDownloadStoryCard } from '../lib/shareCard.js'
 import TrackRow from '../components/TrackRow.jsx'
+import PinButton from '../components/PinButton.jsx'
+import HideButton from '../components/HideButton.jsx'
 import EmptyState from '../components/EmptyState.jsx'
+import Icon from '../components/Icons.jsx'
 import { usePlayer, formatTime } from '../player/PlayerContext.jsx'
 import { setPageMeta, resetPageMeta } from '../lib/pageMeta.js'
 
@@ -21,6 +25,8 @@ export default function Track() {
   const { id } = useParams()
   const player = usePlayer()
   const [shared, setShared] = useState(false)
+  const [cardState, setCardState] = useState('')
+  const [cardBusy, setCardBusy] = useState(false)
   const playedForRef = useRef(null)
 
   // Supabase read layer first (B1); the static catalog is the sync
@@ -85,6 +91,19 @@ export default function Track() {
     player?.openPlayer?.()
   }
 
+  async function shareCard() {
+    setCardBusy(true)
+    setCardState(t('share.generating'))
+    try {
+      const result = await shareOrDownloadStoryCard(track)
+      setCardState(result === 'shared' ? t('share.shared') : t('share.downloaded'))
+    } catch {
+      setCardState(t('share.failed'))
+    } finally {
+      setCardBusy(false)
+    }
+  }
+
   async function share() {
     const url = typeof window !== 'undefined' ? window.location.href : `/track/${track.id}`
     const shareData = {
@@ -138,7 +157,25 @@ export default function Track() {
             <button type="button" className="btn" onClick={share}>
               {shared ? t('player.copied') : t('common.share')}
             </button>
+            {/* Share-as-status card (PT-025): the 1080x1920 brand card,
+                Web Share with download fallback. */}
+            <button type="button" className="btn btn-ghost" onClick={shareCard} disabled={cardBusy}>
+              <Icon name="share" size={16} /> {t('share.statusCard')}
+            </button>
+            <PinButton track={track} />
+            <HideButton track={track} />
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => {
+                player?.addToQueue?.(track)
+                player?.setNotice?.(t('player.addedToQueue'))
+              }}
+            >
+              <Icon name="queueAdd" size={16} /> {t('common.addToQueue')}
+            </button>
           </div>
+          {cardState && <p role="status" style={{ margin: '8px 0 0', color: 'var(--muted)', fontSize: '0.875rem' }}>{cardState}</p>}
         </div>
       </div>
 

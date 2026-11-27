@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useI18n, localizedTitle, localizedDescription } from '../lib/i18n.js'
+import { moveItemInList } from '../lib/playlistOrder.js'
 import { playlists as fallbackPlaylists, tracks as fallbackTracks } from '../data/catalog.js'
 import { usePlaylists, useTracks } from '../lib/supabaseCatalog.js'
 import { getUserPlaylists, USER_PLAYLISTS_KEY } from './Library.jsx'
@@ -46,6 +47,10 @@ export default function PlaylistDetail() {
   const [playlist, setPlaylist] = useState(() => findPlaylist(id, curatedPlaylists))
   const [order, setOrder] = useState(null) // user reordering (array of ids)
   const [shareMsg, setShareMsg] = useState('')
+  // Drag-reorder state (PT-009): the up/down buttons below remain the
+  // keyboard path — drag alone is not keyboard-accessible.
+  const [dragIndex, setDragIndex] = useState(null)
+  const [dropIndex, setDropIndex] = useState(null)
 
   useEffect(() => {
     setPlaylist(findPlaylist(id, curatedPlaylists))
@@ -92,19 +97,28 @@ export default function PlaylistDetail() {
     )
   }
 
-  function move(index, dir) {
-    const ids = order || orderedIds
-    const next = [...ids]
-    const target = index + dir
-    if (target < 0 || target >= next.length) return
-    const [moved] = next.splice(index, 1)
-    next.splice(target, 0, moved)
+  function applyOrder(next) {
     setOrder(next)
     if (playlist.isUser) {
       const all = getUserPlaylists().map((p) => (String(p.id) === String(id) ? { ...p, trackIds: next } : p))
       try { localStorage.setItem(USER_PLAYLISTS_KEY, JSON.stringify(all)) } catch { /* ignore */ }
       window.dispatchEvent(new CustomEvent('nandha-playlists-changed'))
     }
+  }
+
+  function move(index, dir) {
+    const ids = order || orderedIds
+    const target = index + dir
+    if (target < 0 || target >= ids.length) return
+    applyOrder(moveItemInList(ids, index, target))
+  }
+
+  // Drag-reorder (PT-009): drop target index is where the track lands.
+  // Playback order follows the new order when shuffle is off (playAll
+  // plays orderedTracks in order).
+  function moveTo(from, to) {
+    const ids = order || orderedIds
+    applyOrder(moveItemInList(ids, from, to))
   }
 
   function playAll() {
@@ -176,7 +190,38 @@ export default function PlaylistDetail() {
       ) : (
         <div className="list-stack">
           {orderedTracks.map((track, i) => (
-            <div key={track.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div
+              key={track.id}
+              className={`playlist-row${dragIndex === i ? ' is-dragging' : ''}${dropIndex === i ? ' is-drop-target' : ''}`}
+              style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+              draggable
+              onDragStart={(e) => {
+                setDragIndex(i)
+                e.dataTransfer.effectAllowed = 'move'
+                try { e.dataTransfer.setData('text/plain', String(i)) } catch { /* ignore */ }
+              }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+                if (dropIndex !== i) setDropIndex(i)
+              }}
+              onDragLeave={() => setDropIndex((d) => (d === i ? null : d))}
+              onDrop={(e) => {
+                e.preventDefault()
+                let from = dragIndex
+                try {
+                  const data = Number(e.dataTransfer.getData('text/plain'))
+                  if (Number.isFinite(data)) from = data
+                } catch { /* ignore */ }
+                moveTo(from, i)
+                setDragIndex(null)
+                setDropIndex(null)
+              }}
+              onDragEnd={() => {
+                setDragIndex(null)
+                setDropIndex(null)
+              }}
+            >
               <div style={{ flex: 1, minWidth: 0 }}>
                 <TrackRow track={track} index={i} queue={orderedTracks} />
               </div>

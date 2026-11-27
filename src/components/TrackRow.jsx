@@ -81,6 +81,13 @@ export default function TrackRow({ track, index, queue, onPlay }) {
     setLiked(toggleLiked(track.id))
   }
 
+  // Add to queue (PT-015): the user queue plays before the context
+  // continues. Feedback via the player notice (role="status").
+  function handleAddToQueue() {
+    player?.addToQueue?.(track)
+    player?.setNotice?.(t('player.addedToQueue'))
+  }
+
   const title = track.titleTa || track.titleEn || 'Untitled'
   const subtitle = track.titleTa && track.titleEn ? track.titleEn : track.artist
 
@@ -121,6 +128,15 @@ export default function TrackRow({ track, index, queue, onPlay }) {
           aria-pressed={liked}
         >
           <HeartIcon size={20} filled={liked} />
+        </button>
+        <button
+          type="button"
+          className="track-row__queue"
+          onClick={handleAddToQueue}
+          aria-label={`${t('common.addToQueue')}: ${title}`}
+          title={t('common.addToQueue')}
+        >
+          <Icon name="queueAdd" size={20} />
         </button>
         <button
           type="button"

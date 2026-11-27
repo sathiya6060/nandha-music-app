@@ -60,12 +60,15 @@
   --sidebar-w: 248px;
   /* Motion (Emil Design Engineering): one custom curve for UI motion
      (press, hover, sheet, banner) — --nm-ease is the default ease-out;
-     --nm-spring is for physical, interruptible motion. Built-in easings
-     stay where they are correct (canvas Ken-Burns ease-in-out, streak
+     --nm-spring is the sheet/exit curve. It used to be a bounce
+     cubic-bezier(0.34, 1.56, 0.64, 1); impeccable flagged the overshoot
+     (27 Nov 2026, user-approved polish) — now ease-out-expo
+     cubic-bezier(0.16, 1, 0.3, 1), no bounce. Built-in easings stay
+     where they are correct (canvas Ken-Burns ease-in-out, streak
      flame, progress-bar linear). Durations: press 120ms, active-state
      150–200ms, sheet 320ms, banner 320ms. */
   --nm-ease: cubic-bezier(0.23, 1, 0.32, 1);
-  --nm-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --nm-spring: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 * { box-sizing: border-box; }
@@ -379,7 +382,8 @@ input[type="search"]::-webkit-search-decoration {
 .track-row__duration { color: var(--muted); font-size: 0.825rem; }
 
 .track-row__play,
-.track-row__like {
+.track-row__like,
+.track-row__queue {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -392,6 +396,7 @@ input[type="search"]::-webkit-search-decoration {
   font-size: 0.85rem;
   line-height: 1;
   flex-shrink: 0;
+  cursor: pointer;
 }
 
 /* The cover and the title are real <button>s (a11y: no clickable divs). */
@@ -433,6 +438,10 @@ input[type="search"]::-webkit-search-decoration {
 .track-row__play:hover { background: var(--gold); color: var(--slate); border-color: var(--gold); }
 .track-row__like { background: transparent; }
 .track-row__like.is-liked { color: var(--gold); border-color: var(--gold); }
+/* Add-to-queue (PT-015): same 44px circle as like/play. */
+.track-row__queue { background: transparent; }
+.track-row__queue:hover { border-color: var(--gold); color: var(--gold); }
+.track-row__queue:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
 .track-card {
   width: 160px;
@@ -682,6 +691,7 @@ input[type="search"]::-webkit-search-decoration {
   gap: 12px;
   min-height: 44px;
   padding: 10px 12px;
+  border: 1px solid transparent;
   border-radius: var(--radius);
   color: var(--muted);
   font-weight: 600;
@@ -691,7 +701,11 @@ input[type="search"]::-webkit-search-decoration {
 }
 .sidebar__link:hover { color: var(--text-strong); background: var(--surface); text-decoration: none; }
 .sidebar__link:active { transform: scale(0.98); }
-.sidebar__link.is-active { color: var(--gold); background: rgba(245, 158, 11, 0.12); box-shadow: inset 3px 0 0 var(--gold); }
+/* Impeccable polish (27 Nov 2026, user-approved): the active link used
+   a 3px inset box-shadow stripe — replaced with a full border +
+   background tint, so the whole row reads as selected. The transparent
+   border on the base link keeps the row from shifting by 1px. */
+.sidebar__link.is-active { color: var(--gold); background: rgba(245, 158, 11, 0.16); border-color: rgba(245, 158, 11, 0.5); }
 .sidebar__section-label {
   margin: 16px 12px 6px;
   font-size: 0.7rem;
@@ -950,6 +964,11 @@ input[type="search"]::-webkit-search-decoration {
 
 /* ---------- Small phones: let single-row bars wrap/stack ---------- */
 @media (max-width: 639px) {
+  /* Track rows: like + add-to-queue + play are three 44px circles plus
+     the duration — too wide for 390px with the title. The duration
+     hides on mobile (it is still on the track page and in the player);
+     the title keeps its ellipsis room. */
+  .track-row__duration { display: none; }
   /* Top bar: logo + language + Admin + sign-in cannot fit one 390px row
      in every language — wrap instead of overflowing. Tighten padding/gap
      first so the common case still fits one row (36 logo + 8 gap +
@@ -1377,3 +1396,224 @@ input[type="search"]::-webkit-search-decoration {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* ------------------------------------------------------------------ */
+/* Spotify batch (27 Nov 2026): Made For You mixes, browse tiles,    */
+/* top-result hero, recent-search chips, pinned/hidden Library rows,  */
+/* playlist drag-reorder. Brand colours only (no Spotify palette).    */
+/* ------------------------------------------------------------------ */
+
+/* Made For You hub — 2 cols on mobile, 4 on desktop. */
+.mix-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (min-width: 768px) {
+  .mix-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.mix-card {
+  position: relative;
+  min-height: 136px;
+  border-radius: 16px;
+  overflow: hidden;
+}
+.mix-card--gold { background: linear-gradient(135deg, #F59E0B, #D97706); color: #1E293B; }
+.mix-card--slate { background: linear-gradient(135deg, #1E293B, #0F172A); color: #FFFFFF; }
+.mix-card--sand { background: linear-gradient(135deg, #FEF3C7, #FDE68A); color: #1E293B; }
+.mix-card--steel { background: linear-gradient(135deg, #64748B, #475569); color: #FFFFFF; }
+.mix-card__link {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  color: inherit;
+  text-decoration: none;
+}
+.mix-card__link:hover { color: inherit; text-decoration: none; }
+.mix-card__link:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.mix-card__glyph { opacity: 0.9; }
+.mix-card__title { font-size: 1.05rem; font-weight: 800; line-height: 1.2; }
+/* The round play button sits absolute bottom-right (44px + 10px gap):
+   the subtitle must stop 56px short of the right edge, or its last
+   line runs underneath the button (seen in sp-mix-grid-fixed.png:
+   "New every Monda[y]" and "Latest from Nandh[a]" hidden behind it).
+   The card is min-height, so the extra wrap line just grows it a few
+   px instead of clipping. */
+.mix-card__sub { font-size: 0.8rem; line-height: 1.35; padding-right: 56px; }
+.mix-card__play {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.94);
+  color: #1E293B;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.12s var(--nm-ease);
+}
+.mix-card__play:hover { transform: scale(1.06); }
+.mix-card__play:active { transform: scale(0.94); }
+.mix-card__play:disabled { opacity: 0.45; cursor: default; transform: none; }
+
+/* Mix page hero — same tones as the cards. */
+.mix-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  border-radius: 16px;
+}
+.mix-hero__glyph { opacity: 0.9; flex-shrink: 0; }
+.mix-hero__kicker {
+  margin: 0 0 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+/* Hero subtitle: inherits the tone's text colour (dark on gold/sand,
+   white on slate/steel) like the kicker. The old .tagline class is
+   Amber Gold — on the gold hero it was unreadable (gold-on-gold). */
+.mix-hero__sub {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Browse category tiles — 2 cols on mobile, 4 on desktop. */
+.browse-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (min-width: 768px) {
+  .browse-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.browse-tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 92px;
+  padding: 14px;
+  border: 0;
+  border-radius: 16px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.12s var(--nm-ease);
+}
+.browse-tile:active { transform: scale(0.97); }
+.browse-tile:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.browse-tile--gold { background: linear-gradient(135deg, #F59E0B, #D97706); color: #1E293B; }
+.browse-tile--slate { background: linear-gradient(135deg, #1E293B, #0F172A); color: #FFFFFF; }
+.browse-tile--sand { background: linear-gradient(135deg, #FEF3C7, #FDE68A); color: #1E293B; }
+.browse-tile--steel { background: linear-gradient(135deg, #64748B, #475569); color: #FFFFFF; }
+.browse-tile__name { font-size: 1rem; font-weight: 800; line-height: 1.2; }
+.browse-tile__count { font-size: 0.8rem; opacity: 0.85; }
+
+/* Top-result hero on Search. */
+.top-result {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+}
+.top-result__kicker {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.top-result__body {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 10px;
+}
+.top-result__cover { border-radius: 12px; object-fit: cover; flex-shrink: 0; }
+.top-result__title { margin: 0; font-size: 1.1rem; font-weight: 800; line-height: 1.3; }
+
+/* Recent-search chips: label button + per-chip remove button. */
+.chip--with-action { padding: 0; overflow: hidden; }
+.chip__label {
+  background: none;
+  border: 0;
+  padding: 8px 4px 8px 16px;
+  font: inherit;
+  font-weight: inherit;
+  color: inherit;
+  cursor: pointer;
+  min-height: 44px;
+}
+.chip__remove {
+  background: none;
+  border: 0;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+/* Pinned badge (Liked at top of Library) + pinned/hidden rows. */
+.pinned-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--gold);
+  font-size: 0.72rem;
+  font-weight: 700;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.pinned-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--surface);
+}
+.pinned-row__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px;
+  background: none;
+  border: 0;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+span.pinned-row__main { cursor: default; }
+.pinned-row__title { font-size: 0.95rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pinned-row__artist { font-size: 0.8rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Playlist drag-reorder (PT-009): the up/down buttons stay the
+   keyboard path; drag is the pointer path. */
+.playlist-row { cursor: grab; border-radius: 12px; }
+.playlist-row:active { cursor: grabbing; }
+.playlist-row.is-dragging { opacity: 0.5; }
+.playlist-row.is-drop-target { outline: 2px dashed var(--gold); outline-offset: -2px; }

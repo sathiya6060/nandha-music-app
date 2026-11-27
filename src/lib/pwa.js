@@ -162,19 +162,32 @@ export async function promptInstall() {
  * Pin a track's audio for offline playback.
  * Returns { ok, reason? }. Never pins sample tracks (no audio) and never
  * evicts the currently playing track.
+ *
+ * opts.playableUrl (Spotify batch, 27 Nov 2026): the real track's
+ * audio fields are private Storage paths, not fetchable URLs — the
+ * caller resolves the playable (signed) URL first and passes it here.
+ * The response is then stored under a STABLE same-origin key
+ * (pinnedAudioKey) because the signed URL changes on every mint
+ * (300 s expiry) and can never be the cache key. Without
+ * opts.playableUrl the original behaviour is unchanged: the track's
+ * own audio URL is fetched and cached under that URL.
  */
 export async function cachePinnedTrack(track, opts = {}) {
   if (!track) return { ok: false, reason: 'no-track' }
-  const url = audioUrlFor(track)
+  const playableUrl = opts.playableUrl || null
+  const url = playableUrl || audioUrlFor(track)
   if (!url) return { ok: false, reason: 'sample-track-no-audio' }
   if (!('caches' in window)) {
     return { ok: false, reason: 'cache-api-unsupported' }
   }
+  // Stable key for signed audio; the track's own URL otherwise.
+  const key = playableUrl ? pinnedAudioKey(track) : url
   const nowPlayingId = opts.currentTrackId || getNowPlayingId()
   try {
     const cache = await caches.open(AUDIO_CACHE)
-    const already = await cache.match(url)
-    const meta = readMeta().filter((m) => m.url !== url)
+    const already = await cache.match(key)
+    // One meta entry per track, however it was pinned.
+    const meta = readMeta().filter((m) => String(m.trackId) !== String(track.id))
     const now = Date.now()
 
     if (!already) {
@@ -191,9 +204,9 @@ export async function cachePinnedTrack(track, opts = {}) {
         if (idx >= 0) live.splice(idx, 1)
         await cache.delete(oldest.url)
       }
-      await cache.put(url, response)
+      await cache.put(key, response)
       live.push({
-        url,
+        url: key,
         trackId: track.id,
         title: track.titleEn || track.titleTa || '',
         pinnedAt: now,
@@ -202,16 +215,44 @@ export async function cachePinnedTrack(track, opts = {}) {
     } else {
       // Refresh the pin timestamp (touch = most recently used).
       meta.push({
-        url,
+        url: key,
         trackId: track.id,
         title: track.titleEn || track.titleTa || '',
         pinnedAt: now,
       })
       writeMeta(meta)
     }
+    // Notify Library / pin toggles (same pattern as hiddenTracks).
+    window.dispatchEvent(new CustomEvent('nandha-pinned-changed', { detail: { trackId: track.id, pinned: true } }))
     return { ok: true }
   } catch (err) {
     return { ok: false, reason: String(err?.message || err) }
+  }
+}
+
+/**
+ * Stable same-origin cache key for a pinned track. The signed audio
+ * URL changes on every mint, so the playable URL itself can never be
+ * the key — this key is what isTrackPinned / unpin / offline playback
+ * all use. (The service worker also serves audio requests from this
+ * cache by destination, so the key works there too.)
+ */
+export function pinnedAudioKey(track) {
+  if (!track) return null
+  return `/pinned-audio/${encodeURIComponent(String(track.id))}.mp3`
+}
+
+/** Blob URL for a pinned track's cached audio (offline playback), or null. */
+export async function getPinnedAudioBlobUrl(track) {
+  if (!track || !('caches' in window)) return null
+  try {
+    const cache = await caches.open(AUDIO_CACHE)
+    const res = await cache.match(pinnedAudioKey(track))
+    if (!res) return null
+    const blob = await res.blob()
+    return URL.createObjectURL(blob)
+  } catch {
+    return null
   }
 }
 
@@ -236,25 +277,34 @@ export async function getPinnedTracks() {
 
 /** Remove one pinned track from the audio cache. */
 export async function unpinTrack(track) {
+  if (!track || !('caches' in window)) return false
   const url = audioUrlFor(track)
-  if (!url || !('caches' in window)) return false
+  const key = pinnedAudioKey(track)
   try {
     const cache = await caches.open(AUDIO_CACHE)
-    await cache.delete(url)
-    writeMeta(readMeta().filter((m) => m.url !== url))
-    return true
+    const deletedKey = await cache.delete(key)
+    const deletedUrl = url ? await cache.delete(url) : false
+    writeMeta(
+      readMeta().filter(
+        (m) => m.url !== key && m.url !== url && String(m.trackId) !== String(track.id),
+      ),
+    )
+    window.dispatchEvent(new CustomEvent('nandha-pinned-changed', { detail: { trackId: track.id, pinned: false } }))
+    return deletedKey || deletedUrl
   } catch {
     return false
   }
 }
 
-/** Is this track's audio already pinned? */
+/** Is this track's audio already pinned? (Stable key first, then the
+ *  legacy URL form for pins made before the stable key existed.) */
 export async function isTrackPinned(track) {
-  const url = audioUrlFor(track)
-  if (!url || !('caches' in window)) return false
+  if (!track || !('caches' in window)) return false
   try {
     const cache = await caches.open(AUDIO_CACHE)
-    return Boolean(await cache.match(url))
+    if (await cache.match(pinnedAudioKey(track))) return true
+    const url = audioUrlFor(track)
+    return Boolean(url && (await cache.match(url)))
   } catch {
     return false
   }
@@ -267,6 +317,7 @@ export async function clearAudioCache() {
   try {
     await caches.delete(AUDIO_CACHE)
     writeMeta([])
+    window.dispatchEvent(new CustomEvent('nandha-pinned-changed', { detail: { cleared: true } }))
     return { ok: true }
   } catch (err) {
     return { ok: false, reason: String(err?.message || err) }

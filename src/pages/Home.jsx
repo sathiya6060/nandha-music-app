@@ -23,6 +23,10 @@ import {
   shouldFireAarti,
 } from '../lib/streak.js'
 import { shareOrDownloadStoryCard } from '../lib/shareCard.js'
+import { buildMix, MIX_IDS } from '../lib/mixes.js'
+import { getHiddenIds } from '../lib/hiddenTracks.js'
+import { getLikedIds } from '../components/TrackRow.jsx'
+import { getFollowedArtistIds } from './Library.jsx'
 import Section from '../components/Section.jsx'
 import TrackCard from '../components/TrackCard.jsx'
 import TrackRow from '../components/TrackRow.jsx'
@@ -236,6 +240,110 @@ function SongOfTheDay({ tracksList }) {
   )
 }
 
+/**
+ * Made For You hub (Spotify batch, 27 Nov 2026 — PT-001/002/003/004,
+ * F-009): rule-based mixes, no ML, no fake data. Weekly Mix refreshes
+ * Mondays (ISO week seed), Release Radar refreshes Fridays (21-day
+ * fresh window, honest "Latest" label on fallback), Daylist follows
+ * the daypart window, Daily Mix is the existing day-seeded rotation.
+ * With today's 1-track catalog each mix honestly holds that track.
+ */
+function MadeForYou({ tracksList }) {
+  const { lang, t, tp } = useI18n()
+  const player = usePlayer()
+  // Rebuild when likes/follows/hides change (mix inputs are localStorage).
+  const [mixVersion, setMixVersion] = useState(0)
+  useEffect(() => {
+    const bump = () => setMixVersion((v) => v + 1)
+    window.addEventListener('nandha-hidden-changed', bump)
+    window.addEventListener('nandha-liked-changed', bump)
+    window.addEventListener('nandha-followed-changed', bump)
+    return () => {
+      window.removeEventListener('nandha-hidden-changed', bump)
+      window.removeEventListener('nandha-liked-changed', bump)
+      window.removeEventListener('nandha-followed-changed', bump)
+    }
+  }, [])
+
+  const mixes = useMemo(() => {
+    const hiddenIds = getHiddenIds()
+    const likedIds = getLikedIds()
+    const followed = getFollowedArtistIds()
+    // No `new Date()` here (react(purity)): buildMix defaults to now
+    // internally when no `date` is passed.
+    const weekly = buildMix(MIX_IDS.WEEKLY, tracksList, { likedIds, hiddenIds })
+    const radar = buildMix(MIX_IDS.RADAR, tracksList, { followedArtistIds: followed, hiddenIds })
+    const daylist = buildMix(MIX_IDS.DAYLIST, tracksList, { hiddenIds })
+    const daily = buildMix(MIX_IDS.DAILY, tracksList, { hiddenIds })
+    return [
+      {
+        ...weekly,
+        title: t('mixes.weekly'),
+        sub: tp('mixes.weeklySub', weekly.tracks.length),
+        icon: 'calendar',
+        tone: 'gold',
+      },
+      {
+        ...radar,
+        title: t('mixes.radar'),
+        sub: radar.isFallback ? t('mixes.radarLatest') : tp('mixes.radarSub', radar.tracks.length),
+        icon: 'radar',
+        tone: 'slate',
+      },
+      {
+        ...daylist,
+        title: t('mixes.daylist'),
+        // Daylist window title follows the UI language (titleTa exists
+        // for every window — an English-only subtitle in Tamil UI is a
+        // localisation gap, not a fallback).
+        sub: `${daylist.window?.[lang === 'ta' ? 'titleTa' : 'titleEn'] || ''} · ${tp('album.tracks', daylist.tracks.length)}`,
+        icon: 'sun',
+        tone: 'sand',
+      },
+      {
+        ...daily,
+        title: t('mixes.daily'),
+        sub: tp('album.tracks', daily.tracks.length),
+        icon: 'play',
+        tone: 'gold',
+      },
+    ]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tracksList, mixVersion, t, tp])
+
+  return (
+    <section className="section" aria-label={t('mixes.title')}>
+      <div className="section-head">
+        <div>
+          <h2 className="section-title">{t('mixes.title')}</h2>
+        </div>
+      </div>
+      <div className="mix-grid">
+        {mixes.map((mix) => (
+          <article key={mix.id} className={`mix-card mix-card--${mix.tone}`}>
+            <Link to={`/mix/${mix.id}`} className="mix-card__link">
+              <span className="mix-card__glyph" aria-hidden="true">
+                <Icon name={mix.icon} size={28} />
+              </span>
+              <span className="mix-card__title">{mix.title}</span>
+              <span className="mix-card__sub">{mix.sub}</span>
+            </Link>
+            <button
+              type="button"
+              className="mix-card__play"
+              disabled={mix.tracks.length === 0}
+              onClick={() => mix.tracks.length > 0 && player?.play?.(mix.tracks[0], mix.tracks)}
+              aria-label={`${t('common.play')}: ${mix.title}`}
+            >
+              <Icon name="play" size={18} />
+            </button>
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 export default function Home() {
   const { t, tp } = useI18n()
   const navigate = useNavigate()
@@ -356,6 +464,8 @@ export default function Home() {
           ) : (
             <>
               <SongOfTheDay tracksList={homeTracks} />
+
+              <MadeForYou tracksList={homeTracks} />
 
               {daypartTracks.length > 0 && (
               <section className="section" aria-label={`${daypart.labelTa} · ${daypart.labelEn}`}>

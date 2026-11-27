@@ -11,6 +11,11 @@ import { useMediaSession } from './useMediaSession.js'
 import { useAuth } from '../lib/auth.jsx'
 import { recordPlay } from '../lib/cache.js'
 import { audioUrl } from '../lib/config.js'
+import { useTracks } from '../lib/supabaseCatalog.js'
+import { getRadioCandidates } from '../lib/mixes.js'
+import { getHiddenIds } from '../lib/hiddenTracks.js'
+import { sleepEndsAt, sleepRemainingMs } from '../lib/sleepTimer.js'
+import { getPinnedAudioBlobUrl } from '../lib/pwa.js'
 import {
   resolvePlayableUrl,
   isSignedTrack,
@@ -51,6 +56,11 @@ const LS_VOLUME = 'nandha-player-volume'
 const LS_QUALITY = 'nandha-player-quality'
 const LS_QUEUE = 'nandha-player-queue'
 const LS_NOW_PLAYING = 'nandha-now-playing-id'
+// Spotify batch (27 Nov 2026): user-added queue (PT-015), Smart
+// Shuffle (PT-017) and radio autoplay (PT-016) are per-device prefs.
+const LS_USER_QUEUE = 'nandha-player-userqueue'
+const LS_SMART_SHUFFLE = 'nandha-player-smart-shuffle'
+const LS_RADIO = 'nandha-player-radio'
 
 // Guest preview limit (user rule, 26 Nov 2026): without sign-in only the
 // first 5 seconds of a song play; signed-in users get the full song.
@@ -99,6 +109,23 @@ function readQueue() {
     }
   }
   return { queue: [], queueIndex: 0 }
+}
+
+/** User-added queue (PT-015): tracks the listener queued explicitly.
+ *  These play BEFORE the context queue continues. */
+function readUserQueue() {
+  const saved = readJSON(LS_USER_QUEUE, null)
+  return Array.isArray(saved) ? saved.filter(Boolean) : []
+}
+
+function readStoredFlag(key, defaultValue) {
+  try {
+    const raw = localStorage.getItem(key)
+    if (raw === null) return defaultValue
+    return raw === '1'
+  } catch {
+    return defaultValue
+  }
 }
 
 /** Resolve the playable audio URL for a track at a given quality. */
@@ -165,10 +192,29 @@ export function PlayerProvider({ children }) {
   const trackRef = useRef(null)
   const loadSeqRef = useRef(0) // guards stale signed-URL resolutions
   const signedRetryRef = useRef(null) // track id already retried once after an expiry error
+  // Spotify batch (27 Nov 2026): radio-lite needs the catalog; the
+  // hook shares Home's query cache, so this costs no extra fetch.
+  const catalogRef = useRef([])
+  const userQueueRef = useRef([])
+  const smartShuffleRef = useRef(false)
+  const radioRef = useRef(true)
+  const smartInterleaveRef = useRef(false) // alternates normal / similar pick
+  const sleepTimeoutRef = useRef(null) // minutes-timer id
+  const sleepTimerRef = useRef(null) // current { mode, endsAt } for handlers
+  const pinnedFallbackRef = useRef(null) // track id already played from its pin
+  const pinnedBlobRef = useRef(null) // blob URL created for pinned playback
 
   const initialQueue = useMemo(() => readQueue(), [])
   const [queue, setQueue] = useState(initialQueue.queue)
   const [queueIndex, setQueueIndex] = useState(initialQueue.queueIndex)
+  // User-added queue (PT-015) — plays before the context continues.
+  const [userQueue, setUserQueue] = useState(() => readUserQueue())
+  // Smart Shuffle-lite (PT-017) + radio autoplay (PT-016).
+  const [smartShuffle, setSmartShuffle] = useState(() => readStoredFlag(LS_SMART_SHUFFLE, false))
+  const [radioOn, setRadioOn] = useState(() => readStoredFlag(LS_RADIO, true))
+  // Sleep timer (PT-014): null | { mode: 'minutes' | 'end-of-track', endsAt: number | null }.
+  const [sleepTimer, setSleepTimerState] = useState(null)
+  const [sleepRemainingSec, setSleepRemainingSec] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -200,6 +246,65 @@ export function PlayerProvider({ children }) {
   useEffect(() => {
     trackRef.current = track
   }, [track])
+
+  // Spotify batch state: keep refs in sync + persist the prefs.
+  const tracksQuery = useTracks({ publishedOnly: true })
+  useEffect(() => {
+    if (Array.isArray(tracksQuery.data)) catalogRef.current = tracksQuery.data
+  }, [tracksQuery.data])
+  useEffect(() => {
+    userQueueRef.current = userQueue
+  }, [userQueue])
+  useEffect(() => {
+    smartShuffleRef.current = smartShuffle
+  }, [smartShuffle])
+  useEffect(() => {
+    radioRef.current = radioOn
+  }, [radioOn])
+  useEffect(() => {
+    sleepTimerRef.current = sleepTimer
+  }, [sleepTimer])
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_USER_QUEUE, JSON.stringify(userQueue))
+    } catch {
+      /* ignore */
+    }
+  }, [userQueue])
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_SMART_SHUFFLE, smartShuffle ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+  }, [smartShuffle])
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_RADIO, radioOn ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+  }, [radioOn])
+
+  // Sleep-timer countdown display: tick once a second while a
+  // minutes timer is armed. The firing itself is a setTimeout in
+  // setSleepTimer (below), not this interval. The remaining-seconds
+  // reset lives in clearSleepTimer/setSleepTimer (event handlers),
+  // not here — setState synchronously in an effect is the
+  // react(set-state-in-effect) pattern the lint baseline avoids.
+  useEffect(() => {
+    if (!sleepTimer || sleepTimer.mode !== 'minutes' || !sleepTimer.endsAt) {
+      return undefined
+    }
+    const tick = () => {
+      const left = sleepRemainingMs(sleepTimer.endsAt)
+      setSleepRemainingSec(Math.ceil(left / 1000))
+      if (left <= 0) clearInterval(id)
+    }
+    const id = setInterval(tick, 1000)
+    tick()
+    return () => clearInterval(id)
+  }, [sleepTimer])
 
   // Keep the preview-gate refs in sync (audio handlers read refs, not
   // stale closures, so the gate works without re-subscribing handlers).
@@ -262,6 +367,8 @@ export function PlayerProvider({ children }) {
 
   useEffect(() => () => {
     if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current)
+    if (sleepTimeoutRef.current) clearTimeout(sleepTimeoutRef.current)
+    if (pinnedBlobRef.current) URL.revokeObjectURL(pinnedBlobRef.current)
     if (prefetchRef.current) {
       prefetchRef.current.src = ''
       prefetchRef.current = null
@@ -285,7 +392,15 @@ export function PlayerProvider({ children }) {
       { autoplay = true, startAt = 0, silent = false } = {},
     ) => {
       const seq = loadSeqRef.current
-      const url = await resolvePlayableUrl(trackToLoad, qualityValue)
+      // Offline + pinned (PT-019): play the cached copy instead of
+      // minting a signed URL the network cannot serve. The blob URL is
+      // revoked when the next src is attached (see below) so repeated
+      // plays do not leak object URLs.
+      let url = null
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        url = await getPinnedAudioBlobUrl(trackToLoad)
+      }
+      if (!url) url = await resolvePlayableUrl(trackToLoad, qualityValue)
       if (seq !== loadSeqRef.current) return false
       if (!url) {
         if (!silent) {
@@ -294,6 +409,11 @@ export function PlayerProvider({ children }) {
         }
         return false
       }
+      if (pinnedBlobRef.current) {
+        URL.revokeObjectURL(pinnedBlobRef.current)
+        pinnedBlobRef.current = null
+      }
+      if (url.startsWith('blob:')) pinnedBlobRef.current = url
       audio.src = url
       audio.load()
 
@@ -378,6 +498,7 @@ export function PlayerProvider({ children }) {
 
       loadSeqRef.current += 1
       signedRetryRef.current = null
+      pinnedFallbackRef.current = null
       // Fire-and-forget: the signed URL is minted async, but the track IS
       // playable, so loadTrackAt still returns true synchronously (callers
       // rely on it to decide whether to skip on). attachSrc shows a notice
@@ -424,15 +545,101 @@ export function PlayerProvider({ children }) {
     return (currentIdx + 1) % list.length
   }, [])
 
+  /**
+   * Radio-lite candidate (PT-016/017): a track similar to the current
+   * one, from the loaded catalog — never the current track, never
+   * anything already queued, never a hidden track. With a 1-track
+   * catalog this is honestly null (no fake tracks).
+   */
+  const pickRadioCandidate = useCallback(() => {
+    const catalog = catalogRef.current || []
+    if (catalog.length === 0) return null
+    const current = trackRef.current
+    const exclude = new Set([
+      ...queueRef.current.map((t) => t?.id),
+      ...userQueueRef.current.map((t) => t?.id),
+    ])
+    const [candidate] = getRadioCandidates(catalog, current, {
+      hiddenIds: getHiddenIds(),
+      excludeIds: exclude,
+      limit: 1,
+    })
+    return candidate || null
+  }, [])
+
+  /**
+   * Play one user-added track now (PT-015): it leaves the user queue,
+   * is spliced into the context queue right after the current track,
+   * and plays. Returns false for a bad index.
+   */
+  const playFromUserQueue = useCallback((index) => {
+    const pending = userQueueRef.current
+    if (index < 0 || index >= pending.length) return false
+    const item = pending[index]
+    const rest = pending.filter((_, i) => i !== index)
+    userQueueRef.current = rest
+    setUserQueue(rest)
+    const list = queueRef.current
+    const insertAt = queueIndexRef.current + 1
+    const nextList = [...list]
+    nextList.splice(insertAt, 0, item)
+    queueRef.current = nextList
+    setQueue(nextList)
+    if (!loadTrackAt(insertAt)) skipToNextPlayable(insertAt)
+    return true
+  }, [loadTrackAt, skipToNextPlayable])
+
+  /**
+   * Play the next user-added track (PT-015): the head of the user
+   * queue plays before the context continues. False when empty.
+   */
+  const playNextFromUserQueue = useCallback(() => playFromUserQueue(0), [playFromUserQueue])
+
+  /** Append a radio recommendation and play it (PT-016). False when
+   *  there is no candidate (e.g. a 1-track catalog). */
+  const playRadioCandidate = useCallback(() => {
+    const candidate = pickRadioCandidate()
+    if (!candidate) return false
+    const list = queueRef.current
+    const nextList = [...list, candidate]
+    queueRef.current = nextList
+    setQueue(nextList)
+    if (!loadTrackAt(nextList.length - 1)) skipToNextPlayable(nextList.length - 1)
+    return true
+  }, [pickRadioCandidate, loadTrackAt, skipToNextPlayable])
+
   const next = useCallback(() => {
     const list = queueRef.current
     if (list.length === 0) return
+    // 1. User-added tracks play before the context continues (PT-015).
+    if (playNextFromUserQueue()) return
+    // 2. Smart Shuffle-lite (PT-017): while shuffle is on, alternate a
+    //    normal shuffle pick with a similar catalog track slipped in
+    //    after the current one. No candidate (1-track catalog) falls
+    //    through to the normal pick.
+    if (shuffleRef.current && smartShuffleRef.current) {
+      if (smartInterleaveRef.current) {
+        smartInterleaveRef.current = false
+        const candidate = pickRadioCandidate()
+        if (candidate) {
+          const insertAt = queueIndexRef.current + 1
+          const nextList = [...list]
+          nextList.splice(insertAt, 0, candidate)
+          queueRef.current = nextList
+          setQueue(nextList)
+          if (!loadTrackAt(insertAt)) skipToNextPlayable(insertAt)
+          return
+        }
+      } else {
+        smartInterleaveRef.current = true
+      }
+    }
     const idx = pickNextIndex(queueIndexRef.current)
     if (!loadTrackAt(idx)) {
       // Landed on an unplayable track — keep walking forward.
       skipToNextPlayable(idx)
     }
-  }, [loadTrackAt, pickNextIndex, skipToNextPlayable])
+  }, [loadTrackAt, pickNextIndex, skipToNextPlayable, playNextFromUserQueue, pickRadioCandidate])
 
   const prev = useCallback(() => {
     const audio = audioRef.current
@@ -626,13 +833,33 @@ export function PlayerProvider({ children }) {
     setShuffle((s) => !s)
   }, [])
 
+  const toggleSmartShuffle = useCallback(() => {
+    setSmartShuffle((s) => !s)
+  }, [])
+
+  const toggleRadio = useCallback(() => {
+    setRadioOn((r) => !r)
+  }, [])
+
   const cycleRepeat = useCallback(() => {
     setRepeat((r) => (r === 'off' ? 'all' : r === 'all' ? 'one' : 'off'))
   }, [])
 
+  /**
+   * Add to queue (PT-015): user-added tracks go to the user queue,
+   * which plays BEFORE the context queue continues — they are no
+   * longer appended to the end of the context.
+   */
   const addToQueue = useCallback((trackToAdd) => {
     if (!trackToAdd) return
-    setQueue((prevQueue) => [...prevQueue, trackToAdd])
+    setUserQueue((prev) => [...prev, trackToAdd])
+  }, [])
+
+  const removeFromUserQueue = useCallback((index) => {
+    setUserQueue((prev) => {
+      if (index < 0 || index >= prev.length) return prev
+      return prev.filter((_, i) => i !== index)
+    })
   }, [])
 
   const removeFromQueue = useCallback(
@@ -687,6 +914,9 @@ export function PlayerProvider({ children }) {
     setQueueIndex(0)
     queueRef.current = []
     queueIndexRef.current = 0
+    // The user queue goes with it — "clear" means nothing is up next.
+    setUserQueue([])
+    userQueueRef.current = []
     previewEndedRef.current = false
     setPreviewEnded(false)
     setIsPlaying(false)
@@ -712,6 +942,10 @@ export function PlayerProvider({ children }) {
       audio.removeAttribute('src')
       audio.load()
     }
+    if (pinnedBlobRef.current) {
+      URL.revokeObjectURL(pinnedBlobRef.current)
+      pinnedBlobRef.current = null
+    }
     loadSeqRef.current += 1
     signedRetryRef.current = null
     if (prefetchRef.current) {
@@ -719,6 +953,15 @@ export function PlayerProvider({ children }) {
       prefetchRef.current = null
     }
     dropSignedAudioUrl(SIGNED_TRACK_FILE)
+    // Stop means stop: the sleep timer dies with playback, and the
+    // user queue is cleared with the context queue.
+    if (sleepTimeoutRef.current) {
+      clearTimeout(sleepTimeoutRef.current)
+      sleepTimeoutRef.current = null
+    }
+    setSleepTimerState(null)
+    setUserQueue([])
+    userQueueRef.current = []
     // The state reset below is exactly stoppedPlayerState() — keep the
     // two in sync (the test asserts the helper; the headless smoke test
     // asserts the live behaviour: audio cleared + bar hidden).
@@ -740,6 +983,48 @@ export function PlayerProvider({ children }) {
     } catch {
       /* ignore */
     }
+  }, [])
+
+  /**
+   * Sleep timer (PT-014): `minutes` (5/10/15/30/60) stops playback
+   * when the time is up; 'end-of-track' stops at the end of the
+   * current track (handled in onEnded); null clears it. Per-session
+   * — it does not survive a reload, and stopPlayback clears it.
+   */
+  const setSleepTimer = useCallback((option) => {
+    if (sleepTimeoutRef.current) {
+      clearTimeout(sleepTimeoutRef.current)
+      sleepTimeoutRef.current = null
+    }
+    if (option === null || option === undefined) {
+      setSleepTimerState(null)
+      return
+    }
+    if (option === 'end-of-track') {
+      setSleepTimerState({ mode: 'end-of-track', endsAt: null })
+      return
+    }
+    const minutes = Number(option)
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      setSleepTimerState(null)
+      return
+    }
+    const endsAt = sleepEndsAt(minutes)
+    setSleepTimerState({ mode: 'minutes', endsAt })
+    sleepTimeoutRef.current = setTimeout(() => {
+      sleepTimeoutRef.current = null
+      setSleepTimerState(null)
+      stopPlayback()
+    }, Math.max(0, endsAt - Date.now()))
+  }, [stopPlayback])
+
+  const clearSleepTimer = useCallback(() => {
+    if (sleepTimeoutRef.current) {
+      clearTimeout(sleepTimeoutRef.current)
+      sleepTimeoutRef.current = null
+    }
+    setSleepTimerState(null)
+    setSleepRemainingSec(0)
   }, [])
 
   /**
@@ -862,6 +1147,15 @@ export function PlayerProvider({ children }) {
           /* ignore */
         }
       }
+      // Sleep timer, end-of-track mode (PT-014): stop here instead of
+      // advancing — and before the repeat-one branch, so an armed timer
+      // is not defeated by one extra loop of the track. The minutes
+      // timer is a separate setTimeout.
+      if (sleepTimerRef.current?.mode === 'end-of-track') {
+        setSleepTimerState(null)
+        stopPlayback()
+        return
+      }
       if (repeatRef.current === 'one') {
         audio.currentTime = 0
         setCurrentTime(0)
@@ -874,13 +1168,24 @@ export function PlayerProvider({ children }) {
         !shuffleRef.current &&
         queueIndexRef.current >= list.length - 1
       if (isLast && repeatRef.current === 'off') {
+        // User-added tracks first (PT-015), then radio-lite (PT-016):
+        // continue with a recommendation instead of stopping. With no
+        // candidate (1-track catalog) this stops, exactly as before.
+        if (playNextFromUserQueue()) return
+        if (radioRef.current && playRadioCandidate()) return
+        // Nothing follows: actually pause the element, not just the
+        // React state — otherwise the <audio> keeps playing after a
+        // synthetic 'ended' (and the bar/element states disagree).
+        // At a natural end the element is already paused, so this is
+        // a no-op there.
+        audio.pause()
         setIsPlaying(false)
         return
       }
       next()
     }
 
-    const onError = () => {
+    const onError = async () => {
       // Ignore errors when no src is set (sample tracks / cleared queue).
       if (!audio.getAttribute('src') && !audio.currentSrc) return
       const current = trackRef.current
@@ -925,6 +1230,21 @@ export function PlayerProvider({ children }) {
         })
         return
       }
+      // Pinned fallback (PT-019): the network failed but a cached copy
+      // exists — play it instead of skipping. Once per track, so a
+      // failing blob cannot loop back here forever.
+      if (current && pinnedFallbackRef.current !== current.id) {
+        pinnedFallbackRef.current = current.id
+        const pinned = await getPinnedAudioBlobUrl(current)
+        if (pinned) {
+          if (pinnedBlobRef.current) URL.revokeObjectURL(pinnedBlobRef.current)
+          pinnedBlobRef.current = pinned
+          audio.src = pinned
+          audio.load()
+          audio.play().catch(() => setIsPlaying(false))
+          return
+        }
+      }
       showNotice('Could not play this track — skipping')
       setIsPlaying(false)
       skipToNextPlayable(queueIndexRef.current)
@@ -947,7 +1267,7 @@ export function PlayerProvider({ children }) {
       audio.removeEventListener('play', onPlay)
       audio.removeEventListener('pause', onPause)
     }
-  }, [next, pickNextIndex, showNotice, skipToNextPlayable])
+  }, [next, pickNextIndex, showNotice, skipToNextPlayable, playNextFromUserQueue, playRadioCandidate, stopPlayback])
 
   // Restore a persisted queue on mount: show the last track paused, but
   // never autoplay or start audio without a user gesture.
@@ -1006,6 +1326,19 @@ export function PlayerProvider({ children }) {
       setNotice: showNotice,
       formatTime,
       audioRef,
+      // Spotify batch (27 Nov 2026): user queue, Smart Shuffle,
+      // radio autoplay, sleep timer.
+      userQueue,
+      smartShuffle,
+      radioOn,
+      sleepTimer,
+      sleepRemainingSec,
+      toggleSmartShuffle,
+      toggleRadio,
+      removeFromUserQueue,
+      playFromUserQueue,
+      setSleepTimer,
+      clearSleepTimer,
     }),
     [
       track,
@@ -1039,6 +1372,17 @@ export function PlayerProvider({ children }) {
       stopPlayback,
       dismissPreviewPrompt,
       showNotice,
+      userQueue,
+      smartShuffle,
+      radioOn,
+      sleepTimer,
+      sleepRemainingSec,
+      toggleSmartShuffle,
+      toggleRadio,
+      removeFromUserQueue,
+      playFromUserQueue,
+      setSleepTimer,
+      clearSleepTimer,
     ],
   )
 

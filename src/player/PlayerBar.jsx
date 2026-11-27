@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePlayer, formatTime } from './PlayerContext.jsx'
 import { useI18n } from '../lib/i18n.js'
+import { formatSleepRemaining } from '../lib/sleepTimer.js'
 import Icon from '../components/Icons.jsx'
 import QueuePanel from './QueuePanel.jsx'
+import SleepTimerSheet from './SleepTimerSheet.jsx'
 import './player.css'
 
 function IconShuffle() {
@@ -90,8 +92,11 @@ export default function PlayerBar() {
     openPlayer,
     stopPlayback,
     dismissPreviewPrompt,
+    sleepTimer,
+    sleepRemainingSec,
   } = usePlayer()
   const [showQueue, setShowQueue] = useState(false)
+  const [sleepOpen, setSleepOpen] = useState(false)
 
   if (!track) return null
 
@@ -128,6 +133,8 @@ export default function PlayerBar() {
           <QueuePanel onClose={() => setShowQueue(false)} />
         </div>
       )}
+
+      <SleepTimerSheet open={sleepOpen} onClose={() => setSleepOpen(false)} />
 
       {/* Thin progress line on top of the bar (mobile-friendly seek cue). */}
       <div
@@ -277,6 +284,34 @@ export default function PlayerBar() {
           title={t('common.queue')}
         >
           <IconQueue />
+        </button>
+
+        {/* Sleep timer (PT-014): opens the same sheet as the expanded
+            player. Shows the remaining time while a timer is active. */}
+        <button
+          type="button"
+          className={`player-icon-btn player-sleep-btn${sleepTimer ? ' is-active' : ''}`}
+          onClick={() => setSleepOpen(true)}
+          // WCAG 2.5.3: keep the accessible name in step with the visible
+          // countdown badge (aria-hidden, so axe does not flag it, but a
+          // screen-reader user should hear the same "4:57 left" a sighted
+          // user sees).
+          aria-label={
+            sleepTimer?.mode === 'minutes'
+              ? t('player.sleepRemaining', { time: formatSleepRemaining(sleepRemainingSec * 1000) })
+              : sleepTimer
+                ? t('player.sleepEndOfTrack')
+                : t('player.sleepTimer')
+          }
+          aria-pressed={Boolean(sleepTimer)}
+          title={sleepTimer ? t('player.sleepRemaining', { time: formatSleepRemaining(sleepRemainingSec * 1000) }) : t('player.sleepTimer')}
+        >
+          <Icon name="moon" size={20} />
+          {sleepTimer && sleepTimer.mode === 'minutes' && (
+            <span className="player-sleep-count" aria-hidden="true">
+              {formatSleepRemaining(sleepRemainingSec * 1000)}
+            </span>
+          )}
         </button>
 
         <button

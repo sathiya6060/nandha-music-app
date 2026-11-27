@@ -4,6 +4,26 @@
 2026 before this pass). `scripts/pre-deploy-check.sh` gates on
 `--max-warnings 40`, so the count cannot silently grow again.
 
+## Spotify batch (27 Nov 2026) — count held at 34
+
+The batch briefly pushed the count to 41 warnings + 1 error; all of it
+was fixed in the batch, not documented away:
+
+- `src/pages/MixPage.jsx` — `react-hooks(rules-of-hooks)` ERROR: the
+  `sub` useMemo sat after an `if (!meta) return …`. All hooks now run
+  before the early returns.
+- `react(purity)` ×2 — `new Date()` in `Home.jsx` MadeForYou and
+  `MixPage.jsx` memos. Fixed by not passing `date` at all: `buildMix`
+  defaults to `new Date()` internally.
+- `react(set-state-in-effect)` ×1 — the sleep-countdown effect reset
+  `sleepRemainingSec` synchronously. The reset moved into the
+  `clearSleepTimer` event handler.
+- `eslint(no-unused-vars)` ×4 in `mobile-verify/` (left by the
+  test-case analysis batch, not the app): dead `sec` helper in
+  `full-suite.js` removed, `groupPwa(page, vp, errors)` params renamed
+  `_vp`/`_errors`, unused `catch (e)` in `diag-deploy-1280.js` → bare
+  `catch {`.
+
 ## What was fixed in this pass (199 warnings)
 
 | Fix | Count | How |

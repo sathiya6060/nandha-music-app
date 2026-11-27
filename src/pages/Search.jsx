@@ -4,12 +4,20 @@ import { useI18n } from '../lib/i18n.js'
 import { tracks as fallbackTracks } from '../data/catalog.js'
 import { useTracks, searchTracksIn } from '../lib/supabaseCatalog.js'
 import { recordNoResultSearch } from '../lib/adminStore.js'
+import {
+  addRecentSearch,
+  clearRecentSearches,
+  getRecentSearches,
+  removeRecentSearch,
+} from '../lib/recentSearches.js'
+import { usePlayer } from '../player/PlayerContext.jsx'
 import TrackRow from '../components/TrackRow.jsx'
 import EmptyState, { Skeleton } from '../components/EmptyState.jsx'
 import Icon from '../components/Icons.jsx'
 
 const RESULT_CAP = 20
 const DEBOUNCE_MS = 300
+const TILE_TONES = ['gold', 'slate', 'sand', 'steel']
 
 /**
  * Route '/search'.
@@ -21,7 +29,8 @@ const DEBOUNCE_MS = 300
  * ?genre= deep links. Results count is announced via aria-live.
  */
 export default function Search() {
-  const { t } = useI18n()
+  const { t, tp } = useI18n()
+  const player = usePlayer()
   // Supabase read layer (B1); static catalog is the fallback.
   const { data: sbTracks } = useTracks()
   const allTracks = sbTracks || fallbackTracks
@@ -30,6 +39,19 @@ export default function Search() {
   const [query, setQuery] = useState(initialQuery)
   const [debounced, setDebounced] = useState(initialQuery)
   const [searching, setSearching] = useState(false)
+  // Recent searches (Spotify batch, 27 Nov 2026 — F-028): persisted
+  // locally, clearable, kept in sync via the change event.
+  const [recent, setRecent] = useState(() => getRecentSearches())
+
+  useEffect(() => {
+    const sync = () => setRecent(getRecentSearches())
+    window.addEventListener('nandha-recent-searches-changed', sync)
+    window.addEventListener('storage', sync)
+    return () => {
+      window.removeEventListener('nandha-recent-searches-changed', sync)
+      window.removeEventListener('storage', sync)
+    }
+  }, [])
 
   // Keep the input in sync when arriving via a deep link (?q= / ?genre=).
   useEffect(() => {
@@ -73,10 +95,20 @@ export default function Search() {
     }
   }, [debounced, allTracks])
 
-  const genres = useMemo(
-    () => [...new Set((allTracks || []).map((tr) => tr.genre).filter(Boolean))],
-    [allTracks],
-  )
+  const genreCounts = useMemo(() => {
+    const map = new Map()
+    for (const tr of allTracks || []) {
+      if (!tr.genre) continue
+      map.set(tr.genre, (map.get(tr.genre) || 0) + 1)
+    }
+    return [...map.entries()]
+  }, [allTracks])
+
+  // Record each settled query in recent searches (once per settle —
+  // addRecentSearch dedupes + moves to front, so re-runs are harmless).
+  useEffect(() => {
+    if (!searching && debounced.trim() !== '') addRecentSearch(debounced.trim())
+  }, [debounced, searching])
 
   // Log zero-result queries (once per settled query) for admin analytics.
   const noResults = debounced.trim() !== '' && !searching && results.length === 0
@@ -120,30 +152,102 @@ export default function Search() {
           <Skeleton height={64} lines={4} />
         </div>
       ) : debounced.trim() === '' ? (
-        <section className="section" aria-label={t('home.browseGenre')}>
-          <div className="section-head">
-            <div>
-              <h2 className="section-title">{t('home.browseGenre')}</h2>
+        <>
+          {recent.length > 0 && (
+            <section className="section" aria-label={t('search.recent')}>
+              <div className="section-head">
+                <div>
+                  <h2 className="section-title">{t('search.recent')}</h2>
+                </div>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={clearRecentSearches}>
+                  {t('search.clearRecent')}
+                </button>
+              </div>
+              <div className="chip-row">
+                {recent.map((q) => (
+                  <span key={q} className="chip chip--with-action">
+                    <button
+                      type="button"
+                      className="chip__label"
+                      onClick={() => setQuery(q)}
+                    >
+                      {q}
+                    </button>
+                    <button
+                      type="button"
+                      className="chip__remove"
+                      onClick={() => removeRecentSearch(q)}
+                      aria-label={`${t('common.remove')}: ${q}`}
+                    >
+                      <Icon name="close" size={14} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
+          <section className="section" aria-label={t('home.browseGenre')}>
+            <div className="section-head">
+              <div>
+                <h2 className="section-title">{t('home.browseGenre')}</h2>
+              </div>
             </div>
-          </div>
-          <div className="chip-row">
-            {genres.length === 0 ? (
+            {genreCounts.length === 0 ? (
               <span style={{ color: 'var(--muted)' }}>{t('common.noResults')}</span>
             ) : (
-              genres.map((genre) => (
-                <button key={genre} type="button" className="chip" onClick={() => setQuery(genre)}>
-                  {genre}
-                </button>
-              ))
+              <div className="browse-grid">
+                {genreCounts.map(([genre, count], i) => (
+                  <button
+                    key={genre}
+                    type="button"
+                    className={`browse-tile browse-tile--${TILE_TONES[i % TILE_TONES.length]}`}
+                    onClick={() => setQuery(genre)}
+                  >
+                    <span className="browse-tile__name">{genre}</span>
+                    <span className="browse-tile__count">{tp('album.tracks', count)}</span>
+                  </button>
+                ))}
+              </div>
             )}
-          </div>
-        </section>
+          </section>
+        </>
       ) : results.length > 0 ? (
         <section className="section" aria-label={t('search.title')}>
           <p aria-live="polite" style={{ color: 'var(--muted)', fontSize: '0.875rem', margin: '0 0 8px' }}>
             {t('search.results', { n: results.length })}
           </p>
-          <div className="list-stack">
+          {/* Top-result hero (F-028): the best match, large, with a Play
+              button. The full list below INCLUDES the top result again
+              (like Spotify): the hero is a summary, the list is where
+              like / add-to-queue / play-per-row live — hiding the top
+              result from the list would strip those actions from it. */}
+          <div className="top-result" aria-label={t('search.topResult')}>
+            <span className="top-result__kicker">{t('search.topResult')}</span>
+            <div className="top-result__body">
+              {results[0].cover ? (
+                <img src={results[0].cover} alt="" width={96} height={96} className="top-result__cover" loading="lazy" />
+              ) : (
+                <span className="cover-placeholder top-result__cover" aria-hidden="true" style={{ width: 96, height: 96, fontSize: '2.5rem', borderRadius: 16 }}>N</span>
+              )}
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <p className="top-result__title" lang={results[0].titleTa ? 'ta' : undefined}>{results[0].titleTa || results[0].titleEn}</p>
+                <p style={{ margin: '4px 0 0', color: 'var(--muted)' }}>
+                  {results[0].artist}
+                  {results[0].titleEn && results[0].titleTa ? ` · ${results[0].titleEn}` : ''}
+                </p>
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => player?.play?.(results[0], results)}
+                  >
+                    {t('common.play')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="list-stack" style={{ marginTop: 12 }}>
             {results.map((track, i) => (
               <TrackRow key={track.id} track={track} index={i} queue={results} />
             ))}

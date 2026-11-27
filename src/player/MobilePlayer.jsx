@@ -2,9 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePlayer, formatTime } from './PlayerContext.jsx'
 import { useI18n } from '../lib/i18n.js'
+import { shareOrDownloadStoryCard } from '../lib/shareCard.js'
+import { formatSleepRemaining } from '../lib/sleepTimer.js'
 import Logo from '../components/Logo.jsx'
+import Icon from '../components/Icons.jsx'
+import PinButton from '../components/PinButton.jsx'
+import HideButton from '../components/HideButton.jsx'
 import LyricsPanel from './LyricsPanel.jsx'
 import QueuePanel from './QueuePanel.jsx'
+import SleepTimerSheet from './SleepTimerSheet.jsx'
 import StoryCard from './StoryCard.jsx'
 import './player.css'
 
@@ -140,12 +146,16 @@ export default function MobilePlayer() {
     stopPlayback,
     dismissPreviewPrompt,
     setNotice,
+    sleepTimer,
+    sleepRemainingSec,
   } = usePlayer()
   const { t } = useI18n()
 
   const [panel, setPanel] = useState(null) // null | 'queue' | 'story'
   const [view, setView] = useState('cover') // 'cover' | 'lyrics'
   const [shared, setShared] = useState(false)
+  const [sleepOpen, setSleepOpen] = useState(false)
+  const [cardBusy, setCardBusy] = useState(false)
   // Canvas motion on by default, unless the user prefers reduced motion.
   const [canvasOn, setCanvasOn] = useState(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return true
@@ -342,6 +352,22 @@ export default function MobilePlayer() {
       } catch {
         setNotice(t('player.shareFailed'))
       }
+    }
+  }
+
+  // Share-as-status card (PT-025): the 1080x1920 brand card, Web Share
+  // with download fallback. Feedback goes through the player notice.
+  const shareCard = async () => {
+    if (cardBusy) return
+    setCardBusy(true)
+    setNotice(t('share.generating'))
+    try {
+      const result = await shareOrDownloadStoryCard(track)
+      setNotice(result === 'shared' ? t('share.shared') : t('share.downloaded'))
+    } catch {
+      setNotice(t('share.failed'))
+    } finally {
+      setCardBusy(false)
     }
   }
 
@@ -569,6 +595,50 @@ export default function MobilePlayer() {
             </button>
           </div>
 
+          {/* Secondary actions (Spotify batch, 27 Nov 2026): share-as-status
+              card (PT-025), offline pin (PT-019), hide (F-019), sleep
+              timer (PT-014). The sleep button shows the remaining time
+              while a timer is active. */}
+          <div className="mobile-player-actions mobile-player-actions--secondary">
+            <button
+              type="button"
+              className="mobile-player-action"
+              onClick={shareCard}
+              disabled={cardBusy}
+            >
+              <Icon name="share" size={18} />
+              <span>{t('share.statusCard')}</span>
+            </button>
+            <PinButton track={track} variant="icon" />
+            <HideButton track={track} variant="icon" />
+            <button
+              type="button"
+              className={`mobile-player-action${sleepTimer ? ' is-active' : ''}`}
+              onClick={() => setSleepOpen(true)}
+              // WCAG 2.5.3: when a timer is active the visible text is the
+              // countdown (or "End of track"), so the accessible name must
+              // contain that same text — a fixed "Sleep timer" label would
+              // not contain the visible "4:57".
+              aria-label={
+                sleepTimer?.mode === 'minutes'
+                  ? t('player.sleepRemaining', { time: formatSleepRemaining(sleepRemainingSec * 1000) })
+                  : sleepTimer
+                    ? t('player.sleepEndOfTrack')
+                    : t('player.sleepTimer')
+              }
+              aria-pressed={Boolean(sleepTimer)}
+            >
+              <Icon name="moon" size={18} />
+              <span>
+                {sleepTimer
+                  ? sleepTimer.mode === 'minutes'
+                    ? formatSleepRemaining(sleepRemainingSec * 1000)
+                    : t('player.sleepEndOfTrack')
+                  : t('player.sleepTimer')}
+              </span>
+            </button>
+          </div>
+
           {panel === 'story' && (
             <div className="mobile-player-panel">
               <StoryCard track={track} onClose={() => setPanel(null)} />
@@ -590,6 +660,10 @@ export default function MobilePlayer() {
             <LyricsPanel track={track} className="lyrics-panel--side" />
           </aside>
         )}
+
+        {/* Sleep timer sheet — rendered inside the player sheet so the
+            focus trap covers it; position:fixed places it visually. */}
+        <SleepTimerSheet open={sleepOpen} onClose={() => setSleepOpen(false)} />
       </div>
     </div>
   )
