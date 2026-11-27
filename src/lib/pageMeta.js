@@ -10,7 +10,7 @@
 // entity resolves, and returns resetPageMeta from the effect cleanup
 // so navigating away restores the site defaults. Pages without their
 // own meta need no code — the previous page's cleanup resets it.
-export const SITE_URL = 'https://nandha-music.pages.dev'
+export const SITE_URL = 'https://nandhamusic.pages.dev'
 const DEFAULT_TITLE = 'Nandha Music — YOUR BEAT. YOUR ECHO.'
 const DEFAULT_DESCRIPTION =
   'Official Tamil Music Label | Love • Devotional • Melody | Stream Vaazhvinil Orumurayenum now.'

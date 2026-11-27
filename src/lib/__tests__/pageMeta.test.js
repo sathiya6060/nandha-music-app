@@ -27,7 +27,7 @@ describe('absoluteUrl', () => {
   })
 
   it('the site URL is the live Cloudflare Pages domain', () => {
-    expect(SITE_URL).toBe('https://nandha-music.pages.dev')
+    expect(SITE_URL).toBe('https://nandhamusic.pages.dev')
     expect(DEFAULT_IMAGE).toBe(`${SITE_URL}/assets/vaazhvinil-cover.jpg`)
   })
 })

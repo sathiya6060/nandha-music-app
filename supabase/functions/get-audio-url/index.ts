@@ -28,7 +28,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.119.2";
 
 const ALLOWED_ORIGINS = new Set([
-  "https://nandha-music.pages.dev",
+  "https://nandhamusic.pages.dev",
   "http://localhost:5173",
 ]);
 
@@ -68,7 +68,7 @@ function corsHeaders(origin: string | null): Record<string, string> {
   const allow =
     origin && ALLOWED_ORIGINS.has(origin)
       ? origin
-      : "https://nandha-music.pages.dev";
+      : "https://nandhamusic.pages.dev";
   return {
     "Access-Control-Allow-Origin": allow,
     "Access-Control-Allow-Headers":

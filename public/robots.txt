@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://nandha-music.pages.dev/sitemap.xml
+Sitemap: https://nandhamusic.pages.dev/sitemap.xml
