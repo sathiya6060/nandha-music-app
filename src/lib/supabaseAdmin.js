@@ -220,15 +220,18 @@ function rowsOrThrow({ data, error }) {
 }
 
 function slugify(value) {
-  const slug = String(value || '')
+  let slug = String(value || '')
     .toLowerCase()
     .normalize('NFKD')
     .replace(/[^a-z0-9]+/g, '-')
-    // S8786: the old /^-+|-+$/g alternation risks super-linear
-    // backtracking — two anchored replaces are linear and identical.
-    .replace(/^-+/, '')
-    .replace(/-+$/, '')
-    .slice(0, 80)
+  // Trim leading/trailing '-' with a plain index scan — no regex.
+  // S8786 flags /^-+|-+$/g AND the split /-+$/: a quantifier before
+  // the end anchor can backtrack super-linearly. This scan is linear.
+  let start = 0
+  while (slug[start] === '-') start++
+  let end = slug.length
+  while (end > start && slug[end - 1] === '-') end--
+  slug = slug.slice(start, end).slice(0, 80)
   return slug || `track-${Date.now().toString(36)}`
 }
 
