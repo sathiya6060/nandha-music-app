@@ -201,19 +201,24 @@ export async function invalidateCatalog(trackId) {
   // otherwise a React Query refetch after an admin write would serve
   // the stale 'home' / 'track:<id>' value for up to its TTL.
   invalidateCachedFetch();
-  // M35: 'home' is the only Redis key the app ever writes (Home's
-  // cachedFetch, guard key 'home'). 'tracks' / 'search' keys can
-  // never exist — the DELs for them were wasted Edge Function calls.
-  await redisDel('home');
   if (trackId) {
     memoryDelete(memoryKeyFor(cacheKeys.track(trackId)));
     lsDelete(`track:${trackId}`);
   }
+  // Invalidate React Query FIRST: invalidateQueries triggers the
+  // refetch of every mounted list immediately. The Redis DEL below
+  // is a network round-trip — awaiting it first delayed the list
+  // refresh by seconds after a delete/save, so the admin list kept
+  // showing the deleted row until a manual reload (28 Nov 2026).
   invalidateQueryClient((q) =>
     ['track', 'tracks', 'album', 'albums', 'artist', 'artists', 'playlist', 'playlists', 'home', 'search', 'library'].includes(
       q.queryKey[0],
     ),
   );
+  // M35: 'home' is the only Redis key the app ever writes (Home's
+  // cachedFetch, guard key 'home'). 'tracks' / 'search' keys can
+  // never exist — the DELs for them were wasted Edge Function calls.
+  await redisDel('home');
 }
 
 // ---------------------------------------------------------------------------

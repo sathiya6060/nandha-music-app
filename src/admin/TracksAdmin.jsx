@@ -222,6 +222,11 @@ export default function TracksAdmin() {
         return
       }
       logActivity({ actor: user?.email || 'Admin', action: 'Deleted track', detail: title })
+      // Refetch explicitly before the toast: the invalidation inside
+      // deleteTrackFromSupabase schedules a refetch, but the list
+      // must show the deletion NOW — the toast used to appear while
+      // the list still showed the deleted row (28 Nov 2026).
+      await refetchTracks()
       showToast(t('admin.itemDeleted', { title }))
       setSelected((prev) => {
         const next = new Set(prev)
@@ -264,6 +269,7 @@ export default function TracksAdmin() {
     }
     if (done > 0) {
       logActivity({ actor: user?.email || 'Admin', action: 'Bulk deleted tracks', detail: `${done} track(s)` })
+      await refetchTracks()
       showToast(t('admin.bulkDeleteResult', { done, total: selected.size }))
     }
     if (failed.length > 0) {
@@ -297,6 +303,7 @@ export default function TracksAdmin() {
       return
     }
     logActivity({ actor: user?.email || 'Admin', action: 'Unpublished track', detail: title })
+    await refetchTracks()
     showToast(t('admin.trackUnpublished', { title }))
     setVersion((v) => v + 1)
   }
@@ -306,6 +313,7 @@ export default function TracksAdmin() {
     restoreAdminTrack(track.id)
     logActivity({ actor: user?.email || 'Admin', action: 'Restored track', detail: title })
     await invalidateCaches(track.id)
+    await refetchTracks()
     showToast(t('admin.trackRestored', { title }))
     setVersion((v) => v + 1)
   }

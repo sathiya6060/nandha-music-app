@@ -33,14 +33,26 @@ export default function Track() {
   // fallback so there is no loading flash and the page still works
   // offline / when Supabase is unreachable.
   const { data: sbTrack, isLoading: trackLoading, isError: trackError, refetch: refetchTrack } = useTrack(id)
-  const { data: sbTracks, isLoading: tracksLoading } = useTracks()
+  const { data: sbTracks, isLoading: tracksLoading, isError: tracksError } = useTracks()
   // M17: resolve from the already-loaded list first — on client-side
   // nav from Home the list is in hand, so the page renders at once
   // instead of flashing "No results found" while the single fetch
   // is still in flight (live repro 28 Nov 2026: 1 s flash in the
   // harness, longer in the cloud browser). The single fetch is the
   // fallback for direct loads; the static catalog is the last resort.
-  const track = findByIdOrSlug(sbTracks, id) ?? sbTrack ?? getFallbackTrack(id)
+  // The static fallback applies while the DB is still answering
+  // (the instant placeholder — no loading flash on direct loads)
+  // and when the DB fetch actually failed (unreachable / error) —
+  // but NOT when the DB was reached and the track is simply absent
+  // (deleted). In that case the page must show Not Found (28 Nov
+  // 2026: a deleted Vaazhvinil still rendered its full page from
+  // the fallback catalog). A loading-only fallback cannot mask a
+  // deletion: once both queries settle without error, the fallback
+  // drops out and the Not Found branch below renders.
+  const dbFailed = trackError || tracksError
+  const dbPending = trackLoading || tracksLoading
+  const track =
+    findByIdOrSlug(sbTracks, id) ?? sbTrack ?? (dbFailed || dbPending ? getFallbackTrack(id) : null)
   // L20: the "more from this album" list reads this too — the
   // Supabase-only list left it empty while the catalog was loading.
   const allTracks = sbTracks || fallbackTracks

@@ -152,3 +152,25 @@ export function changedFieldKeys(before, after) {
   }
   return changed
 }
+
+/**
+ * X-axis label anchor for the plays line chart: the first label
+ * starts at the axis and the last label ends at it. A centred last
+ * label overflowed the SVG's right edge and clipped "28 Nov" to
+ * "Nov 2" (28 Nov 2026).
+ */
+export function xLabelAnchor(index, count) {
+  if (index === 0) return 'start'
+  if (index === count - 1) return 'end'
+  return 'middle'
+}
+
+/**
+ * Sparkline x position: the line is inset by the dot radius so the
+ * last point (and its amber dot) is not clipped at the SVG edge —
+ * it used to render as a tiny mark at the card edge (28 Nov 2026).
+ */
+export function sparklineX(index, count, width, padX = 4) {
+  if (count <= 1) return width / 2
+  return padX + (index / (count - 1)) * (width - padX * 2)
+}

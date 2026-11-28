@@ -18,7 +18,7 @@ import { useAuth } from '../lib/auth.jsx'
 import { useI18n } from '../lib/i18n.js'
 import { SITE_URL } from '../lib/pageMeta.js'
 import FallbackBanner from './FallbackBanner.jsx'
-import { bucketisePlaysByDay, totalPlays, deriveNeedsAttention } from './lib/analytics.js'
+import { bucketisePlaysByDay, totalPlays, deriveNeedsAttention, sparklineX } from './lib/analytics.js'
 import './dashboard.css'
 
 // Supabase free tier storage limit (1 GB).
@@ -44,17 +44,20 @@ const NEEDS_ATTENTION_LABEL = {
 }
 
 // Hand-drawn 7-day sparkline: slate line, amber dot on the last day.
+// Points are inset by the dot radius (sparklineX) so the last dot
+// is not clipped at the SVG edge (28 Nov 2026: it rendered as a
+// tiny mark at the card edge).
 function Sparkline({ buckets, label }) {
   const width = 280
   const height = 44
   const max = Math.max(1, ...buckets.map((b) => b.plays))
   const points = buckets.map((b, i) => {
-    const x = buckets.length === 1 ? width / 2 : (i / (buckets.length - 1)) * width
+    const x = sparklineX(i, buckets.length, width)
     const y = height - 4 - (b.plays / max) * (height - 8)
     return `${x.toFixed(1)},${y.toFixed(1)}`
   })
   const last = buckets[buckets.length - 1]
-  const lastX = buckets.length === 1 ? width / 2 : width
+  const lastX = sparklineX(buckets.length - 1, buckets.length, width)
   const lastY = height - 4 - (last.plays / max) * (height - 8)
   return (
     <svg
@@ -81,7 +84,15 @@ export default function Dashboard() {
   const { data: sbArtists, isLoading: artistsLoading, refetch: refetchArtists } = useArtists()
   const albumList = sbAlbums || albums
   const artistList = sbArtists || artists
-  const mergedTracks = useMemo(() => getMergedTracks(sbTracks || tracks), [sbTracks])
+  // While the DB list is still loading, merge NOTHING — the static
+  // fallback's 1 track used to paint as "Total tracks 1" and flip
+  // to live data after ~5s (28 Nov 2026). Once the query settles
+  // without data (DB down), the fallback renders as before.
+  const tracksPending = tracksLoading && !sbTracks
+  const mergedTracks = useMemo(
+    () => getMergedTracks(sbTracks ?? (tracksLoading ? [] : tracks)),
+    [sbTracks, tracksLoading],
+  )
   const activity = useMemo(() => getActivityLog(), [])
   // Plays 7d / Likes / Followers: null = no data (query failed or
   // empty) → the metric is hidden, never rendered as 0.
@@ -227,7 +238,13 @@ export default function Dashboard() {
         <div className="admin-stat-card">
           <span className="admin-stat-label">{t('admin.storageUsed')}</span>
           <span className="admin-stat-value">
-            {formatBytes(storage.usedBytes)} <span className="admin-stat-sub">/ 1 GB</span>
+            {tracksPending ? (
+              t('common.loading')
+            ) : (
+              <>
+                {formatBytes(storage.usedBytes)} <span className="admin-stat-sub">/ 1 GB</span>
+              </>
+            )}
           </span>
           <div
             className="admin-progress"
@@ -248,7 +265,9 @@ export default function Dashboard() {
       <div className="admin-two-col">
         <section className="admin-panel" aria-labelledby="admin-needs-attention">
           <h2 className="admin-panel-title" id="admin-needs-attention">{t('admin.needsAttention')}</h2>
-          {needsAttention.length === 0 ? (
+          {tracksPending ? (
+            <p className="admin-muted">{t('common.loading')}</p>
+          ) : needsAttention.length === 0 ? (
             <p className="admin-muted">{t('admin.needsAttentionEmpty')}</p>
           ) : (
             <ul className="dash-attention-list">
@@ -300,7 +319,9 @@ export default function Dashboard() {
 
       <section className="admin-panel" aria-labelledby="admin-top-tracks">
         <h2 className="admin-panel-title" id="admin-top-tracks">{t('admin.topTracks')}</h2>
-        {topTracks.length === 0 ? (
+        {tracksPending ? (
+          <p className="admin-muted">{t('common.loading')}</p>
+        ) : topTracks.length === 0 ? (
           <p className="admin-muted">{t('admin.noTracksFound')}</p>
         ) : (
           <div className="admin-table-wrap">

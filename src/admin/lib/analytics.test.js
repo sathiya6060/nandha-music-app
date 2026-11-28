@@ -6,6 +6,8 @@ import {
   aggregateTopTracks,
   deriveNeedsAttention,
   changedFieldKeys,
+  xLabelAnchor,
+  sparklineX,
 } from './analytics.js'
 
 describe('bucketisePlaysByDay', () => {
@@ -116,5 +118,35 @@ describe('changedFieldKeys', () => {
       'pressPhotos',
     ])
     expect(changedFieldKeys(before, before)).toEqual([])
+  })
+})
+
+describe('xLabelAnchor (28 Nov 2026)', () => {
+  it('starts the first label at the axis and ends the last label at it', () => {
+    expect(xLabelAnchor(0, 7)).toBe('start')
+    expect(xLabelAnchor(6, 7)).toBe('end')
+  })
+
+  it('centres middle labels', () => {
+    expect(xLabelAnchor(3, 7)).toBe('middle')
+  })
+
+  it('a single label is both first and last — start wins', () => {
+    expect(xLabelAnchor(0, 1)).toBe('start')
+  })
+})
+
+describe('sparklineX (28 Nov 2026)', () => {
+  it('insets the first and last points by the dot radius so the last dot is not clipped', () => {
+    expect(sparklineX(0, 7, 280)).toBe(4)
+    expect(sparklineX(6, 7, 280)).toBe(276)
+  })
+
+  it('centres a single point', () => {
+    expect(sparklineX(0, 1, 280)).toBe(140)
+  })
+
+  it('spaces points evenly between the insets', () => {
+    expect(sparklineX(3, 7, 280)).toBe(140)
   })
 })

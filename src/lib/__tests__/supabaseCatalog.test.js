@@ -51,6 +51,17 @@ describe('mapTrack (M1/M2)', () => {
     expect(track.hookStartSec).toBe(0)
     expect(track.hookDurationSec).toBe(30)
   })
+
+  it('never injects fallback lyrics — the DB lyrics table owns lyrics', () => {
+    // 28 Nov 2026: mapTrack unconditionally overwrote the track's
+    // lyrics with the fallback's 4 opening lines, so the editor
+    // showed 4 stale lines instead of the DB's 40 — and a save
+    // then created a phantom English lyrics row. Mapped tracks
+    // carry no lyrics until the lyrics-table query attaches them.
+    const track = mapTrack({ ...baseRow, slug: 'vaazhvinil-orumurayenum' })
+    expect(track.lyricsTa).toEqual([])
+    expect(track.lyricsEn).toEqual([])
+  })
 })
 
 // B1/H8: slug resolution — /album/annamalaiyar and

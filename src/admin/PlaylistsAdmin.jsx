@@ -222,6 +222,12 @@ export default function PlaylistsAdmin() {
         const droppedNote = savedPlaylist.droppedTrackIds?.length > 0
           ? ` ${t('admin.membershipDropped', { count: savedPlaylist.droppedTrackIds.length })}`
           : ''
+        // Refetch BEFORE closing the editor: the list must hold the
+        // saved order when the editor closes. Re-opening it on stale
+        // data lost a Move-up (28 Nov 2026) — the move applied to
+        // the old order and the save overwrote the fresh one.
+        await refetchPlaylists()
+        await refetchTracks()
         showToast(t('admin.saved') + droppedNote)
       } catch (err) {
         setError(err?.code === 'timeout' ? t('admin.saveTimeout') : adminErrorMessage(err, t))
@@ -260,6 +266,7 @@ export default function PlaylistsAdmin() {
         return
       }
       logActivity({ actor: user?.email || 'Admin', action: 'Deleted playlist', detail: name })
+      await refetchPlaylists()
       showToast(t('admin.itemDeleted', { title: name }))
       setSelected((prev) => {
         const next = new Set(prev)
@@ -301,6 +308,7 @@ export default function PlaylistsAdmin() {
     }
     if (done > 0) {
       logActivity({ actor: user?.email || 'Admin', action: 'Bulk deleted playlists', detail: `${done} playlist(s)` })
+      await refetchPlaylists()
       showToast(t('admin.bulkDeleteResult', { done, total: selected.size }))
     }
     if (failed.length > 0) {

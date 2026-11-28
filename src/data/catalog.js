@@ -51,20 +51,12 @@ const realTrack = {
   storyTa: 'திருவண்ணாமலை கிரிவலம் பற்றிய பாடல். வாழ்வில் ஒருமுறையேனும் அண்ணாமலை மலையைச் சுற்றி வர வேண்டும் என்ற பக்தியின் குரல்.',
   storyEn: 'A song about the Girivalam at Thiruvannamalai — the devotee’s wish to walk around the sacred Arunachala hill at least once in this life.',
   storyCredit: 'Composer & writer: Siddha Guruji',
-  // Opening lines of the song (the full lyrics are added by the admin
-  // once the release is live).
-  lyricsTa: [
-    'அண்ணாமலையாரே அருள் தாரும்',
-    'கிரிவலம் வரும் அடியார் மனம் மகிழும்',
-    'அருணாசல ஜோதியே ஒளி தாரும்',
-    'வாழ்வினில் ஒருமுறையேனும் உன் தரிசனம்',
-  ],
-  lyricsEn: [
-    'Annamalaiyar, bestow your grace',
-    'The devotees walking Girivalam rejoice',
-    'Arunachala flame, grant us light',
-    'At least once in this life, grant us your darshan',
-  ],
+  // Lyrics live in the DB (lyrics table) — the source of truth.
+  // This fallback carries NO lyrics: the 4 opening lines that used
+  // to sit here leaked into the editor and created a phantom
+  // English lyrics row on save (28 Nov 2026). When the DB is
+  // unreachable, the player shows "Lyrics coming soon", never
+  // stale placeholder lines.
 };
 
 // ---------------------------------------------------------------------------
