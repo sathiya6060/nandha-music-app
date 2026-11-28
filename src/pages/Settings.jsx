@@ -5,7 +5,7 @@ import { usePlayer } from '../player/PlayerContext.jsx'
 import { useTracks } from '../lib/supabaseCatalog.js'
 import { useToast } from '../lib/toast.jsx'
 import { setPageMeta, resetPageMeta } from '../lib/pageMeta.js'
-import { DEFAULT_ALARM_TIME, loadAlarm, saveAlarm } from '../lib/streak.js'
+import { DEFAULT_ALARM_TIME, isValidAlarmTime, loadAlarm, saveAlarm } from '../lib/streak.js'
 import { SLEEP_OPTIONS_MINUTES, loadSleepDefault, saveSleepDefault } from '../lib/sleepTimer.js'
 import { clearLocalData, exportLocalData } from '../lib/localData.js'
 import LanguageSwitcher from '../components/LanguageSwitcher.jsx'
@@ -21,7 +21,8 @@ export default function Settings() {
   const { t } = useI18n()
   const player = usePlayer()
   const showToast = useToast()
-  const { tracks } = useTracks()
+  const { data: tracksData, isLoading: tracksLoading } = useTracks()
+  const tracks = tracksData || []
 
   const [alarm, setAlarm] = useState(() => loadAlarm())
   const [alarmTime, setAlarmTime] = useState(alarm.time || DEFAULT_ALARM_TIME)
@@ -57,8 +58,17 @@ export default function Settings() {
 
   function saveAartiAlarm(e) {
     e.preventDefault()
+    // H12: an empty/invalid time used to save as a midnight alarm —
+    // validate first and refuse to save.
+    if (!isValidAlarmTime(alarmTime)) {
+      setAlarmMsg(t('streak.alarmInvalid'))
+      return
+    }
     const next = { time: alarmTime, trackId: alarmTrackId || null }
-    saveAlarm(next)
+    if (!saveAlarm(next)) {
+      setAlarmMsg(t('streak.alarmInvalid'))
+      return
+    }
     setAlarm(next)
     setAlarmMsg(t('streak.alarmSaved'))
     showToast?.(t('streak.alarmSaved'))
@@ -170,12 +180,22 @@ export default function Settings() {
                 className="input"
                 value={alarmTrackId}
                 onChange={(e) => setAlarmTrackId(e.target.value)}
+                disabled={tracksLoading || devotionalTracks.length === 0}
               >
-                {devotionalTracks.map((tr) => (
-                  <option key={tr.id} value={tr.id}>
-                    {tr.titleTa || tr.titleEn} — {tr.artist}
-                  </option>
-                ))}
+                {tracksLoading ? (
+                  <option value="">{t('common.loading')}</option>
+                ) : devotionalTracks.length === 0 ? (
+                  <option value="">{t('common.noResults')}</option>
+                ) : (
+                  <>
+                    <option value="">{t('streak.alarmSong')}</option>
+                    {devotionalTracks.map((tr) => (
+                      <option key={tr.id} value={tr.id}>
+                        {tr.titleTa || tr.titleEn} — {tr.artist}
+                      </option>
+                    ))}
+                  </>
+                )}
               </select>
             </div>
             <button type="submit" className="btn btn-primary">{t('common.save')}</button>

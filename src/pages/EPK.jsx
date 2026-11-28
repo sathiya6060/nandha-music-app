@@ -8,7 +8,9 @@ import Icon from '../components/Icons.jsx'
 import { usePlayer } from '../player/PlayerContext.jsx'
 
 const CONTACT_EMAIL = 'officialnandhamusic@gmail.com'
-const VAAZHVINIL_COVER = '/assets/vaazhvinil-cover.jpg'
+// L19: the press-kit photo grid used the 3000px cover for a 140px
+// thumb — the 800px WebP is the right size for this page.
+const VAAZHVINIL_COVER = '/assets/vaazhvinil-cover-800.webp'
 const LOGO = '/assets/nandha-logo.png'
 const LOCKUP = '/assets/nandha-lockup.png'
 
@@ -25,13 +27,16 @@ const STREAMING_LINKS = [
   { label: 'YouTube Music', url: 'https://youtube.com/@officialnandhamusic', note: '@officialnandhamusic' },
 ]
 
+// M21: there are no per-video URLs yet — these are honest links to
+// the label's YouTube channel, labelled as such (the old entries
+// presented the channel homepage as if it were each video's page).
 const VIDEOS = [
-  { title: 'Vaazhvinil Orumurayenum — Lyric Video', note: 'Watch on YouTube — youtube.com/@officialnandhamusic', url: 'https://youtube.com/@officialnandhamusic' },
-  { title: 'Marakka Mudiyuma — Official Video', note: 'Watch on YouTube — youtube.com/@officialnandhamusic', url: 'https://youtube.com/@officialnandhamusic' },
-  { title: 'Annamalaiyar — Devotional Lyric Video', note: 'Watch on YouTube — youtube.com/@officialnandhamusic', url: 'https://youtube.com/@officialnandhamusic' },
+  { title: 'Vaazhvinil Orumurayenum — Lyric Video', note: 'On the Nandha Music YouTube channel — youtube.com/@officialnandhamusic', url: 'https://youtube.com/@officialnandhamusic' },
+  { title: 'Marakka Mudiyuma — Official Video', note: 'On the Nandha Music YouTube channel — youtube.com/@officialnandhamusic', url: 'https://youtube.com/@officialnandhamusic' },
+  { title: 'Annamalaiyar — Devotional Lyric Video', note: 'On the Nandha Music YouTube channel — youtube.com/@officialnandhamusic', url: 'https://youtube.com/@officialnandhamusic' },
 ]
 
-function buildPressKitText(bestTracks) {
+function buildPressKitText(bestTracks, trackCount) {
   const lines = [
     'NANDHA MUSIC — ELECTRONIC PRESS KIT',
     '=====================================',
@@ -56,7 +61,7 @@ function buildPressKitText(bestTracks) {
     ...bestTracks.map((tr, i) => `${i + 1}. ${tr.titleTa || tr.titleEn || ''} — ${tr.artist || 'Nandha Music'}`),
     '',
     'HIGHLIGHTS (as stated by the label)',
-    '- 40-song catalog (devotional, love & melody)',
+    `- ${trackCount}-song catalog (devotional, love & melody)`,
     '- Released via RouteNote to Spotify, JioSaavn and more',
     '- Goal: 1,000 app users',
     '',
@@ -80,7 +85,7 @@ function buildPressKitText(bestTracks) {
  * track/video titles are proper nouns from the catalog.
  */
 export default function EPK() {
-  const { t } = useI18n()
+  const { t, tp } = useI18n()
   const player = usePlayer()
   const [downloaded, setDownloaded] = useState(false)
   // Supabase read layer (B1); static catalog is the fallback.
@@ -102,7 +107,9 @@ export default function EPK() {
   )
 
   function downloadPressKit() {
-    const text = buildPressKitText(bestTracks)
+    // M21: the count in the downloaded kit is the live catalog size,
+    // not a hardcoded "40-song catalog".
+    const text = buildPressKitText(bestTracks, tracks.length)
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -182,7 +189,7 @@ export default function EPK() {
         </div>
         <div className="grid-cards">
           <figure style={{ margin: 0 }}>
-            <img className="epk-photo" src={VAAZHVINIL_COVER} alt="Vaazhvinil Orumurayenum cover art" loading="lazy" width={3000} height={3000} />
+            <img className="epk-photo" src={VAAZHVINIL_COVER} alt="Vaazhvinil Orumurayenum cover art" loading="lazy" width={800} height={800} />
             <figcaption style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: 6 }}>Vaazhvinil Orumurayenum — cover art</figcaption>
           </figure>
           <figure style={{ margin: 0 }}>
@@ -238,7 +245,9 @@ export default function EPK() {
         </div>
         <div className="card-light">
           <ul style={{ margin: 0, paddingLeft: 20 }}>
-            <li>40-song catalog — devotional, love &amp; melody (as stated by the label)</li>
+            {/* M21: the catalog size is the live track count — the old
+                hardcoded "40-song catalog" was wrong (3 tracks live). */}
+            <li>{tp('playlists.tracks', tracks.length)} in the catalog — devotional, love &amp; melody</li>
             <li>Released via RouteNote to Spotify, JioSaavn and more (as stated by the label)</li>
             <li>Goal: 1,000 app users (as stated by the label)</li>
             <li>New songs as they release — Instagram, Facebook, YouTube &amp; Threads</li>

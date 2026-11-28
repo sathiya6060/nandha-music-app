@@ -60,15 +60,16 @@ export default class ErrorBoundary extends Component {
     return { hasError: true }
   }
 
-  // Navigation reset (27 Nov 2026 — click/loading fix): a latched
-  // boundary used to stick forever across navigations, so the URL
-  // changed but the "Something went wrong" fallback stayed until the
-  // user reloaded. When the parent passes a new resetKey (the current
-  // pathname) while latched, clear the latch and retry the new route.
-  // Only fires while latched — healthy navigations never touch state
-  // (the key syncs on the clear itself, so it is always current when
-  // the next latch happens). Derived state, not componentDidUpdate,
-  // so the boundary reset carries no lint warning.
+  // Navigation reset (27 Nov 2026 — click/loading fix; M14, 28 Nov):
+  // a latched boundary used to stick forever across navigations, so
+  // the URL changed but the "Something went wrong" fallback stayed
+  // until the user reloaded. When the parent passes a new resetKey
+  // (the current pathname + query + hash — App.jsx ResettableBoundary)
+  // while latched, clear the latch and retry the new route. Only fires
+  // while latched — healthy navigations never touch state (the key
+  // syncs on the clear itself, so it is always current when the next
+  // latch happens). Derived state, not componentDidUpdate, so the
+  // boundary reset carries no lint warning.
   static getDerivedStateFromProps(props, state) {
     if (state.hasError && state.resetKey !== props.resetKey) {
       return { hasError: false, resetKey: props.resetKey }
@@ -80,7 +81,8 @@ export default class ErrorBoundary extends Component {
     // Single logging place for render errors — extend here for
     // Phase 4 observability (do not scatter console.error calls).
     // S11: also persist to the in-memory ring buffer (src/lib/errors.js)
-    // so the last 50 errors are inspectable via window.nandhaErrors.
+    // so the last 50 errors are inspectable via window.nandhaErrors
+    // (a snapshot copy — the live buffer is never exposed, L11).
     // Nothing leaves the device; there is no third-party reporter.
     console.error('[ErrorBoundary] render error caught:', error, errorInfo)
     try {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../lib/i18n.js'
 import { tracks as fallbackTracks } from '../data/catalog.js'
 import { useTracks } from '../lib/supabaseCatalog.js'
@@ -114,8 +114,13 @@ export function DiscoverFeed({ style }) {
   const player = usePlayer()
   // Supabase read layer (B1); static catalog is the fallback.
   // Lyrics rendering here is unchanged (see DiscoverCard below).
-  const { data: sbTracks } = useTracks()
-  const feed = (sbTracks || fallbackTracks).filter((tr) => tr.status === 'published')
+  const { data: sbTracks, isLoading } = useTracks()
+  // Memoised: the autoplay effect deps on `feed` (M18) — a fresh
+  // array every render would re-run it on every render.
+  const feed = useMemo(
+    () => (sbTracks || fallbackTracks).filter((tr) => tr.status === 'published'),
+    [sbTracks],
+  )
   const [index, setIndex] = useState(0)
   const containerRef = useRef(null)
   const cardRefs = useRef([])
@@ -196,8 +201,14 @@ export function DiscoverFeed({ style }) {
       clearTimeout(seekTimer.current)
       clearTimeout(stopTimer.current)
     }
+    // M18: the autoplay MUST re-run when the feed swaps from the
+    // static fallback to the Supabase tracks — with only [index] as a
+    // dep it played the fallback track's hook and never re-ran for the
+    // real track. `feed` (new identity when sbTracks lands) re-runs
+    // it; the now-playing / first-run guards above still prevent a
+    // restart of the track that is already playing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index])
+  }, [index, feed])
 
   // Native scrolling (touch / wheel / trackpad) drives the index through
   // scroll-snap: each card snaps to the top, and this derives the active
@@ -217,6 +228,9 @@ export function DiscoverFeed({ style }) {
   }
 
   if (feed.length === 0) {
+    // M18: while the catalog is loading, say so — the old code showed
+    // "No results" on every first paint, then swapped in the feed.
+    if (isLoading) return <p role="status">{t('common.loading')}</p>
     return <p role="status">{t('common.noResults')}</p>
   }
 

@@ -1,8 +1,13 @@
 // Nandha Music — Supabase admin WRITES (Phase 1 / B1).
 //
 // Admin upserts/deletes go to the Supabase tables with the signed-in
-// user's session (the ADMIN_EMAILS allowlist in auth.jsx stays the
-// client admin lock — user_roles is NOT consulted client-side).
+// user's session. The client admin lock is the is_admin() RPC result
+// (src/lib/auth.jsx calls supabase.rpc('is_admin') once per session;
+// the email allowlist is only the fallback while that RPC is
+// unavailable — see the contract in auth.jsx). RLS (user_roles) is
+// still the real gate: every write below verifies rows were affected
+// and throws 'No rows affected — check admin role/RLS' when a write
+// silently affects 0 rows (e.g. the user_roles row is missing).
 //
 // Rules:
 // - NEVER the service_role key: only the anon client (supabase.js).
@@ -57,10 +62,21 @@ function setAdminRoleWarning(value) {
   for (const fn of roleWarningListeners) fn(value)
 }
 
-// Called for every admin error surfaced to the UI: RLS/permission
-// failures raise the shell indicator; other errors leave it alone.
+// Called for every admin error surfaced to the UI. ONLY a genuine
+// row-level-security failure raises the shell indicator (H5): a
+// missing table GRANT (42501), a storage-bucket policy failure, or a
+// network error is a different problem with its own message, and the
+// flag clears when the error kind changes — a stale "role not set up"
+// banner must never stick for the session.
+let lastAdminErrorKind = null
 function noteAdminErrorKind(kind) {
-  if (kind === 'rls' || kind === 'permissions') setAdminRoleWarning(true)
+  if (kind === 'rls') {
+    lastAdminErrorKind = 'rls'
+    setAdminRoleWarning(true)
+    return
+  }
+  if (lastAdminErrorKind === 'rls') setAdminRoleWarning(false)
+  lastAdminErrorKind = kind
 }
 
 /** True when admin writes should go to Supabase (not localStorage). */
@@ -78,9 +94,20 @@ function classifySupabaseError(error) {
   if (/bucket not found/i.test(message) || /BucketNotFound/i.test(message)) {
     return { kind: 'covers-bucket', message }
   }
+  // H5: a storage RLS failure (bucket policy) is NOT a missing admin
+  // role — it gets its own message and never raises the role banner.
+  // Storage uploaders tag these with code 'storage-rls' (see
+  // uploadAudio/uploadCover); the message check covers errors that
+  // arrive untagged.
+  if (code === 'storage-rls') {
+    return { kind: 'storage', message }
+  }
   if (/row-level security/i.test(message)) {
     return { kind: 'rls', message }
   }
+  // H5: 42501 / "permission denied for table" is a missing GRANT, not
+  // a missing admin role. It keeps its own message (dbPermissionsMissing)
+  // and must NOT raise the role banner.
   if (/permission denied for table/i.test(message) || code === '42501') {
     return { kind: 'permissions', message }
   }
@@ -102,6 +129,7 @@ export function adminErrorMessage(error, t) {
   if (kind === 'covers-bucket') return t('admin.coversBucketMissing')
   if (kind === 'audio-bucket') return t('admin.audioBucketMissing')
   if (kind === 'permissions') return t('admin.dbPermissionsMissing')
+  if (kind === 'storage') return message ? `${t('admin.saveFailed')} — ${message}` : t('admin.saveFailed')
   if (kind === 'network') return `${t('admin.saveFailed')} — ${message}`
   return message ? `${t('admin.saveFailed')} — ${message}` : t('admin.saveFailed')
 }
@@ -119,7 +147,76 @@ export async function invalidateAfterWrite(trackId) {
   clearCatalogRowCache()
   // A write succeeded, so the DB role/grants work — clear the warning.
   setAdminRoleWarning(false)
+  lastAdminErrorKind = null
   await invalidateCatalog(trackId)
+}
+
+export const UPLOAD_TIMEOUT_MS = 60 * 1000 // C6: storage uploads never hang silently
+export const SAVE_TIMEOUT_MS = 180 * 1000 // C6: overall TrackEditor save timeout
+
+/**
+ * Race a promise against a timeout. storage-js v2.119.2 upload() has
+ * NO AbortSignal parameter (verified against the installed package),
+ * so the timeout cannot abort the underlying fetch — it only stops
+ * the UI waiting forever. That is safe here: audio uploads are
+ * upsert:true (a late finish just overwrites the same path) and cover
+ * uploads use a unique Date.now() path (a late finish leaves one
+ * orphaned object, never a wrong cover).
+ */
+export function withTimeout(promise, ms, label) {
+  let timer = null
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(`${label || 'Operation'} timed out after ${Math.round(ms / 1000)} seconds`)
+      err.code = 'timeout'
+      reject(err)
+    }, ms)
+  })
+  return Promise.race([
+    Promise.resolve(promise).finally(() => {
+      if (timer !== null) clearTimeout(timer)
+    }),
+    timeout,
+  ])
+}
+
+// ---------------------------------------------------------------------------
+// Row-count checks (pasted-report C3): a Supabase update/delete that
+// RLS silently blocks returns 0 rows with NO error. Every admin
+// write below verifies rows were affected and throws the same
+// message, so the UI can never report "Deleted/Saved" for a no-op.
+// ---------------------------------------------------------------------------
+export const NO_ROWS_ERROR = 'No rows affected — check admin role/RLS'
+
+function noRowsError() {
+  return new Error(NO_ROWS_ERROR)
+}
+
+/**
+ * `.select().single()` turns "0 rows" into a PGRST116 error. Map that
+ * (and only that) to the no-rows message; any other error re-throws
+ * unchanged. Returns the row on success.
+ */
+function singleRowOrThrow({ data, error }) {
+  if (error) {
+    if (error.code === 'PGRST116') throw noRowsError()
+    throw error
+  }
+  if (!data) throw noRowsError()
+  return data
+}
+
+/**
+ * `.delete().select()` / `.update().select()` without .single():
+ * the returned rows ARE the affected rows — 0 means RLS blocked it.
+ * (One deliberate exception: the lyrics cleanup delete in
+ * saveLyricsToSupabase — deleting lyrics that were never there is a
+ * legitimate no-op, so it does not use this helper.)
+ */
+function rowsOrThrow({ data, error }) {
+  if (error) throw error
+  if (!Array.isArray(data) || data.length === 0) throw noRowsError()
+  return data
 }
 
 function slugify(value) {
@@ -286,13 +383,23 @@ async function resolveAlbumId(albumIdOrTitle) {
 async function uploadAudio(file, slug) {
   validateAudioFile(file)
   const path = `audio/${slug}.mp3`
-  const { error } = await supabase.storage
-    .from('audio')
-    .upload(path, file, { upsert: true, contentType: file.type || 'audio/mpeg' })
+  const { error } = await withTimeout(
+    supabase.storage
+      .from('audio')
+      .upload(path, file, { upsert: true, contentType: file.type || 'audio/mpeg' }),
+    UPLOAD_TIMEOUT_MS,
+    'Audio upload',
+  )
   if (error) {
     if (/bucket not found/i.test(error.message || '')) {
       const err = new Error('Audio bucket not found')
       err.code = 'audio-bucket-missing'
+      throw err
+    }
+    if (/row-level security/i.test(error.message || '')) {
+      // H5: tag storage RLS so the UI never blames the admin role.
+      const err = new Error(error.message)
+      err.code = 'storage-rls'
       throw err
     }
     throw error
@@ -310,11 +417,23 @@ export async function uploadCover(file, slug) {
   validateCoverFile(file)
   const uploadFile = (await downscaleCoverToWebP(file)) || file
   const path = `covers/${slug}-${Date.now()}.${extOf(uploadFile)}`
-  const { error } = await supabase.storage.from('covers').upload(path, uploadFile, {
-    upsert: false,
-    contentType: uploadFile.type || 'image/jpeg',
-  })
-  if (error) throw error
+  const { error } = await withTimeout(
+    supabase.storage.from('covers').upload(path, uploadFile, {
+      upsert: false,
+      contentType: uploadFile.type || 'image/jpeg',
+    }),
+    UPLOAD_TIMEOUT_MS,
+    'Cover upload',
+  )
+  if (error) {
+    if (/row-level security/i.test(error.message || '')) {
+      // H5: tag storage RLS so the UI never blames the admin role.
+      const err = new Error(error.message)
+      err.code = 'storage-rls'
+      throw err
+    }
+    throw error
+  }
   const { data } = supabase.storage.from('covers').getPublicUrl(path)
   return data?.publicUrl || path
 }
@@ -322,6 +441,26 @@ export async function uploadCover(file, slug) {
 // ---------------------------------------------------------------------------
 // Tracks
 // ---------------------------------------------------------------------------
+/**
+ * C7: read the stored audio URLs for a track, so an edit that does
+ * not replace the audio keeps them. A local /assets/ path (or any
+ * non-storage path) in the edit payload means "keep", never null —
+ * nulling it would silently un-publish the track's audio.
+ */
+async function fetchExistingAudioUrls({ dbId, id, slug }) {
+  try {
+    let query = supabase.from('tracks').select('audio_128_url, audio_320_url')
+    if (dbId || isUuid(id)) query = query.eq('id', dbId || id)
+    else if (slug) query = query.eq('slug', slug)
+    else return { audio128: null, audio320: null }
+    const { data, error } = await query.maybeSingle()
+    if (error || !data) return { audio128: null, audio320: null }
+    return { audio128: data.audio_128_url || null, audio320: data.audio_320_url || null }
+  } catch {
+    return { audio128: null, audio320: null }
+  }
+}
+
 export async function saveTrackToSupabase(uiTrack, { audioFile = null, coverFile = null } = {}) {
   const slug = uiTrack.slug || slugify(uiTrack.titleEn || uiTrack.titleTa)
   const isEdit = Boolean(uiTrack.dbId) || isUuid(uiTrack.id)
@@ -329,9 +468,15 @@ export async function saveTrackToSupabase(uiTrack, { audioFile = null, coverFile
   let audioPath128 = uiTrack.audio128 || null
   let audioPath320 = uiTrack.audio320 || null
   // Storage paths only: a local /assets path or data URL is not an
-  // object path, so it is dropped (keep the existing stored path on
-  // edits only when it already is one — here it is not).
+  // object path. C7: on an edit without a new audio file, such a path
+  // means "keep the stored audio" — read it from the DB instead of
+  // nulling the track's audio (which silently broke playback).
   const isStoragePath = (v) => typeof v === 'string' && /^audio\//.test(v)
+  if (!audioFile && (!isStoragePath(audioPath128) || !isStoragePath(audioPath320))) {
+    const existing = await fetchExistingAudioUrls({ dbId: uiTrack.dbId, id: uiTrack.id, slug })
+    if (!isStoragePath(audioPath128)) audioPath128 = existing.audio128
+    if (!isStoragePath(audioPath320)) audioPath320 = existing.audio320
+  }
   if (!isStoragePath(audioPath128)) audioPath128 = null
   if (!isStoragePath(audioPath320)) audioPath320 = null
   if (audioFile) {
@@ -411,23 +556,25 @@ export async function saveTrackToSupabase(uiTrack, { audioFile = null, coverFile
 
   let saved
   if (isEdit) {
-    const { data, error } = await supabase
-      .from('tracks')
-      .update(row)
-      .eq('id', uiTrack.dbId || uiTrack.id)
-      .select(TRACK_SELECT)
-      .single()
-    if (error) throw error
-    saved = data
+    // C3: .single() maps "0 rows affected" (RLS blocked the write)
+    // to the no-rows error instead of a cryptic PGRST116.
+    saved = singleRowOrThrow(
+      await supabase
+        .from('tracks')
+        .update(row)
+        .eq('id', uiTrack.dbId || uiTrack.id)
+        .select(TRACK_SELECT)
+        .single(),
+    )
   } else {
     // New track: upsert on slug so a retry does not create a duplicate.
-    const { data, error } = await supabase
-      .from('tracks')
-      .upsert(row, { onConflict: 'slug' })
-      .select(TRACK_SELECT)
-      .single()
-    if (error) throw error
-    saved = data
+    saved = singleRowOrThrow(
+      await supabase
+        .from('tracks')
+        .upsert(row, { onConflict: 'slug' })
+        .select(TRACK_SELECT)
+        .single(),
+    )
   }
 
   // Plain-text lyrics from the editor -> lyrics table (ta + en rows).
@@ -487,8 +634,9 @@ export async function saveTrackToSupabase(uiTrack, { audioFile = null, coverFile
 export async function deleteTrackFromSupabase(uiTrack) {
   const column = uiTrack.dbId || isUuid(uiTrack.id) ? 'id' : 'slug'
   const value = uiTrack.dbId || uiTrack.id
-  const { error } = await supabase.from('tracks').delete().eq(column, value)
-  if (error) throw error
+  // C3: .select() proves the row was really deleted — an RLS-blocked
+  // delete returns 0 rows with no error, which used to report success.
+  rowsOrThrow(await supabase.from('tracks').delete().eq(column, value).select('id'))
   await invalidateAfterWrite(uiTrack.slug || uiTrack.id)
 }
 
@@ -526,13 +674,17 @@ export async function saveLyricsToSupabase(trackDbId, { ta = [], en = [], lines 
       if (deleteError) throw deleteError
       continue
     }
-    const { error } = await supabase
-      .from('lyrics')
-      .upsert(
-        { track_id: trackDbId, lang, lines: cleaned, synced: isSynced },
-        { onConflict: 'track_id,lang' },
-      )
-    if (error) throw error
+    // C3: .select() proves the upsert landed — an RLS-blocked upsert
+    // returns 0 rows with no error.
+    rowsOrThrow(
+      await supabase
+        .from('lyrics')
+        .upsert(
+          { track_id: trackDbId, lang, lines: cleaned, synced: isSynced },
+          { onConflict: 'track_id,lang' },
+        )
+        .select('track_id'),
+    )
   }
   await invalidateAfterWrite()
 }
@@ -579,7 +731,16 @@ async function resolvePlaylistDbId(uiPlaylist) {
 // ---------------------------------------------------------------------------
 // Albums
 // ---------------------------------------------------------------------------
-export async function saveAlbumToSupabase(uiAlbum, { coverFile = null, trackIds = [] } = {}) {
+export async function saveAlbumToSupabase(uiAlbum, { coverFile = null, trackIds = [], trackIdsLoaded = true } = {}) {
+  const title = (uiAlbum.titleEn || '').trim() || (uiAlbum.titleTa || '').trim()
+  if (!title) throw new Error('An album title is required.')
+  // C5: never save membership from a list that is not loaded yet —
+  // the editor's 1-track fallback snapshot would null every real
+  // member. Callers pass trackIdsLoaded=false while useTracks is
+  // still loading; the save is refused instead of wiping membership.
+  if (!trackIdsLoaded) {
+    throw new Error('Track list is not loaded yet — wait for it to load, then save again.')
+  }
   const albumId = await resolveAlbumDbId(uiAlbum)
   const isEdit = Boolean(albumId)
   let coverUrl = uiAlbum.cover || null
@@ -590,7 +751,7 @@ export async function saveAlbumToSupabase(uiAlbum, { coverFile = null, trackIds 
     ? uiAlbum.artistId
     : await resolveArtistId(uiAlbum.artist || uiAlbum.artistId)
   const row = {
-    title_en: (uiAlbum.titleEn || '').trim() || (uiAlbum.titleTa || '').trim(),
+    title_en: title,
     title_ta: (uiAlbum.titleTa || '').trim() || null,
     artist_id: artistId,
     genre: uiAlbum.genre || null,
@@ -598,22 +759,21 @@ export async function saveAlbumToSupabase(uiAlbum, { coverFile = null, trackIds 
     release_date: uiAlbum.releaseDate || null,
     status: dbStatus(uiAlbum.status || 'published'),
   }
+  // M30: never silently reassign to the first artist alphabetically —
+  // a missing artist is an error the admin must fix.
   if (!row.artist_id) {
-    // Albums need an artist: fall back to the first artist in the DB.
-    const { data } = await supabase.from('artists').select('id').order('name').limit(1).maybeSingle()
-    row.artist_id = data?.id || null
+    throw new Error('Artist not found in Supabase — pick an artist that exists in the database')
   }
-  if (!row.artist_id) throw new Error('No artist exists in Supabase yet — create an artist first')
 
   let saved
   if (isEdit) {
-    const { data, error } = await supabase.from('albums').update(row).eq('id', albumId).select('id').single()
-    if (error) throw error
-    saved = data
+    saved = singleRowOrThrow(
+      await supabase.from('albums').update(row).eq('id', albumId).select('id').single(),
+    )
   } else {
-    const { data, error } = await supabase.from('albums').insert(row).select('id').single()
-    if (error) throw error
-    saved = data
+    saved = singleRowOrThrow(
+      await supabase.from('albums').insert(row).select('id').single(),
+    )
   }
 
   // Track membership: tracks.album_id is the ordering source of truth
@@ -636,19 +796,25 @@ export async function saveAlbumToSupabase(uiAlbum, { coverFile = null, trackIds 
     const membershipErrors = []
     for (const rowTrack of current || []) {
       if (!wanted.has(rowTrack.id)) {
-        const { error } = await supabase
-          .from('tracks')
-          .update({ album_id: null })
-          .eq('id', rowTrack.id)
-        if (error) membershipErrors.push(rowTrack.id)
+        try {
+          // C3: .select() proves the unassign landed; an RLS-blocked
+          // update returns 0 rows with no error.
+          rowsOrThrow(
+            await supabase.from('tracks').update({ album_id: null }).eq('id', rowTrack.id).select('id'),
+          )
+        } catch {
+          membershipErrors.push(rowTrack.id)
+        }
       }
     }
     for (const dbId of wanted) {
-      const { error } = await supabase
-        .from('tracks')
-        .update({ album_id: saved.id })
-        .eq('id', dbId)
-      if (error) membershipErrors.push(dbId)
+      try {
+        rowsOrThrow(
+          await supabase.from('tracks').update({ album_id: saved.id }).eq('id', dbId).select('id'),
+        )
+      } catch {
+        membershipErrors.push(dbId)
+      }
     }
     if (membershipErrors.length > 0) {
       throw new Error(
@@ -664,8 +830,8 @@ export async function saveAlbumToSupabase(uiAlbum, { coverFile = null, trackIds 
 export async function deleteAlbumFromSupabase(uiAlbum) {
   const albumId = await resolveAlbumDbId(uiAlbum)
   if (!albumId) throw new Error('Album not found in Supabase')
-  const { error } = await supabase.from('albums').delete().eq('id', albumId)
-  if (error) throw error
+  // C3: .select() proves the row was really deleted.
+  rowsOrThrow(await supabase.from('albums').delete().eq('id', albumId).select('id'))
   await invalidateAfterWrite()
 }
 
@@ -692,30 +858,63 @@ export async function saveArtistToSupabase(uiArtist, { photoFile = null } = {}) 
   }
   let saved
   if (isEdit) {
-    const { data, error } = await supabase.from('artists').update(row).eq('id', artistId).select('id').single()
-    if (error) throw error
-    saved = data
+    saved = singleRowOrThrow(
+      await supabase.from('artists').update(row).eq('id', artistId).select('id').single(),
+    )
   } else {
-    const { data, error } = await supabase.from('artists').insert(row).select('id').single()
-    if (error) throw error
-    saved = data
+    saved = singleRowOrThrow(
+      await supabase.from('artists').insert(row).select('id').single(),
+    )
   }
   await invalidateAfterWrite()
   return { id: saved.id, photoUrl }
 }
 
-export async function deleteArtistFromSupabase(uiArtist) {
+/**
+ * Pasted-report C4: deleting an artist cascades (001 on delete
+ * cascade) to ALL of their albums + tracks. Count the dependents
+ * first — the caller shows the counts and must pass
+ * { confirmCascade: true } (after a typed-name confirmation) before
+ * the delete runs. Without it, a non-empty artist is never deleted.
+ */
+export async function countArtistDependents(uiArtist) {
   const artistId = await resolveArtistDbId(uiArtist)
+  if (!artistId) return { artistId: null, albums: 0, tracks: 0 }
+  const [albumsRes, tracksRes] = await Promise.all([
+    supabase.from('albums').select('id').eq('artist_id', artistId),
+    supabase.from('tracks').select('id').eq('artist_id', artistId),
+  ])
+  if (albumsRes.error) throw albumsRes.error
+  if (tracksRes.error) throw tracksRes.error
+  return {
+    artistId,
+    albums: Array.isArray(albumsRes.data) ? albumsRes.data.length : 0,
+    tracks: Array.isArray(tracksRes.data) ? tracksRes.data.length : 0,
+  }
+}
+
+export async function deleteArtistFromSupabase(uiArtist, { confirmCascade = false } = {}) {
+  const { artistId, albums, tracks } = await countArtistDependents(uiArtist)
   if (!artistId) throw new Error('Artist not found in Supabase')
-  const { error } = await supabase.from('artists').delete().eq('id', artistId)
-  if (error) throw error
+  if ((albums > 0 || tracks > 0) && !confirmCascade) {
+    throw new Error(
+      `Cannot delete this artist yet — ${albums} album(s) and ${tracks} track(s) still belong to them. Move or delete those first, or confirm the cascade by typing the artist name.`,
+    )
+  }
+  // C3: .select() proves the row was really deleted.
+  rowsOrThrow(await supabase.from('artists').delete().eq('id', artistId).select('id'))
   await invalidateAfterWrite()
 }
 
 // ---------------------------------------------------------------------------
 // Playlists (curated; track order via playlist_tracks.position)
 // ---------------------------------------------------------------------------
-export async function savePlaylistToSupabase(uiPlaylist, { coverFile = null, trackIds = [] } = {}) {
+export async function savePlaylistToSupabase(uiPlaylist, { coverFile = null, trackIds = [], trackIdsLoaded = true } = {}) {
+  // C5: same loaded-list guard as albums — an unloaded (empty) track
+  // list must never wipe the playlist's membership.
+  if (!trackIdsLoaded) {
+    throw new Error('Track list is not loaded yet — wait for it to load, then save again.')
+  }
   const playlistId = await resolvePlaylistDbId(uiPlaylist)
   const isEdit = Boolean(playlistId)
   let coverUrl = uiPlaylist.cover || null
@@ -734,33 +933,64 @@ export async function savePlaylistToSupabase(uiPlaylist, { coverFile = null, tra
   }
   let saved
   if (isEdit) {
-    const { data, error } = await supabase.from('playlists').update(row).eq('id', playlistId).select('id').single()
-    if (error) throw error
-    saved = data
+    saved = singleRowOrThrow(
+      await supabase.from('playlists').update(row).eq('id', playlistId).select('id').single(),
+    )
   } else {
-    const { data, error } = await supabase.from('playlists').insert(row).select('id').single()
-    if (error) throw error
-    saved = data
+    saved = singleRowOrThrow(
+      await supabase.from('playlists').insert(row).select('id').single(),
+    )
   }
 
   // M4: ids that cannot be resolved (e.g. RLS hides draft tracks
   // before the user_roles row exists) are returned as droppedTrackIds
   // so the UI can warn instead of silently dropping them.
+  // C5: NEVER delete-all-then-insert. Insert/upsert the wanted rows
+  // FIRST (positions included — playlist_tracks PK is
+  // (playlist_id, track_id), so upsert also fixes moved positions),
+  // THEN delete only the rows the admin actually removed. If the
+  // insert fails, the old membership is still intact.
   let droppedTrackIds = []
   if (Array.isArray(trackIds)) {
     const dbIds = await resolveTrackDbIds(trackIds)
     droppedTrackIds = trackIds.filter((id) => !dbIds.get(id))
-    const { error: deleteError } = await supabase
+    const wanted = trackIds.map((id) => dbIds.get(id)).filter(Boolean)
+    const { data: current, error: currentError } = await supabase
       .from('playlist_tracks')
-      .delete()
+      .select('track_id')
       .eq('playlist_id', saved.id)
-    if (deleteError) throw deleteError
-    const rows = trackIds
-      .map((id, i) => ({ playlist_id: saved.id, track_id: dbIds.get(id), position: i }))
-      .filter((r) => r.track_id)
+    if (currentError) throw currentError
+    const currentIds = new Set((current || []).map((r) => r.track_id))
+    const wantedSet = new Set(wanted)
+    const rows = wanted.map((track_id, i) => ({ playlist_id: saved.id, track_id, position: i }))
     if (rows.length > 0) {
-      const { error } = await supabase.from('playlist_tracks').insert(rows)
-      if (error) throw error
+      const upserted = rowsOrThrow(
+        await supabase
+          .from('playlist_tracks')
+          .upsert(rows, { onConflict: 'playlist_id,track_id' })
+          .select('track_id'),
+      )
+      if (upserted.length !== rows.length) {
+        throw new Error(
+          `Playlist saved, but only ${upserted.length} of ${rows.length} track(s) could be added`,
+        )
+      }
+    }
+    const toDelete = [...currentIds].filter((id) => !wantedSet.has(id))
+    if (toDelete.length > 0) {
+      const deleted = rowsOrThrow(
+        await supabase
+          .from('playlist_tracks')
+          .delete()
+          .eq('playlist_id', saved.id)
+          .in('track_id', toDelete)
+          .select('track_id'),
+      )
+      if (deleted.length !== toDelete.length) {
+        throw new Error(
+          `Playlist saved, but only ${deleted.length} of ${toDelete.length} removed track(s) could be deleted`,
+        )
+      }
     }
   }
 
@@ -771,7 +1001,7 @@ export async function savePlaylistToSupabase(uiPlaylist, { coverFile = null, tra
 export async function deletePlaylistFromSupabase(uiPlaylist) {
   const playlistId = await resolvePlaylistDbId(uiPlaylist)
   if (!playlistId) throw new Error('Playlist not found in Supabase')
-  const { error } = await supabase.from('playlists').delete().eq('id', playlistId)
-  if (error) throw error
+  // C3: .select() proves the row was really deleted.
+  rowsOrThrow(await supabase.from('playlists').delete().eq('id', playlistId).select('id'))
   await invalidateAfterWrite()
 }

@@ -6,10 +6,14 @@
 // away via cascade) and then the Auth user itself.
 //
 // Security:
-// - SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY come
-//   from the function's env vars (Supabase dashboard -> Edge Functions
-//   -> delete-account -> Secrets). The service_role key is NEVER
-//   hard-coded, NEVER sent to the client, NEVER in the repo.
+// - SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY are
+//   auto-injected by Supabase for Edge Functions — no manual secret
+//   is needed. (Was SERVICE_ROLE_KEY, a manually-set secret whose
+//   name mismatched get-audio-url's auto-injected
+//   SUPABASE_SERVICE_ROLE_KEY; a misnamed secret yielded a 500
+//   `misconfigured` at runtime. Standardised on the auto-injected
+//   name, 28 Nov 2026.) The service_role key is NEVER hard-coded,
+//   NEVER sent to the client, NEVER in the repo.
 // - The caller can only delete THEMSELF: the user id comes from the
 //   verified JWT (auth.getUser), never from the request body.
 // - No rate-limit map here: account deletion is a rare, deliberate
@@ -19,11 +23,12 @@
 // Deploy (needs a human with Supabase dashboard access):
 //   1. Dashboard -> Edge Functions -> "Create a new function",
 //      name `delete-account`, paste this file. Leave "Verify JWT" ON.
-//   2. Edge Functions -> delete-account -> Secrets, add
-//      SERVICE_ROLE_KEY = <the project's service_role key>.
-//      (SUPABASE_URL and SUPABASE_ANON_KEY are set automatically.)
-//   Or with the CLI: `supabase functions deploy delete-account` then
-//   `supabase secrets set SERVICE_ROLE_KEY=...`.
+//   2. No manual secret is needed: SUPABASE_SERVICE_ROLE_KEY is
+//      auto-injected (SUPABASE_URL and SUPABASE_ANON_KEY likewise).
+//   Or with the CLI: `supabase functions deploy delete-account`
+//   (no `supabase secrets set` step any more).
+//   CODE FIXED, NEEDS DEPLOY — run after this file lands:
+//     supabase functions deploy delete-account
 // Until deployed, the app's Profile page shows the honest "email us"
 // message (deleteAccount.js returns 'not-deployed' on 404) — the
 // deletion is never faked client-side.
@@ -31,19 +36,28 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.119.2";
 
-const ALLOWED_ORIGINS = new Set([
-  "https://nandhamusic.pages.dev",
-  "http://localhost:5173",
-]);
+// Production origin only. http://localhost:5173 is allowlisted ONLY
+// when the function secret ALLOW_LOCAL_DEV is set to "true" (A4-1).
+const ALLOW_LOCAL_DEV = Deno.env.get("ALLOW_LOCAL_DEV") === "true";
+const ALLOWED_ORIGINS = new Set(
+  ALLOW_LOCAL_DEV
+    ? ["https://nandhamusic.pages.dev", "http://localhost:5173"]
+    : ["https://nandhamusic.pages.dev"],
+);
 
+// A4-2: unknown or missing origins get NO Access-Control-Allow-Origin
+// header at all (fail closed) instead of defaulting to the production
+// origin.
 function corsHeaders(origin: string | null) {
-  const allow = origin && ALLOWED_ORIGINS.has(origin) ? origin : "https://nandhamusic.pages.dev";
-  return {
-    "Access-Control-Allow-Origin": allow,
+  const headers: Record<string, string> = {
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Vary": "Origin",
   };
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+  return headers;
 }
 
 serve(async (req: Request) => {
@@ -60,7 +74,7 @@ serve(async (req: Request) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-  const serviceRoleKey = Deno.env.get("SERVICE_ROLE_KEY");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !anonKey || !serviceRoleKey) {
     return new Response(JSON.stringify({ ok: false, error: "misconfigured" }), {
       status: 500,

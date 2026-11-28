@@ -99,14 +99,17 @@ export default function PlaylistDetail() {
   }
 
   function applyOrder(next) {
+    // M16: reordering a CURATED playlist was silently discarded on
+    // refetch (only user playlists persist). Curated order is now
+    // disabled outright — see the note under the header — so this
+    // only ever runs for user playlists.
+    if (!playlist.isUser) return
     setOrder(next)
-    if (playlist.isUser) {
-      const all = getUserPlaylists().map((p) => (String(p.id) === String(id) ? { ...p, trackIds: next } : p))
-      try { localStorage.setItem(USER_PLAYLISTS_KEY, JSON.stringify(all)) } catch { /* ignore */ }
-      window.dispatchEvent(new CustomEvent('nandha-playlists-changed'))
-      // Item 8: a reorder is a playlist mutation — sync it through.
-      syncPlaylists().catch(() => {})
-    }
+    const all = getUserPlaylists().map((p) => (String(p.id) === String(id) ? { ...p, trackIds: next } : p))
+    try { localStorage.setItem(USER_PLAYLISTS_KEY, JSON.stringify(all)) } catch { /* ignore */ }
+    window.dispatchEvent(new CustomEvent('nandha-playlists-changed'))
+    // Item 8: a reorder is a playlist mutation — sync it through.
+    syncPlaylists().catch(() => {})
   }
 
   function move(index, dir) {
@@ -172,6 +175,9 @@ export default function PlaylistDetail() {
           <h1 className="detail-head__title">{localizedTitle(playlist, lang)}</h1>
           <p className="detail-head__meta">{localizedDescription(playlist, lang)}</p>
           <p className="detail-head__meta">{tp('playlists.tracks', orderedTracks.length)}</p>
+          {!playlist.isUser && orderedTracks.length > 0 && (
+            <p className="detail-head__meta" style={{ color: 'var(--muted)' }}>{t('playlists.curatedOrder')}</p>
+          )}
           <div className="detail-head__actions">
             <button type="button" className="btn btn-primary" onClick={playAll} disabled={orderedTracks.length === 0}>
               {t('common.playAll')}
@@ -197,8 +203,9 @@ export default function PlaylistDetail() {
               key={track.id}
               className={`playlist-row${dragIndex === i ? ' is-dragging' : ''}${dropIndex === i ? ' is-drop-target' : ''}`}
               style={{ display: 'flex', alignItems: 'center', gap: 4 }}
-              draggable
+              draggable={playlist.isUser}
               onDragStart={(e) => {
+                if (!playlist.isUser) return
                 setDragIndex(i)
                 e.dataTransfer.effectAllowed = 'move'
                 try { e.dataTransfer.setData('text/plain', String(i)) } catch { /* ignore */ }
@@ -229,10 +236,10 @@ export default function PlaylistDetail() {
                 <TrackRow track={track} index={i} queue={orderedTracks} />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }} aria-label={`${track.titleTa || track.titleEn}`}>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => move(i, -1)} disabled={i === 0} aria-label={`${t('common.moveUp')}: ${track.titleTa || track.titleEn}`} style={{ minHeight: 44, minWidth: 44, padding: '2px 10px' }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => move(i, -1)} disabled={!playlist.isUser || i === 0} aria-label={`${t('common.moveUp')}: ${track.titleTa || track.titleEn}`} style={{ minHeight: 44, minWidth: 44, padding: '2px 10px' }}>
                   <Icon name="chevronUp" size={18} />
                 </button>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => move(i, 1)} disabled={i === orderedTracks.length - 1} aria-label={`${t('common.moveDown')}: ${track.titleTa || track.titleEn}`} style={{ minHeight: 44, minWidth: 44, padding: '2px 10px' }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => move(i, 1)} disabled={!playlist.isUser || i === orderedTracks.length - 1} aria-label={`${t('common.moveDown')}: ${track.titleTa || track.titleEn}`} style={{ minHeight: 44, minWidth: 44, padding: '2px 10px' }}>
                   <Icon name="chevronDown" size={18} />
                 </button>
               </div>

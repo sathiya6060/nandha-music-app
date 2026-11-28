@@ -32,7 +32,7 @@ vi.mock('../supabaseCatalog.js', () => ({
   resolveTrackDbIds: async () => new Map(),
 }))
 
-import { syncAllOnSignIn, clearSyncUser } from '../userLibrary.js'
+import { syncAllOnSignIn, clearSyncUser, pruneLikedIds } from '../userLibrary.js'
 
 function stubStorage() {
   const store = new Map()
@@ -75,5 +75,71 @@ describe('syncAllOnSignIn playlist pull', () => {
     expect(store.has('nandha-playlist-remote-ids')).toBe(false)
     const deletes = calls.filter(([t, m]) => t === 'playlist_tracks' && m === 'delete')
     expect(deletes).toEqual([])
+  })
+
+  // M13: a sign-out mid-merge must cancel the merge — the old code
+  // kept awaiting and wrote the signed-out user's remote likes into
+  // localStorage (cross-account contamination).
+  it('sign-out mid-merge aborts it — nothing is written locally', async () => {
+    const store = stubStorage()
+    const user = { id: '11111111-2222-3333-4444-555555555555' }
+    // One remote like that would merge into localStorage if the
+    // merge ran to completion.
+    results.set('liked_tracks', {
+      data: [{ track_id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }],
+      error: null,
+    })
+    results.set('followed_artists', { data: [], error: null })
+    results.set('playlists', { data: [], error: null })
+
+    const merging = syncAllOnSignIn(user)
+    // Sign out before any awaited query resolves.
+    clearSyncUser()
+    const summary = await merging
+
+    expect(summary).toEqual({ ok: false, reason: 'aborted' })
+    expect(store.has('nandha-liked')).toBe(false)
+    expect(store.has('nandha-followed-artists')).toBe(false)
+    expect(store.has('nandha-user-playlists')).toBe(false)
+  })
+
+  it('a second sign-in supersedes the first merge', async () => {
+    const store = stubStorage()
+    const first = { id: '11111111-2222-3333-4444-555555555555' }
+    const second = { id: '22222222-3333-4444-5555-666666666666' }
+    results.set('liked_tracks', { data: [], error: null })
+    results.set('followed_artists', { data: [], error: null })
+    results.set('playlists', { data: [], error: null })
+
+    const firstMerge = syncAllOnSignIn(first)
+    const secondSummary = await syncAllOnSignIn(second)
+    const firstSummary = await firstMerge
+
+    expect(firstSummary).toEqual({ ok: false, reason: 'aborted' })
+    expect(secondSummary.ok).toBe(true)
+    expect(store.has('nandha-liked')).toBe(false)
+  })
+})
+
+describe('pruneLikedIds (#8/H11)', () => {
+  beforeEach(() => {
+    calls.length = 0
+    results.clear()
+    clearSyncUser()
+  })
+
+  it('drops only ids missing from the catalog', () => {
+    const store = stubStorage()
+    store.set('nandha-liked', JSON.stringify(['vaazhvinil-orumurayenum', 'deleted-track', 'another-gone']))
+    const removed = pruneLikedIds(['vaazhvinil-orumurayenum', 'malaiyoram-veesiya-kaatre'])
+    expect(removed.sort()).toEqual(['another-gone', 'deleted-track'])
+    expect(JSON.parse(store.get('nandha-liked'))).toEqual(['vaazhvinil-orumurayenum'])
+  })
+
+  it('is a no-op when everything is in the catalog', () => {
+    const store = stubStorage()
+    store.set('nandha-liked', JSON.stringify(['vaazhvinil-orumurayenum']))
+    expect(pruneLikedIds(['vaazhvinil-orumurayenum'])).toEqual([])
+    expect(JSON.parse(store.get('nandha-liked'))).toEqual(['vaazhvinil-orumurayenum'])
   })
 })

@@ -91,7 +91,7 @@ export function getReleaseRadar(
   const cutoff = now - daysBack * 86400000
   const fresh = pool
     .filter((t) => {
-      const rel = t.releaseDate ? Date.parse(t.releaseDate) : NaN
+      const rel = t.releaseDate ? Date.parse(t.releaseDate) : Number.NaN
       return Number.isFinite(rel) && rel <= now && rel >= cutoff
     })
     .sort((a, b) => String(b.releaseDate).localeCompare(String(a.releaseDate)))

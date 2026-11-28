@@ -128,4 +128,34 @@ describe('aarti alarm', () => {
   it('shouldFireAarti is false without an alarm', () => {
     expect(streak.shouldFireAarti(null, d('2026-11-23'))).toBe(false)
   })
+
+  // H12: alarm-time validation — an empty/invalid time used to save
+  // and fire as a midnight (00:00) alarm.
+  it('isValidAlarmTime accepts real 24-hour times only', () => {
+    expect(streak.isValidAlarmTime('06:00')).toBe(true)
+    expect(streak.isValidAlarmTime('00:00')).toBe(true)
+    expect(streak.isValidAlarmTime('23:59')).toBe(true)
+    expect(streak.isValidAlarmTime('')).toBe(false)
+    expect(streak.isValidAlarmTime('24:00')).toBe(false)
+    expect(streak.isValidAlarmTime('6:00')).toBe(false)
+    expect(streak.isValidAlarmTime('06:60')).toBe(false)
+    expect(streak.isValidAlarmTime(null)).toBe(false)
+    expect(streak.isValidAlarmTime(undefined)).toBe(false)
+  })
+
+  it('saveAlarm refuses an empty time and keeps the old alarm', () => {
+    streak.saveAlarm({ time: '06:00', trackId: null })
+    expect(streak.saveAlarm({ time: '', trackId: null })).toBe(false)
+    expect(streak.loadAlarm()).toEqual({ time: '06:00', trackId: null })
+  })
+
+  it('saveAlarm refuses an invalid time', () => {
+    expect(streak.saveAlarm({ time: '25:00', trackId: null })).toBe(false)
+    expect(streak.loadAlarm()).toEqual({ time: '06:00', trackId: null })
+  })
+
+  it('saveAlarm returns true for a valid time', () => {
+    expect(streak.saveAlarm({ time: '05:30', trackId: 'track-1' })).toBe(true)
+    expect(streak.loadAlarm()).toEqual({ time: '05:30', trackId: 'track-1' })
+  })
 })

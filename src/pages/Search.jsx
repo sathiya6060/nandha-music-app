@@ -31,17 +31,12 @@ const TILE_TONES = ['gold', 'slate', 'sand', 'steel']
 export default function Search() {
   const { t, tp } = useI18n()
   const player = usePlayer()
-  // Item 5 (27 Nov 2026): autoFocus only on fine-pointer devices.
-  // On touch (pointer: coarse) autoFocus pops the keyboard the moment
-  // the Search tab opens and shoves the content up — focus on tap
-  // only. Desktop keeps the current behaviour.
-  const [autoFocusSearch] = useState(
-    () =>
-      typeof window === 'undefined' ||
-      !window.matchMedia?.('(pointer: coarse)').matches,
-  )
   // Supabase read layer (B1); static catalog is the fallback.
-  const { data: sbTracks } = useTracks()
+  // M17: isLoading gates the empty state + no-result analytics below —
+  // while the catalog loads, results run over the 1-track fallback and
+  // a query matching only Supabase tracks must not flash "No results"
+  // or pollute the admin no-result counts.
+  const { data: sbTracks, isLoading: tracksLoading } = useTracks()
   const allTracks = sbTracks || fallbackTracks
   const [searchParams, setSearchParams] = useSearchParams()
   const initialQuery = searchParams.get('q') || searchParams.get('genre') || ''
@@ -120,7 +115,10 @@ export default function Search() {
   }, [debounced, searching])
 
   // Log zero-result queries (once per settled query) for admin analytics.
-  const noResults = debounced.trim() !== '' && !searching && results.length === 0
+  // M17: never while the catalog is still loading — the fallback has
+  // 1 track, so a Supabase-only match would log a false no-result.
+  const noResults =
+    !tracksLoading && debounced.trim() !== '' && !searching && results.length === 0
   useEffect(() => {
     if (noResults) recordNoResultSearch(debounced.trim())
   }, [noResults, debounced])
@@ -139,7 +137,6 @@ export default function Search() {
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t('common.searchPlaceholder')}
           aria-label={t('common.searchPlaceholder')}
-          autoFocus={autoFocusSearch}
         />
         {query && (
           <button
@@ -153,10 +150,13 @@ export default function Search() {
         )}
       </div>
 
-      {searching && results.length === 0 && query.trim() !== '' ? (
-        // First search only: a skeleton while the debounce settles. Once
-        // results exist they stay visible while the next keystroke
-        // debounces — no more results/skeleton flicker on every key.
+      {(searching || tracksLoading) && results.length === 0 && query.trim() !== '' ? (
+        // First search only: a skeleton while the debounce settles or
+        // the catalog loads. Once results exist they stay visible while
+        // the next keystroke debounces — no more results/skeleton
+        // flicker on every key. M17: while the catalog loads the
+        // fallback is 1 track, so the skeleton (not the EmptyState)
+        // is what a Supabase-only match sees until loading settles.
         <div className="section" aria-label={t('common.loading')}>
           <Skeleton height={64} lines={4} />
         </div>

@@ -53,6 +53,23 @@ describe('foldForSearch', () => {
     expect(foldForSearch('')).toBe('')
     expect(foldForSearch(null)).toBe('')
   })
+
+  // M37: separators and punctuation fold away on both sides.
+  it('folds a pasted slug to the spaced title form', () => {
+    expect(foldForSearch('vaazhvinil-orumurayenum')).toBe(
+      foldForSearch('Vaazhvinil Orumurayenum'),
+    )
+    expect(foldForSearch('vaazhvinil_orumurayenum')).toBe(
+      foldForSearch('Vaazhvinil Orumurayenum'),
+    )
+  })
+
+  it('drops trailing punctuation', () => {
+    expect(foldForSearch('vaazhvinil!')).toBe('valvinil')
+    expect(foldForSearch('vaazhvinil?')).toBe('valvinil')
+    expect(foldForSearch('vaazhvinil.')).toBe('valvinil')
+    expect(foldForSearch('(vaazhvinil)')).toBe('valvinil')
+  })
 })
 
 describe('trackMatchesQuery (item 10)', () => {
@@ -85,5 +102,33 @@ describe('trackMatchesQuery (item 10)', () => {
 
   it('an empty query matches (same as before)', () => {
     expect(trackMatchesQuery(TRACK, '')).toBe(true)
+  })
+
+  // M37: pasted slugs / URLs and punctuated queries must match.
+  it('matches a pasted hyphenated slug', () => {
+    expect(trackMatchesQuery(TRACK, 'vaazhvinil-orumurayenum')).toBe(true)
+    expect(trackMatchesQuery(TRACK, 'vaazhvinil_orumurayenum')).toBe(true)
+  })
+
+  it('matches a query with trailing punctuation', () => {
+    expect(trackMatchesQuery(TRACK, 'vaazhvinil!')).toBe(true)
+    expect(trackMatchesQuery(TRACK, 'vaazhvinil?')).toBe(true)
+    expect(trackMatchesQuery(TRACK, 'Vaazhvinil,')).toBe(true)
+  })
+
+  it('matches via the slug field even when the id is a UUID', () => {
+    const uuidTrack = {
+      ...TRACK,
+      id: '485b5cdc-0a86-4501-be2d-90b64a3a3657',
+      slug: 'marakka-mudiyuma',
+      titleEn: 'Marakka Mudiyuma',
+      titleTa: 'மறக்க முடியுமா?',
+    }
+    expect(trackMatchesQuery(uuidTrack, 'marakka-mudiyuma')).toBe(true)
+    expect(trackMatchesQuery(uuidTrack, 'marakka mudiyuma')).toBe(true)
+  })
+
+  it('does not match an unrelated slug', () => {
+    expect(trackMatchesQuery(TRACK, 'malaiyoram-veesiya-kaatre')).toBe(false)
   })
 })

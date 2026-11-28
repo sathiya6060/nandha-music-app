@@ -639,7 +639,9 @@ export default function MobilePlayer() {
             the visible text is the countdown (or "End of track"), so the
             accessible name must contain that same text. */}
         {showMore && (
-          <div className="sheet-backdrop" onClick={() => setShowMore(false)}>
+          // S6848: the backdrop is a click-to-close surface — give it
+          // the button role + label (Escape also closes; see above).
+          <div className="sheet-backdrop" role="button" aria-label={t('common.close')} onClick={() => setShowMore(false)}>
             <div
               className="sheet more-sheet"
               role="dialog"
@@ -702,7 +704,7 @@ export default function MobilePlayer() {
                   <button
                     type="button"
                     className="sleep-option"
-                    onClick={() => { setShowMore(false); share() }}
+                    onClick={() => { setShowMore(false); share().catch(() => {}) }}
                     aria-label={t('common.share')}
                   >
                     <Icon name="share" size={18} /> <span>{shared ? t('player.copied') : t('common.share')}</span>
@@ -712,7 +714,7 @@ export default function MobilePlayer() {
                   <button
                     type="button"
                     className="sleep-option"
-                    onClick={() => { setShowMore(false); shareCard() }}
+                    onClick={() => { setShowMore(false); shareCard().catch(() => {}) }}
                     disabled={cardBusy}
                   >
                     <Icon name="share" size={18} /> <span>{t('share.statusCard')}</span>

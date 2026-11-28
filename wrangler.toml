@@ -1,0 +1,12 @@
+# Nandha Music — Cloudflare Pages project (A4-7, 28 Nov 2026).
+#
+# The deploy path is version-controlled here so a deploy is
+# reproducible from the repo. Deploys run via scripts outside the repo
+# (pages_deploy.py: `npx -y wrangler@4 pages deploy <dist>
+# --project-name nandhamusic --branch main`); the explicit CLI flags
+# always win over this file, so nothing here can redirect a deploy.
+# `pages_build_output_dir` is only the default output dir for
+# `wrangler pages dev` / builds — the deploy script passes dist
+# positionally, so it does not change deploy behaviour.
+name = "nandhamusic"
+pages_build_output_dir = "dist"

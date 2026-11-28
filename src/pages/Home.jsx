@@ -6,7 +6,6 @@ import {
   useTracks,
   useAlbums,
   useArtists,
-  usePlaylists,
   getDaypartTracksFrom,
   getDailyMixFrom,
   getSongOfTheDayFrom,
@@ -283,12 +282,15 @@ export default function Home() {
   const tracksQuery = useTracks({ publishedOnly: true, guardKey: 'home' })
   const albumsQuery = useAlbums()
   const artistsQuery = useArtists()
-  const playlistsQuery = usePlaylists()
-
-  const isLoading = tracksQuery.isLoading || albumsQuery.isLoading || artistsQuery.isLoading || playlistsQuery.isLoading
-  const isError = tracksQuery.isError || albumsQuery.isError || artistsQuery.isError || playlistsQuery.isError
 
   const homeTracks = tracksQuery.data || EMPTY_LIST
+  const isLoading = tracksQuery.isLoading && homeTracks.length === 0
+  // H13: no whole-page death — each query fails independently and its
+  // section shows an error + retry instead of blanking Home.
+  const tracksError = tracksQuery.isError
+  const albumsError = albumsQuery.isError
+  const artistsError = artistsQuery.isError
+
   const player = usePlayer()
   const popularTracks = useMemo(
     () => [...homeTracks].sort((a, b) => (b.plays || 0) - (a.plays || 0)).slice(0, 8),
@@ -306,7 +308,14 @@ export default function Home() {
     const list = artistsQuery.data || []
     return list.find((a) => /nandha/i.test(a.name || '')) || list[0] || null
   }, [artistsQuery.data])
-  const featuredPlaylistCount = (playlistsQuery.data || []).length
+  // H10: the count under the featured artist was the number of
+  // PLAYLISTS — it is the artist's own track count.
+  const featuredArtistTrackCount = useMemo(() => {
+    if (!featuredArtist) return 0
+    return homeTracks.filter(
+      (tr) => String(tr.artistId) === String(featuredArtist.id) || tr.artist === featuredArtist.name,
+    ).length
+  }, [homeTracks, featuredArtist])
 
   const daypart = useMemo(() => getDaypart(), [])
   const daypartTracks = useMemo(() => getDaypartTracksFrom(homeTracks), [homeTracks])
@@ -328,15 +337,9 @@ export default function Home() {
     )
   }
 
-  if (isError) {
-    return (
-      <div className="page-head">
-        <div className="error-state" role="alert">
-          {t('common.loadError')}
-        </div>
-      </div>
-    )
-  }
+  // H13: a failed tracks query no longer blanks Home — the page
+  // renders with an error banner + retry (the sections below read
+  // from whatever data did load).
 
   return (
     <div>
@@ -381,7 +384,15 @@ export default function Home() {
         </div>
       ) : (
         <div role="tabpanel" id="home-panel" aria-labelledby="home-tab">
-          {homeTracks.length === 0 ? (
+          {tracksError && (
+            <div className="error-state" role="alert" style={{ marginBottom: 16 }}>
+              {t('common.loadError')}{' '}
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => tracksQuery.refetch()}>
+                {t('common.retry')}
+              </button>
+            </div>
+          )}
+          {homeTracks.length === 0 && !tracksError ? (
             <EmptyState
               title={t('common.noResults')}
               message={t('home.emptyCatalog')}
@@ -440,12 +451,19 @@ export default function Home() {
               </Section>
 
               <Section title={t('home.newReleases')}>
-                {newReleases.length === 0 ? (
+                {albumsError ? (
+                  <div className="error-state" role="alert">
+                    {t('common.loadError')}{' '}
+                    <button type="button" className="btn btn-primary btn-sm" onClick={() => albumsQuery.refetch()}>
+                      {t('common.retry')}
+                    </button>
+                  </div>
+                ) : newReleases.length === 0 ? (
                   <EmptyState title={t('common.noResults')} message={t('home.emptyCatalog')} />
                 ) : (
                   newReleases.map((album) => (
                     <article className="track-card" key={album.id}>
-                      <Link to={`/album/${album.id}`} className="card-link">
+                      <Link to={`/album/${album.slug || album.id}`} className="card-link">
                         {album.cover ? (
                           <img className="track-card__cover" src={album.cover} alt="" loading="lazy" width={800} height={800} />
                         ) : (
@@ -478,6 +496,17 @@ export default function Home() {
                 </div>
               </section>
 
+              {artistsError && !featuredArtist && (
+                <section className="section" aria-label={t('home.featuredArtist')}>
+                  <div className="error-state" role="alert">
+                    {t('common.loadError')}{' '}
+                    <button type="button" className="btn btn-primary btn-sm" onClick={() => artistsQuery.refetch()}>
+                      {t('common.retry')}
+                    </button>
+                  </div>
+                </section>
+              )}
+
               {featuredArtist && (
                 <section className="section" aria-label={t('home.featuredArtist')}>
                   <div className="hero-card">
@@ -492,13 +521,13 @@ export default function Home() {
                         {(featuredArtist.bioEn || featuredArtist.bioTa || '').slice(0, 140)}
                       </p>
                       <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-                        <Link className="btn btn-primary btn-sm" to={`/artist/${featuredArtist.id}`}>{t('common.viewArtist')}</Link>
+                        <Link className="btn btn-primary btn-sm" to={`/artist/${featuredArtist.slug || featuredArtist.id}`}>{t('common.viewArtist')}</Link>
                         <Link className="btn btn-ghost btn-sm" to="/epk">{t('artist.pressKit')}</Link>
                       </div>
                     </div>
                   </div>
                   <p style={{ color: 'var(--muted)', fontSize: '0.875rem', marginTop: 12 }}>
-                    {tp('playlists.tracks', featuredPlaylistCount)}
+                    {tp('playlists.tracks', featuredArtistTrackCount)}
                   </p>
                 </section>
               )}

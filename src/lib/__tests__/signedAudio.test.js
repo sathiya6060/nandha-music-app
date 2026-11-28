@@ -13,7 +13,6 @@ vi.mock('../config.js', async (importOriginal) => {
 })
 
 const SIGNED = { id: 't1', audio128: 'vaazhvinil-orumurayenum.mp3', audio320: 'vaazhvinil-orumurayenum.mp3' }
-const OTHER = { id: 't2', audio128: 'other-song.mp3', audio320: 'other-song.mp3' }
 // Seeded path form (audio_128_url / audio_320_url in the DB rows):
 // the client must extract the bare file name and treat these as signed.
 const MALAIYORAM = { id: 't3', audio128: 'audio/malaiyoram-veesiya-kaatre.mp3', audio320: 'audio/malaiyoram-veesiya-kaatre.mp3' }
@@ -45,10 +44,17 @@ describe('isSignedTrack', () => {
     expect(signedAudio.isSignedTrack(MARAKKA, '320')).toBe(true)
   })
 
-  it('is false for any other file, and picks the right quality field', () => {
-    expect(signedAudio.isSignedTrack(OTHER, '128')).toBe(false)
-    expect(signedAudio.isSignedTrack({ audio128: 'other.mp3', audio320: 'vaazhvinil-orumurayenum.mp3' }, '128')).toBe(false)
-    expect(signedAudio.isSignedTrack({ audio128: 'other.mp3', audio320: 'vaazhvinil-orumurayenum.mp3' }, '320')).toBe(true)
+  it('is true for a brand-new track file with no allowlist entry (C1)', () => {
+    const NEW = { id: 't5', audio128: 'audio/a-brand-new-song.mp3', audio320: 'audio/a-brand-new-song.mp3' }
+    expect(signedAudio.isSignedTrack(NEW, '128')).toBe(true)
+    expect(signedAudio.isSignedTrack({ audio128: 'a-brand-new-song.mp3' }, '128')).toBe(true)
+  })
+
+  it('is false for local /assets paths and remote http(s) URLs, and picks the right quality field', () => {
+    expect(signedAudio.isSignedTrack({ audio128: '/assets/other-song.mp3', audio320: '/assets/other-song.mp3' }, '128')).toBe(false)
+    expect(signedAudio.isSignedTrack({ audio128: 'https://cdn.example.com/other.mp3' }, '128')).toBe(false)
+    expect(signedAudio.isSignedTrack({ audio128: '/assets/other.mp3', audio320: 'vaazhvinil-orumurayenum.mp3' }, '128')).toBe(false)
+    expect(signedAudio.isSignedTrack({ audio128: '/assets/other.mp3', audio320: 'vaazhvinil-orumurayenum.mp3' }, '320')).toBe(true)
   })
 
   it('is false when the track has no audio path', () => {
@@ -68,10 +74,21 @@ describe('resolvePlayableUrl', () => {
     await expect(signedAudio.resolvePlayableUrl(null)).resolves.toBeNull()
   })
 
-  it('returns the local path for a non-signed track (no fetch)', async () => {
+  it('returns the local path for a local-asset track (no fetch)', async () => {
     const fetchMock = mockFetch()
-    await expect(signedAudio.resolvePlayableUrl(OTHER, '128')).resolves.toBe('other-song.mp3')
+    const LOCAL = { id: 't2', audio128: '/assets/other-song.mp3', audio320: '/assets/other-song.mp3' }
+    await expect(signedAudio.resolvePlayableUrl(LOCAL, '128')).resolves.toBe('/assets/other-song.mp3')
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('mints a signed URL for a brand-new track file (no allowlist)', async () => {
+    const signedUrl = 'https://example.supabase.co/storage/v1/object/sign/audio/a-brand-new-song.mp3?token=<redacted>'
+    const fetchMock = mockFetch({ ok: true, json: async () => ({ url: signedUrl }) })
+    const NEW = { id: 't5', audio128: 'audio/a-brand-new-song.mp3', audio320: 'audio/a-brand-new-song.mp3' }
+    await expect(signedAudio.resolvePlayableUrl(NEW, '128')).resolves.toBe(signedUrl)
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const [, opts] = fetchMock.mock.calls[0]
+    expect(JSON.parse(opts.body).track).toBe('a-brand-new-song.mp3')
   })
 
   it('mints a signed URL for the signed track via the Edge Function', async () => {

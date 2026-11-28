@@ -3,9 +3,9 @@ import { useEffect } from 'react'
 import { useI18n } from '../lib/i18n.js'
 import { setPageMeta, resetPageMeta } from '../lib/pageMeta.js'
 import { albums as fallbackAlbums, tracks as fallbackTracks } from '../data/catalog.js'
-import { useAlbums, useTracks } from '../lib/supabaseCatalog.js'
+import { useAlbums, useTracks, findByIdOrSlug, slugify } from '../lib/supabaseCatalog.js'
 import TrackRow from '../components/TrackRow.jsx'
-import EmptyState from '../components/EmptyState.jsx'
+import EmptyState, { Skeleton } from '../components/EmptyState.jsx'
 import { usePlayer } from '../player/PlayerContext.jsx'
 import { useToast } from '../lib/toast.jsx'
 import { shareLink } from '../lib/share.js'
@@ -19,11 +19,13 @@ export default function Album() {
   const player = usePlayer()
   const showToast = useToast()
   // Supabase read layer (B1); static catalog is the fallback.
-  const { data: sbAlbums } = useAlbums()
-  const { data: sbTracks } = useTracks()
+  const { data: sbAlbums, isLoading: albumsLoading, isError: albumsError, refetch: refetchAlbums } = useAlbums()
+  const { data: sbTracks, isLoading: tracksLoading } = useTracks()
   const albums = sbAlbums || fallbackAlbums
   const tracks = sbTracks || fallbackTracks
-  const album = albums.find((a) => String(a.id) === String(id))
+  // B1/H8: the route id may be a slug ('annamalaiyar') or a DB uuid —
+  // the raw uuid match alone sent every slug link to "No results".
+  const album = findByIdOrSlug(albums, id)
 
   // Per-route title + OG tags (S7). Cleanup restores site defaults.
   useEffect(() => {
@@ -39,6 +41,38 @@ export default function Album() {
     })
     return resetPageMeta
   }, [album])
+
+  // M17: while the lists are still loading and the album has not
+  // resolved yet, show a loading state — never "No results found".
+  // (Same flash as the Track page: the fallback catalog holds only
+  // the Annamalaiyar album, so every other album flashed not-found
+  // on client-side nav until its query settled.)
+  if ((albumsLoading || tracksLoading) && !album) {
+    return (
+      <div>
+        <div className="page-head">
+          <h1 className="page-head__title">{t('common.loading')}</h1>
+        </div>
+        <p role="status" style={{ color: 'var(--muted)' }}>{t('common.loading')}</p>
+        <Skeleton height={48} />
+        <div style={{ marginTop: 8 }}><Skeleton height={48} /></div>
+      </div>
+    )
+  }
+
+  if (albumsError && !album) {
+    return (
+      <div>
+        <div className="page-head">
+          <h1 className="page-head__title">{t('common.loadFailed')}</h1>
+        </div>
+        <EmptyState
+          title={t('common.loadFailed')}
+          action={<button type="button" className="btn btn-primary" onClick={() => refetchAlbums()}>{t('common.retry')}</button>}
+        />
+      </div>
+    )
+  }
 
   if (!album) {
     return (
@@ -68,8 +102,8 @@ export default function Album() {
   async function handleShare() {
     const name = album.titleTa || album.title || album.titleEn || 'Nandha Music'
     const url = typeof window !== 'undefined'
-      ? `${window.location.origin}/album/${album.id}`
-      : `/album/${album.id}`
+      ? `${window.location.origin}/album/${album.slug || album.id}`
+      : `/album/${album.slug || album.id}`
     const result = await shareLink({
       title: name,
       text: `${name} — ${album.artist || 'Nandha Music'} | Nandha Music`,
@@ -92,7 +126,15 @@ export default function Album() {
           <p className="badge" style={{ marginBottom: 8 }}>{t('common.album')}</p>
           <h1 className="detail-head__title">{album.titleTa || album.title || album.titleEn}</h1>
           <p className="detail-head__meta">
-            {album.artist ? <Link to={album.artistId ? `/artist/${album.artistId}` : '#'}>{album.artist}</Link> : 'Nandha Music'}
+            {album.artist ? (
+              // L14: never link to '#' — the artist page resolves a uuid
+              // or a slugified name, and with neither there is no link.
+              album.artistId || slugify(album.artist) ? (
+                <Link to={`/artist/${album.artistId || slugify(album.artist)}`}>{album.artist}</Link>
+              ) : (
+                album.artist
+              )
+            ) : 'Nandha Music'}
             {album.releaseDate ? ` · ${album.releaseDate}` : ''}
             {albumTracks.length ? ` · ${tp('album.tracks', albumTracks.length)}` : ''}
           </p>

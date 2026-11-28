@@ -14,7 +14,11 @@ import { loadAlarm, markAartiFired, shouldFireAarti } from '../lib/streak.js'
 // tab is open — there is no background push.
 export default function AartiAlarmWatcher() {
   const { t } = useI18n()
-  const { tracks } = useTracks()
+  // H12: this used to read `const { tracks } = useTracks()` — a
+  // useQuery result has no `tracks` field, so the list was always
+  // empty and the alarm never found its song.
+  const { data: tracksData } = useTracks()
+  const tracks = tracksData || []
   const player = usePlayer()
   const [alarm, setAlarm] = useState(() => loadAlarm())
   const playerRef = useRef(player)
@@ -33,10 +37,15 @@ export default function AartiAlarmWatcher() {
   useEffect(() => {
     const id = setInterval(() => {
       if (!shouldFireAarti(alarm)) return
-      markAartiFired()
+      // H12: the alarm used to mark itself fired BEFORE looking up
+      // the song — when the lookup failed (empty list, missing
+      // track) the alarm was lost for the day with nothing played.
+      // Resolve the song first; only mark fired once it is found.
       const list = tracks || []
       const song = (alarm.trackId && list.find((tr) => tr.id === alarm.trackId)) || list.find((tr) => tr.id === REAL_TRACK_ID)
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && song) {
+      if (!song) return
+      markAartiFired()
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         try {
           new Notification('Nandha Music', {
             body: `${song.titleTa || song.titleEn || ''} — ${t('streak.aartiAlarm')}`,
@@ -45,7 +54,7 @@ export default function AartiAlarmWatcher() {
           // notifications blocked — playback below still runs
         }
       }
-      if (song) playerRef.current?.play?.(song, [song])
+      playerRef.current?.play?.(song, [song])
     }, 30000)
     return () => clearInterval(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps

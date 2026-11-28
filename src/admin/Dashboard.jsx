@@ -1,11 +1,25 @@
-// Admin dashboard — headline stats, top tracks, recent activity.
-import { useMemo } from 'react'
+// Admin dashboard — headline stats (real data only), needs attention,
+// recent activity, quick actions.
+//
+// Metric rules (admin redesign §5): only real data; a metric with no
+// data is hidden, never shown as 0. Plays 7d comes from play_events
+// (the `play_events: admin read` policy in 001 already allows the
+// admin client to read it). Likes/Followers come from liked_tracks /
+// followed_artists — both are owner-only until migration 008 adds
+// admin-read policies, so until 008 is applied live those queries
+// fail and the metrics are hidden (not shown as 0).
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { tracks, albums, artists } from '../data/catalog.js'
 import { useTracks, useAlbums, useArtists } from '../lib/supabaseCatalog.js'
-import { getMergedTracks, getActivityLog, loadUsers } from '../lib/adminStore.js'
+import { supabase } from '../lib/supabase.js'
+import { getMergedTracks, getActivityLog } from '../lib/adminStore.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useI18n } from '../lib/i18n.js'
+import { SITE_URL } from '../lib/pageMeta.js'
+import FallbackBanner from './FallbackBanner.jsx'
+import { bucketisePlaysByDay, totalPlays, deriveNeedsAttention } from './lib/analytics.js'
+import './dashboard.css'
 
 // Supabase free tier storage limit (1 GB).
 const FREE_STORAGE_LIMIT_BYTES = 1024 * 1024 * 1024 // 1 GB
@@ -22,19 +36,90 @@ function formatBytes(bytes) {
   return `${value.toFixed(value >= 100 ? 0 : 1)} ${units[unit]}`
 }
 
+const NEEDS_ATTENTION_LABEL = {
+  'missing-cover': 'admin.missingCover',
+  'missing-audio': 'admin.missingAudio',
+  'missing-lyrics': 'admin.missingLyrics',
+  'scheduled-soon': 'admin.scheduledSoon',
+}
+
+// Hand-drawn 7-day sparkline: slate line, amber dot on the last day.
+function Sparkline({ buckets, label }) {
+  const width = 280
+  const height = 44
+  const max = Math.max(1, ...buckets.map((b) => b.plays))
+  const points = buckets.map((b, i) => {
+    const x = buckets.length === 1 ? width / 2 : (i / (buckets.length - 1)) * width
+    const y = height - 4 - (b.plays / max) * (height - 8)
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  })
+  const last = buckets[buckets.length - 1]
+  const lastX = buckets.length === 1 ? width / 2 : width
+  const lastY = height - 4 - (last.plays / max) * (height - 8)
+  return (
+    <svg
+      className="dash-sparkline"
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label={label}
+    >
+      <title>{label}</title>
+      <polyline points={points.join(' ')} />
+      <circle cx={lastX} cy={lastY} r="4" />
+    </svg>
+  )
+}
+
 export default function Dashboard() {
   const { user } = useAuth()
   const { t, lang } = useI18n()
   // Supabase read layer (B1, all statuses for admin); static catalog +
   // local overrides are the fallback.
-  const { data: sbTracks } = useTracks({ publishedOnly: false })
-  const { data: sbAlbums } = useAlbums()
-  const { data: sbArtists } = useArtists()
+  const { data: sbTracks, isLoading: tracksLoading, refetch: refetchTracks } = useTracks({ publishedOnly: false })
+  const { data: sbAlbums, isLoading: albumsLoading, refetch: refetchAlbums } = useAlbums()
+  const { data: sbArtists, isLoading: artistsLoading, refetch: refetchArtists } = useArtists()
   const albumList = sbAlbums || albums
   const artistList = sbArtists || artists
   const mergedTracks = useMemo(() => getMergedTracks(sbTracks || tracks), [sbTracks])
   const activity = useMemo(() => getActivityLog(), [])
-  const users = useMemo(() => loadUsers(), [])
+  // Plays 7d / Likes / Followers: null = no data (query failed or
+  // empty) → the metric is hidden, never rendered as 0.
+  const [plays7d, setPlays7d] = useState(null)
+  const [likes, setLikes] = useState(null)
+  const [followers, setFollowers] = useState(null)
+
+  useEffect(() => {
+    if (!supabase) return undefined
+    let cancelled = false
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    void supabase
+      .from('play_events')
+      .select('played_at, count')
+      .gte('played_at', since)
+      .then(({ data, error }) => {
+        if (cancelled || error) return
+        setPlays7d(bucketisePlaysByDay(Array.isArray(data) ? data : [], 7))
+      })
+    // liked_tracks / followed_artists are owner-only until migration
+    // 008 adds admin-read policies — a failed count means "hidden",
+    // not "zero". count: exact + head: true reads no rows.
+    void supabase
+      .from('liked_tracks')
+      .select('*', { count: 'exact', head: true })
+      .then(({ count, error }) => {
+        if (!cancelled && !error && typeof count === 'number') setLikes(count)
+      })
+    void supabase
+      .from('followed_artists')
+      .select('*', { count: 'exact', head: true })
+      .then(({ count, error }) => {
+        if (!cancelled && !error && typeof count === 'number') setFollowers(count)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const formatNumber = (n) => Number(n || 0).toLocaleString(lang)
   const formatDate = (iso) => {
@@ -49,9 +134,19 @@ export default function Dashboard() {
       return iso
     }
   }
+  // Date label, computed during render (accepted lint baseline item:
+  // react(purity) — it is a pure function of `lang` + today, and the
+  // admin page re-renders on every edit anyway; see docs/lint-baseline.md).
+  const todayLabel = new Date().toLocaleDateString(lang, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
 
-  const stats = useMemo(() => {
-    const totalPlays = mergedTracks.reduce((sum, tr) => sum + (Number(tr.plays) || 0), 0)
+  const needsAttention = useMemo(() => deriveNeedsAttention(mergedTracks), [mergedTracks])
+
+  const storage = useMemo(() => {
     // Storage estimate: 320 kbps audio ≈ 40 KB per second of audio, plus a
     // small cover allowance. Overrides with a recorded audioSize use it.
     const usedBytes = mergedTracks.reduce((sum, tr) => {
@@ -60,15 +155,10 @@ export default function Dashboard() {
       return sum + 400 * 1024 // cover-only placeholder estimate
     }, 0)
     return {
-      totalPlays,
-      totalTracks: mergedTracks.length,
-      totalAlbums: albumList.length,
-      totalArtists: artistList.length,
-      totalUsers: users.length,
       usedBytes,
       storagePct: Math.min(100, (usedBytes / FREE_STORAGE_LIMIT_BYTES) * 100),
     }
-  }, [mergedTracks, users.length, albumList.length, artistList.length])
+  }, [mergedTracks])
 
   const topTracks = useMemo(
     () =>
@@ -79,13 +169,15 @@ export default function Dashboard() {
     [mergedTracks],
   )
 
+  const plays7dTotal = plays7d ? totalPlays(plays7d) : 0
+
   return (
     <div className="admin-page">
       <div className="admin-page-head">
         <div>
           <h1 className="admin-title">{t('admin.dashboard')}</h1>
           <p className="admin-subtitle">
-            {t('admin.welcomeBack')}
+            {todayLabel}
             {user?.email ? ` — ${user.email}` : ''}
           </p>
         </div>
@@ -94,51 +186,125 @@ export default function Dashboard() {
         </Link>
       </div>
 
+      <FallbackBanner
+        loading={tracksLoading || albumsLoading || artistsLoading}
+        onRetry={() => {
+          void refetchTracks()
+          void refetchAlbums()
+          void refetchArtists()
+        }}
+      />
+
       <div className="admin-stat-grid">
-        <div className="admin-stat-card">
-          <span className="admin-stat-label">{t('admin.totalPlays')}</span>
-          <span className="admin-stat-value">{formatNumber(stats.totalPlays)}</span>
-        </div>
-        <div className="admin-stat-card">
-          <span className="admin-stat-label">{t('admin.totalTracks')}</span>
-          <span className="admin-stat-value">{formatNumber(stats.totalTracks)}</span>
-          <span className="admin-stat-sub">
-            {stats.totalAlbums} {t('admin.albums')} · {stats.totalArtists} {t('admin.artists')}
-          </span>
-        </div>
-        <div className="admin-stat-card">
-          <span className="admin-stat-label">{t('admin.totalUsers')}</span>
-          <span className="admin-stat-value">{formatNumber(stats.totalUsers)}</span>
-        </div>
+        {mergedTracks.length > 0 && (
+          <div className="admin-stat-card">
+            <span className="admin-stat-label">{t('admin.totalTracks')}</span>
+            <span className="admin-stat-value">{formatNumber(mergedTracks.length)}</span>
+            <span className="admin-stat-sub">
+              {albumList.length} {t('admin.albums')} · {artistList.length} {t('admin.artists')}
+            </span>
+          </div>
+        )}
+        {plays7d && plays7dTotal > 0 && (
+          <div className="admin-stat-card">
+            <span className="admin-stat-label">{t('admin.plays7d')}</span>
+            <span className="admin-stat-value">{formatNumber(plays7dTotal)}</span>
+            <Sparkline buckets={plays7d} label={t('admin.plays7d')} />
+          </div>
+        )}
+        {likes !== null && likes > 0 && (
+          <div className="admin-stat-card">
+            <span className="admin-stat-label">{t('admin.likes')}</span>
+            <span className="admin-stat-value">{formatNumber(likes)}</span>
+          </div>
+        )}
+        {followers !== null && followers > 0 && (
+          <div className="admin-stat-card">
+            <span className="admin-stat-label">{t('admin.followers')}</span>
+            <span className="admin-stat-value">{formatNumber(followers)}</span>
+          </div>
+        )}
         <div className="admin-stat-card">
           <span className="admin-stat-label">{t('admin.storageUsed')}</span>
           <span className="admin-stat-value">
-            {formatBytes(stats.usedBytes)} <span className="admin-stat-sub">/ 1 GB</span>
+            {formatBytes(storage.usedBytes)} <span className="admin-stat-sub">/ 1 GB</span>
           </span>
           <div
             className="admin-progress"
             role="progressbar"
-            aria-valuenow={Math.round(stats.storagePct)}
+            aria-valuenow={Math.round(storage.storagePct)}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-label={t('admin.storageUsed')}
           >
-            <div className="admin-progress-fill" style={{ width: `${stats.storagePct}%` }} />
+            <div className="admin-progress-fill" style={{ width: `${storage.storagePct}%` }} />
           </div>
           <span className="admin-stat-sub">
-            {t('admin.storagePct', { pct: stats.storagePct.toFixed(1) })}
+            {t('admin.storagePct', { pct: storage.storagePct.toFixed(1) })}
           </span>
         </div>
       </div>
 
       <div className="admin-two-col">
-        <section className="admin-panel" aria-labelledby="admin-top-tracks">
-          <h2 className="admin-panel-title" id="admin-top-tracks">{t('admin.topTracks')}</h2>
-          {topTracks.length === 0 ? (
-            <p className="admin-muted">{t('admin.noTracksFound')}</p>
+        <section className="admin-panel" aria-labelledby="admin-needs-attention">
+          <h2 className="admin-panel-title" id="admin-needs-attention">{t('admin.needsAttention')}</h2>
+          {needsAttention.length === 0 ? (
+            <p className="admin-muted">{t('admin.needsAttentionEmpty')}</p>
           ) : (
-            <div className="admin-table-wrap">
-              <table className="admin-table">
+            <ul className="dash-attention-list">
+              {needsAttention.map((item) => (
+                <li key={`${item.kind}-${item.trackId}`} className="dash-attention-item">
+                  <span className="dash-attention-kind">{t(NEEDS_ATTENTION_LABEL[item.kind])}</span>
+                  <span className="dash-attention-title">{item.trackTitle}</span>
+                  <Link to={`/admin/tracks/${item.trackId}/edit`} className="admin-link">
+                    {t('admin.fixIt')}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="dash-quick-actions" aria-label={t('admin.quickActions')}>
+            <Link to="/admin/tracks/new" className="admin-btn admin-btn-primary">
+              {t('admin.newTrack')}
+            </Link>
+            <Link to="/admin/playlists" className="admin-btn">
+              {t('admin.newPlaylist')}
+            </Link>
+            <a href={SITE_URL} target="_blank" rel="noreferrer" className="admin-btn">
+              {t('admin.viewLiveSite')}
+            </a>
+          </div>
+        </section>
+
+        <section className="admin-panel" aria-labelledby="admin-recent-activity">
+          <h2 className="admin-panel-title" id="admin-recent-activity">{t('admin.recentActivity')}</h2>
+          {activity.length === 0 ? (
+            <p className="admin-muted">{t('common.noResults')}</p>
+          ) : (
+            <ul className="admin-activity-list">
+              {activity.slice(0, 10).map((entry) => (
+                <li key={entry.id} className="admin-activity-item">
+                  <span className="admin-activity-action">
+                    {entry.action}
+                    {entry.detail ? ` — ${entry.detail}` : ''}
+                  </span>
+                  <span className="admin-activity-meta">
+                    {entry.actor || 'Admin'} · {formatDate(entry.at)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      <section className="admin-panel" aria-labelledby="admin-top-tracks">
+        <h2 className="admin-panel-title" id="admin-top-tracks">{t('admin.topTracks')}</h2>
+        {topTracks.length === 0 ? (
+          <p className="admin-muted">{t('admin.noTracksFound')}</p>
+        ) : (
+          <div className="admin-table-wrap">
+            <table className="admin-table">
               <thead>
                 <tr>
                   <th scope="col">#</th>
@@ -164,35 +330,13 @@ export default function Dashboard() {
                   </tr>
                 ))}
               </tbody>
-              </table>
-            </div>
-          )}
-          <Link to="/admin/tracks" className="admin-link">
-            {t('admin.viewAllTracks')}
-          </Link>
-        </section>
-
-        <section className="admin-panel" aria-labelledby="admin-recent-activity">
-          <h2 className="admin-panel-title" id="admin-recent-activity">{t('admin.recentActivity')}</h2>
-          {activity.length === 0 ? (
-            <p className="admin-muted">{t('common.noResults')}</p>
-          ) : (
-            <ul className="admin-activity-list">
-              {activity.slice(0, 10).map((entry) => (
-                <li key={entry.id} className="admin-activity-item">
-                  <span className="admin-activity-action">
-                    {entry.action}
-                    {entry.detail ? ` — ${entry.detail}` : ''}
-                  </span>
-                  <span className="admin-activity-meta">
-                    {entry.actor || 'Admin'} · {formatDate(entry.at)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
+            </table>
+          </div>
+        )}
+        <Link to="/admin/tracks" className="admin-link">
+          {t('admin.viewAllTracks')}
+        </Link>
+      </section>
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useI18n } from '../lib/i18n.js'
 import { usePlayer } from '../player/PlayerContext.jsx'
 import { useToast } from '../lib/toast.jsx'
@@ -76,6 +77,12 @@ export default function TrackRow({ track, index, queue, onPlay }) {
   const isThisPlaying = isCurrent && (typeof rawPlaying === 'function' ? !!rawPlaying() : !!rawPlaying)
 
   function handlePlay() {
+    // H9: the row's play button used to restart the current track —
+    // when this IS the current track it toggles pause instead.
+    if (isCurrent && !onPlay) {
+      player?.playPause?.()
+      return
+    }
     if (onPlay) onPlay(track)
     player?.play?.(track, queue && queue.length ? queue : [track])
   }
@@ -120,9 +127,12 @@ export default function TrackRow({ track, index, queue, onPlay }) {
         )}
       </button>
       <div className="track-row__info">
-        <button type="button" className="track-row__title-btn" onClick={handlePlay}>
+        {/* M20: the title is a real /track/ link (the cover + play
+            buttons still play); before this no track link existed
+            anywhere in-app. */}
+        <Link className="track-row__title-btn" to={`/track/${track.id}`}>
           {title}
-        </button>
+        </Link>
         <p className="track-row__sub">{subtitle}</p>
       </div>
       <span className="track-row__album">{track.album || ''}</span>
