@@ -9,25 +9,11 @@
 // `idx : 0` default and pass on the append.
 import { describe, it, expect } from 'vitest'
 import { resolvePlayTarget } from '../../player/PlayerContext.jsx'
+import { mockVaazhvinil, mockMalaiyoram, mockMarakka } from './testHelpers.js'
 
-const vaazhvinil = {
-  id: 'vaazhvinil-orumurayenum',
-  titleEn: 'Vaazhvinil Orumurayenum',
-  audio128: 'audio/vaazhvinil-orumurayenum.mp3',
-  audio320: 'audio/vaazhvinil-orumurayenum.mp3',
-}
-const malaiyoram = {
-  id: 'malaiyoram-veesiya-kaatre',
-  titleEn: 'Malaiyoram Veesiya Kaatre',
-  audio128: 'audio/malaiyoram-veesiya-kaatre.mp3',
-  audio320: 'audio/malaiyoram-veesiya-kaatre.mp3',
-}
-const marakka = {
-  id: 'marakka-mudiyuma',
-  titleEn: 'Marakka Mudiyuma',
-  audio128: 'audio/marakka-mudiyuma.mp3',
-  audio320: 'audio/marakka-mudiyuma.mp3',
-}
+const vaazhvinil = mockVaazhvinil()
+const malaiyoram = mockMalaiyoram()
+const marakka = mockMarakka()
 
 describe('resolvePlayTarget', () => {
   it('plays the track at its own index when it is in the queue', () => {

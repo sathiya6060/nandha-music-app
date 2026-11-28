@@ -9,7 +9,12 @@
 // Track page in jsdom with mocked data hooks and fail on the old
 // unconditional fallback.
 import { describe, it, expect, vi } from 'vitest'
-import { JSDOM } from 'jsdom'
+import {
+  installDom,
+  mockVaazhvinil,
+  mockMalaiyoram,
+  mockMarakka,
+} from '../../lib/__tests__/testHelpers.js'
 
 const mockPageState = vi.hoisted(() => ({
   track: null,
@@ -60,108 +65,9 @@ vi.mock('../../components/TrackRow.jsx', () => ({ default: () => null }))
 vi.mock('../../components/PinButton.jsx', () => ({ default: () => null }))
 vi.mock('../../components/HideButton.jsx', () => ({ default: () => null }))
 
-const vaazhvinil = {
-  id: 'vaazhvinil-orumurayenum',
-  slug: 'vaazhvinil-orumurayenum',
-  titleTa: 'வாழ்வினில் ஒருமுறையேனும்',
-  titleEn: 'Vaazhvinil Orumurayenum',
-  artist: 'Nandha Music',
-  artistId: 'nandha-music',
-  album: 'Annamalaiyar',
-  albumId: 'annamalaiyar',
-  genre: 'Devotional',
-  language: 'Tamil',
-  durationSec: 224,
-  cover: '/assets/vaazhvinil-cover-800.webp',
-  status: 'published',
-  lyricsTa: [],
-  lyricsEn: [],
-}
-const malaiyoram = {
-  id: 'malaiyoram-veesiya-kaatre',
-  slug: 'malaiyoram-veesiya-kaatre',
-  titleTa: 'மலையோரம் வீசிய காற்றே',
-  titleEn: 'Malaiyoram Veesiya Kaatre',
-  artist: 'Nandha Music',
-  artistId: 'nandha-music',
-  album: 'Malaiyoram',
-  albumId: 'malaiyoram',
-  genre: 'Love',
-  language: 'Tamil',
-  durationSec: 351,
-  cover: 'https://example.test/malaiyoram.jpg',
-  status: 'published',
-  lyricsTa: [],
-  lyricsEn: [],
-}
-const marakka = {
-  ...malaiyoram,
-  id: 'marakka-mudiyuma',
-  slug: 'marakka-mudiyuma',
-  titleTa: 'மறக்க முடியுமா?',
-  titleEn: 'Marakka Mudiyuma',
-  durationSec: 254,
-}
-
-function setGlobal(key, value) {
-  try {
-    globalThis[key] = value
-  } catch {
-    Object.defineProperty(globalThis, key, { value, configurable: true, writable: true })
-  }
-}
-
-function installDom(url) {
-  const dom = new JSDOM('<!doctype html><html><body></body></html>', { url })
-  const { window } = dom
-  for (const key of [
-    'window',
-    'document',
-    'navigator',
-    'HTMLElement',
-    'SVGElement',
-    'HTMLAudioElement',
-    'HTMLImageElement',
-    'Audio',
-    'Image',
-    'Node',
-    'Element',
-    'Text',
-    'DocumentFragment',
-    'Event',
-    'CustomEvent',
-    'MouseEvent',
-    'KeyboardEvent',
-    'FocusEvent',
-    'localStorage',
-    'sessionStorage',
-    'location',
-    'history',
-    'self',
-  ]) {
-    if (key in window) setGlobal(key, window[key])
-  }
-  globalThis.getComputedStyle = window.getComputedStyle.bind(window)
-  globalThis.requestAnimationFrame =
-    typeof window.requestAnimationFrame === 'function'
-      ? window.requestAnimationFrame.bind(window)
-      : (cb) => setTimeout(cb, 0)
-  globalThis.cancelAnimationFrame =
-    typeof window.cancelAnimationFrame === 'function'
-      ? window.cancelAnimationFrame.bind(window)
-      : (id) => clearTimeout(id)
-  if (!window.matchMedia) {
-    window.matchMedia = () => ({
-      matches: false,
-      addListener: () => {},
-      removeListener: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    })
-  }
-  globalThis.matchMedia = window.matchMedia
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true
-}
+const vaazhvinil = mockVaazhvinil()
+const malaiyoram = mockMalaiyoram()
+const marakka = mockMarakka()
 
 async function renderTrackPage(route) {
   installDom(`https://nandhamusic.pages.dev${route}`)

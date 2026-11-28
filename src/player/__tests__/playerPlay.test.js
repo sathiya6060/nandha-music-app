@@ -8,9 +8,14 @@
 // the REAL PlayerProvider in jsdom and call its real play() — a
 // helper-only test would stay green if play() stopped calling the
 // helper, so the provider is the guard. jsdom is a devDependency
-// for this file only; nothing about it ships to the browser.
+// for these render tests; nothing about it ships to the browser.
 import { describe, it, expect, vi } from 'vitest'
-import { JSDOM } from 'jsdom'
+import {
+  installDom,
+  mockVaazhvinil,
+  mockMalaiyoram,
+  mockMarakka,
+} from '../../lib/__tests__/testHelpers.js'
 
 vi.mock('../../lib/auth.jsx', () => ({
   useAuth: () => ({ user: null, isAdmin: false, loading: false }),
@@ -41,104 +46,12 @@ vi.mock('../../lib/signedAudio.js', () => ({
   fileNameOf: (t) => t?.id || '',
 }))
 
-const vaazhvinil = {
-  id: 'vaazhvinil-orumurayenum',
-  titleEn: 'Vaazhvinil Orumurayenum',
-  titleTa: 'வாழ்வினில் ஒருமுறையேனும்',
-  artist: 'Nandha Music',
-  durationSec: 224,
-  audio128: 'audio/vaazhvinil-orumurayenum.mp3',
-  audio320: 'audio/vaazhvinil-orumurayenum.mp3',
-}
-const malaiyoram = {
-  id: 'malaiyoram-veesiya-kaatre',
-  titleEn: 'Malaiyoram Veesiya Kaatre',
-  titleTa: 'மலையோரம் வீசிய காற்றே',
-  artist: 'Nandha Music',
-  durationSec: 351,
-  audio128: 'audio/malaiyoram-veesiya-kaatre.mp3',
-  audio320: 'audio/malaiyoram-veesiya-kaatre.mp3',
-}
-const marakka = {
-  id: 'marakka-mudiyuma',
-  titleEn: 'Marakka Mudiyuma',
-  titleTa: 'மறக்க முடியுமா?',
-  artist: 'Nandha Music',
-  durationSec: 254,
-  audio128: 'audio/marakka-mudiyuma.mp3',
-  audio320: 'audio/marakka-mudiyuma.mp3',
-}
-
-function setGlobal(key, value) {
-  try {
-    globalThis[key] = value
-  } catch {
-    Object.defineProperty(globalThis, key, { value, configurable: true, writable: true })
-  }
-}
-
-function installDom() {
-  const dom = new JSDOM('<!doctype html><html><body></body></html>', {
-    url: 'https://nandhamusic.pages.dev/',
-  })
-  const { window } = dom
-  for (const key of [
-    'window',
-    'document',
-    'navigator',
-    'HTMLElement',
-    'SVGElement',
-    'HTMLAudioElement',
-    'HTMLMediaElement',
-    'HTMLImageElement',
-    'Audio',
-    'Image',
-    'Node',
-    'Element',
-    'Text',
-    'DocumentFragment',
-    'Event',
-    'CustomEvent',
-    'MouseEvent',
-    'KeyboardEvent',
-    'FocusEvent',
-    'localStorage',
-    'sessionStorage',
-    'location',
-    'history',
-    'self',
-  ]) {
-    if (key in window) setGlobal(key, window[key])
-  }
-  globalThis.getComputedStyle = window.getComputedStyle.bind(window)
-  globalThis.requestAnimationFrame =
-    typeof window.requestAnimationFrame === 'function'
-      ? window.requestAnimationFrame.bind(window)
-      : (cb) => setTimeout(cb, 0)
-  globalThis.cancelAnimationFrame =
-    typeof window.cancelAnimationFrame === 'function'
-      ? window.cancelAnimationFrame.bind(window)
-      : (id) => clearTimeout(id)
-  if (!window.matchMedia) {
-    window.matchMedia = () => ({
-      matches: false,
-      addListener: () => {},
-      removeListener: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    })
-  }
-  globalThis.matchMedia = window.matchMedia
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true
-  // jsdom does not implement media playback — stub it so the
-  // provider's <audio> element can load/play without throwing.
-  window.HTMLMediaElement.prototype.play = () => Promise.resolve()
-  window.HTMLMediaElement.prototype.pause = () => {}
-  window.HTMLMediaElement.prototype.load = () => {}
-}
+const vaazhvinil = mockVaazhvinil()
+const malaiyoram = mockMalaiyoram()
+const marakka = mockMarakka()
 
 async function renderPlayer() {
-  installDom()
+  installDom('https://nandhamusic.pages.dev/', { media: true })
   const { createElement: h, act } = await import('react')
   const { createRoot } = await import('react-dom/client')
   const { PlayerProvider, usePlayer } = await import('../PlayerContext.jsx')

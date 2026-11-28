@@ -556,8 +556,10 @@ export async function fetchTrack(idOrSlug) {
   return track
 }
 
-/** Shape raw lyrics rows (one track, any langs) into { ta, en, synced }. */
-function shapeLyricsRows(rows) {
+/** Shape raw lyrics rows (one track, any langs) into { ta, en, synced }.
+ * Shared with LyricsAdmin.jsx (fetchLyricsOrThrow) — the same shaping
+ * used to live in both files; keep it here once. */
+export function shapeLyricsRows(rows) {
   const byLang = {}
   for (const row of rows || []) byLang[row.lang] = row
   const toTexts = (row) =>

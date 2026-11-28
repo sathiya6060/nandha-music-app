@@ -8,9 +8,9 @@
 // TrackEditor (new + edit) in jsdom with mocked data hooks and fail
 // if the mount throws again — a node-only test suite cannot catch
 // render crashes, so this file is the guard. jsdom is a devDependency
-// for this file only; nothing about it ships to the browser.
+// for these render tests; nothing about it ships to the browser.
 import { describe, it, expect, vi } from 'vitest'
-import { JSDOM } from 'jsdom'
+import { installDom } from '../../lib/__tests__/testHelpers.js'
 
 // Mutable mock state (one file, one module registry): each test sets
 // the track the mocked useTrack returns before rendering.
@@ -128,66 +128,6 @@ const MALAIYORAM_TRACK = {
   scheduledAt: null,
   lyricsTa: [],
   lyricsEn: [],
-}
-
-function setGlobal(key, value) {
-  try {
-    globalThis[key] = value
-  } catch {
-    Object.defineProperty(globalThis, key, { value, configurable: true, writable: true })
-  }
-}
-
-function installDom(url) {
-  const dom = new JSDOM('<!doctype html><html><body></body></html>', { url })
-  const { window } = dom
-  for (const key of [
-    'window',
-    'document',
-    'navigator',
-    'HTMLElement',
-    'SVGElement',
-    'HTMLAudioElement',
-    'HTMLImageElement',
-    'Audio',
-    'Image',
-    'Node',
-    'Element',
-    'Text',
-    'DocumentFragment',
-    'Event',
-    'CustomEvent',
-    'MouseEvent',
-    'KeyboardEvent',
-    'FocusEvent',
-    'localStorage',
-    'sessionStorage',
-    'location',
-    'history',
-    'self',
-  ]) {
-    if (key in window) setGlobal(key, window[key])
-  }
-  globalThis.getComputedStyle = window.getComputedStyle.bind(window)
-  globalThis.requestAnimationFrame =
-    typeof window.requestAnimationFrame === 'function'
-      ? window.requestAnimationFrame.bind(window)
-      : (cb) => setTimeout(cb, 0)
-  globalThis.cancelAnimationFrame =
-    typeof window.cancelAnimationFrame === 'function'
-      ? window.cancelAnimationFrame.bind(window)
-      : (id) => clearTimeout(id)
-  if (!window.matchMedia) {
-    window.matchMedia = () => ({
-      matches: false,
-      addListener: () => {},
-      removeListener: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    })
-  }
-  globalThis.matchMedia = window.matchMedia
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true
 }
 
 async function renderEditor(route) {
