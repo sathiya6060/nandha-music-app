@@ -184,12 +184,12 @@ export default function TrackEditor() {
     JSON.stringify(form) !== JSON.stringify(initialForm) ||
     audioFile !== null ||
     coverFile !== null
-  const { UnsavedGuard } = useUnsavedGuard(dirty)
+  const draftId = isNew ? 'new' : id
+  const { UnsavedGuard } = useUnsavedGuard(dirty, draftId, formRefLatest)
 
   const hasAudio = Boolean(audioFile || audioMeta || existing?.audio128 || existing?.audio320)
   // Playable audio: the newly chosen file, else the stored track URL.
   const audioSrc = audioObjectUrl || existing?.audio128 || existing?.audio320 || ''
-  const draftId = isNew ? 'new' : id
 
   const maybeOfferDraft = (baseForm) => {
     if (shownDraftRef.current) return
