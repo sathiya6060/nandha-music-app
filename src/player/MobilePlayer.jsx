@@ -641,7 +641,21 @@ export default function MobilePlayer() {
         {showMore && (
           // S6848: the backdrop is a click-to-close surface — give it
           // the button role + label (Escape also closes; see above).
-          <div className="sheet-backdrop" role="button" aria-label={t('common.close')} onClick={() => setShowMore(false)}>
+          // S6852: a button-role surface must be tabbable AND operable —
+          // Enter/Space closes it too.
+          <div
+            className="sheet-backdrop"
+            role="button"
+            tabIndex={0}
+            aria-label={t('common.close')}
+            onClick={() => setShowMore(false)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                setShowMore(false)
+              }
+            }}
+          >
             <div
               className="sheet more-sheet"
               role="dialog"

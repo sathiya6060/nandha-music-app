@@ -7,7 +7,8 @@ import { shareOrDownloadStoryCard } from '../lib/shareCard.js'
 import TrackRow from '../components/TrackRow.jsx'
 import PinButton from '../components/PinButton.jsx'
 import HideButton from '../components/HideButton.jsx'
-import EmptyState, { Skeleton } from '../components/EmptyState.jsx'
+import EmptyState from '../components/EmptyState.jsx'
+import { DetailLoading, DetailLoadError } from '../components/DetailStates.jsx'
 import Icon from '../components/Icons.jsx'
 import { usePlayer, formatTime } from '../player/PlayerContext.jsx'
 import { setPageMeta, resetPageMeta } from '../lib/pageMeta.js'
@@ -67,35 +68,14 @@ export default function Track() {
 
   // M17: while either query is still in flight and nothing has
   // resolved yet, show a loading state — never the not-found state.
-  // (The old code rendered "No results found" the moment the page
-  // mounted, before the fetch had a chance to return.)
   if ((trackLoading || tracksLoading) && !track) {
-    return (
-      <div>
-        <div className="page-head">
-          <h1 className="page-head__title">{t('common.loading')}</h1>
-        </div>
-        <p role="status" style={{ color: 'var(--muted)' }}>{t('common.loading')}</p>
-        <Skeleton height={48} />
-        <div style={{ marginTop: 8 }}><Skeleton height={48} /></div>
-      </div>
-    )
+    return <DetailLoading />
   }
 
   // The single fetch failed (a query error, not a 404 — fetchTrack
   // throws on one): offer a retry instead of a dead-end "No results".
   if (trackError && !track) {
-    return (
-      <div>
-        <div className="page-head">
-          <h1 className="page-head__title">{t('common.loadFailed')}</h1>
-        </div>
-        <EmptyState
-          title={t('common.loadFailed')}
-          action={<button type="button" className="btn btn-primary" onClick={() => refetchTrack()}>{t('common.retry')}</button>}
-        />
-      </div>
-    )
+    return <DetailLoadError onRetry={() => refetchTrack()} />
   }
 
   if (!track) {

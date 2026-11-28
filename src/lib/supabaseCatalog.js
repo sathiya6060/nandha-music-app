@@ -98,11 +98,16 @@ export function isUuid(value) {
  * Tamil-only strings collapse to '' — callers fall back to the id.
  */
 export function slugify(value) {
+  // S8786: no quantified negated class — single-char replacement plus
+  // split/filter/join collapses runs and trims edges with the same
+  // result as the old /[^a-z0-9]+/g + /^-+|-+$/g pair.
   return String(value || '')
     .normalize('NFKD')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(/[^a-z0-9]/g, '-')
+    .split('-')
+    .filter(Boolean)
+    .join('-')
 }
 
 /**

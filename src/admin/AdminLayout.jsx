@@ -225,6 +225,7 @@ function AdminLayoutInner() {
                     id="admin-new-menu"
                     className="admin-menu"
                     role="menu"
+                    tabIndex={-1}
                     onKeyDown={onNewMenuKeyDown}
                   >
                     {NEW_MENU_ITEMS.map((item) => (

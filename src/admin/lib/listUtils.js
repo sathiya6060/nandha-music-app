@@ -28,8 +28,8 @@ export function compareNumber(a, b) {
 }
 
 export function compareDate(a, b) {
-  const ta = a ? Date.parse(a) : NaN
-  const tb = b ? Date.parse(b) : NaN
+  const ta = a ? Date.parse(a) : Number.NaN
+  const tb = b ? Date.parse(b) : Number.NaN
   if (Number.isNaN(ta) && Number.isNaN(tb)) return 0
   if (Number.isNaN(ta)) return 1
   if (Number.isNaN(tb)) return -1

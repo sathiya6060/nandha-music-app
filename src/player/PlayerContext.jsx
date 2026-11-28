@@ -1186,15 +1186,13 @@ export function PlayerProvider({ children }) {
           ) {
             const url = resolveAudioUrl(nextTrack, qualityRef.current)
             if (url) {
-              try {
-                // Fetch just the first chunk (Range) — warms the HTTP
-                // cache without downloading the whole file.
-                fetch(url, { headers: { Range: 'bytes=0-65535' } }).catch(
-                  () => {},
-                )
-              } catch {
-                /* prefetch is best-effort */
-              }
+              // Fetch just the first chunk (Range) — warms the HTTP
+              // cache without downloading the whole file. Best-effort:
+              // rejections are swallowed by the .catch (S4822: no try
+              // wrapper — the promise rejection is already captured).
+              fetch(url, { headers: { Range: 'bytes=0-65535' } }).catch(
+                () => {},
+              )
             }
           }
         }

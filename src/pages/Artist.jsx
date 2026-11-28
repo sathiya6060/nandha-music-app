@@ -4,7 +4,8 @@ import { useI18n } from '../lib/i18n.js'
 import { albums as fallbackAlbums, artists as fallbackArtists, tracks as fallbackTracks } from '../data/catalog.js'
 import { useAlbums, useArtists, useTracks, findByIdOrSlug } from '../lib/supabaseCatalog.js'
 import TrackRow from '../components/TrackRow.jsx'
-import EmptyState, { Skeleton } from '../components/EmptyState.jsx'
+import EmptyState from '../components/EmptyState.jsx'
+import { DetailLoading, DetailLoadError } from '../components/DetailStates.jsx'
 import { getFollowedArtistIds, FOLLOWED_KEY } from './Library.jsx'
 import { usePlayer } from '../player/PlayerContext.jsx'
 import { useToast } from '../lib/toast.jsx'
@@ -61,32 +62,12 @@ export default function Artist() {
 
   // M17: while the lists are still loading and the artist has not
   // resolved yet, show a loading state — never "No results found".
-  // (Same flash as the Track page on client-side nav.)
   if ((artistsLoading || albumsLoading || tracksLoading) && !artist) {
-    return (
-      <div>
-        <div className="page-head">
-          <h1 className="page-head__title">{t('common.loading')}</h1>
-        </div>
-        <p role="status" style={{ color: 'var(--muted)' }}>{t('common.loading')}</p>
-        <Skeleton height={48} />
-        <div style={{ marginTop: 8 }}><Skeleton height={48} /></div>
-      </div>
-    )
+    return <DetailLoading />
   }
 
   if (artistsError && !artist) {
-    return (
-      <div>
-        <div className="page-head">
-          <h1 className="page-head__title">{t('common.loadFailed')}</h1>
-        </div>
-        <EmptyState
-          title={t('common.loadFailed')}
-          action={<button type="button" className="btn btn-primary" onClick={() => refetchArtists()}>{t('common.retry')}</button>}
-        />
-      </div>
-    )
+    return <DetailLoadError onRetry={() => refetchArtists()} />
   }
 
   if (!artist) {

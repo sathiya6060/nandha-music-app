@@ -61,7 +61,11 @@ const SECTION_LABEL_KEYS = {
 // current page (the last crumb). Unknown paths fall back to just
 // Dashboard — the admin gate redirects those to /admin anyway.
 export function getBreadcrumb(pathname) {
-  const path = String(pathname || '').replace(/\/+$/, '') || '/admin'
+  // S8786: strip trailing slashes without a quantified regex — a
+  // plain loop is provably linear and Sonar flags the /\/+$/ form.
+  let path = String(pathname || '')
+  while (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1)
+  if (!path || path === '/') path = '/admin'
   const dashboard = { labelKey: 'admin.dashboard', to: '/admin' }
   if (path === '/admin') return [{ ...dashboard, to: null }]
   if (path === '/admin/tracks/new') {

@@ -227,7 +227,7 @@ export default function UsersAdmin() {
             </thead>
             <tbody>
               {[0, 1, 2].map((i) => (
-                <tr key={i} className="dash-skeleton-row" aria-hidden="true">
+                <tr key={i} className="dash-skeleton-row">
                   <td><span className="dash-skeleton-bar" /></td>
                   <td><span className="dash-skeleton-bar" /></td>
                   <td><span className="dash-skeleton-bar" /></td>

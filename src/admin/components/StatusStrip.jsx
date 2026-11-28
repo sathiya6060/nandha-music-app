@@ -36,6 +36,10 @@ export default function StatusStrip() {
       if (cancelled) return
       setStorage(status)
       setCatalogSource(getCatalogSource())
+    }).catch(() => {
+      // S9383: the probe is best-effort — a failure leaves the strip
+      // on its initial 'unknown' state instead of an unhandled rejection.
+      if (!cancelled) setStorage('unknown')
     })
     return () => {
       cancelled = true

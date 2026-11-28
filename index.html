@@ -4,15 +4,10 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/assets/nandha-logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <!-- CSP fallback (M9): mirrors public/_headers so the app still has
-         a CSP if _headers is ever lost (e.g. a non-wrangler deploy).
-         frame-ancestors is omitted — it is ignored in a meta CSP.
-         script-src keeps 'unsafe-inline' because the inline boot-guard
-         script below (and its inline onclick Reload button) would be
-         blocked without it; that script is a static hardcoded string
-         with no user data, so the inline allowance is the same trade-off
-         _headers already makes. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' https://*.supabase.co blob:; connect-src 'self' https://*.supabase.co https://*.upstash.io; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+    <!-- CSP lives only in public/_headers (wrangler applies it on every
+         deploy). No meta CSP here: SonarQube S7039 flags a meta tag's
+         'unsafe-inline', and the header CSP already makes that same
+         allowance for the inline boot-guard script. -->
     <meta name="theme-color" content="#1E293B" />
     <meta name="description" content="Nandha Music — Official Tamil Music Label. Love, Devotional, Melody. Stream Vaazhvinil Orumurayenum and the Nandha Music catalog. YOUR BEAT. YOUR ECHO." />
     <meta property="og:title" content="Nandha Music — YOUR BEAT. YOUR ECHO." />
