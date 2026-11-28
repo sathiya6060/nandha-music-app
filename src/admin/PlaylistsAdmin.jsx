@@ -14,13 +14,16 @@ import {
 } from '../lib/supabaseAdmin.js'
 import { useToast } from '../lib/toast.jsx'
 import { useAdminList } from './lib/useAdminList.jsx'
+import { useOrderedTracks, useCoverFile } from './lib/useEditorForm.js'
 import {
   AdminPageHead,
   AdminErrorNotice,
   AdminToolbar,
   AdminBulkBar,
-  AdminSkeleton,
-  AdminEmpty,
+  AdminListContent,
+  AdminRowActions,
+  AdminFormActions,
+  AdminTrackOrderEditor,
   AdminTable,
   AdminCards,
   AdminCard,
@@ -54,8 +57,7 @@ export default function PlaylistsAdmin() {
   const [version, setVersion] = useState(0)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_PLAYLIST)
-  const [coverFile, setCoverFile] = useState(null)
-  const [coverPreview, setCoverPreview] = useState('')
+  const cover = useCoverFile()
   const showToast = useToast()
 
   const mergedPlaylists = useMemo(() => getMergedPlaylists(sbPlaylists || catalogPlaylists), [version, sbPlaylists])
@@ -85,8 +87,7 @@ export default function PlaylistsAdmin() {
   const startNew = () => {
     setEditing('new')
     setForm(EMPTY_PLAYLIST)
-    setCoverFile(null)
-    setCoverPreview('')
+    cover.reset()
     list.setError('')
   }
 
@@ -103,45 +104,15 @@ export default function PlaylistsAdmin() {
       description: playlist.description || playlist.descriptionEn || playlist.descriptionTa || '',
       trackIds: Array.isArray(playlist.trackIds) ? [...playlist.trackIds] : [],
     })
-    setCoverPreview(playlist.cover || '')
+    cover.setPreview(playlist.cover || '')
     list.setError('')
   }
 
-  const toggleTrack = (trackId) => {
-    // L33: removing a track from the list is destructive — confirm it.
-    if (form.trackIds.includes(trackId)) {
-      list.setConfirmState({ kind: 'removeTrack', trackId })
-      return
-    }
-    setForm((f) => ({
-      ...f,
-      trackIds: f.trackIds.includes(trackId)
-        ? f.trackIds.filter((id) => id !== trackId)
-        : [...f.trackIds, trackId],
-    }))
-  }
-
-  const doRemoveTrack = (trackId) => {
-    setForm((f) => ({ ...f, trackIds: f.trackIds.filter((id) => id !== trackId) }))
-  }
-
-  const moveTrack = (index, dir) => {
-    setForm((f) => {
-      const ids = [...f.trackIds]
-      const target = index + dir
-      if (target < 0 || target >= ids.length) return f
-      ;[ids[index], ids[target]] = [ids[target], ids[index]]
-      return { ...f, trackIds: ids }
-    })
-  }
-
-  const onCoverChange = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setCoverFile(file)
-    if (coverPreview && coverPreview.startsWith('blob:')) URL.revokeObjectURL(coverPreview)
-    setCoverPreview(URL.createObjectURL(file))
-  }
+  const { toggleTrack, doRemoveTrack, moveTrack } = useOrderedTracks({
+    form,
+    setForm,
+    setConfirmState: list.setConfirmState,
+  })
 
   const handleSave = async (e) => {
     e.preventDefault()
@@ -172,9 +143,9 @@ export default function PlaylistsAdmin() {
               description: form.description.trim(),
               descriptionEn: form.description.trim(),
               descriptionTa: form.description.trim(),
-              cover: coverPreview && !coverPreview.startsWith('blob:') ? coverPreview : base.cover || null,
+              cover: cover.preview && !cover.preview.startsWith('blob:') ? cover.preview : base.cover || null,
             },
-            { coverFile, trackIds: form.trackIds, trackIdsLoaded: !tracksLoading },
+            { coverFile: cover.file, trackIds: form.trackIds, trackIdsLoaded: !tracksLoading },
           ),
           SAVE_TIMEOUT_MS,
           'Playlist save',
@@ -198,7 +169,7 @@ export default function PlaylistsAdmin() {
       logActivity({ actor: user?.email || 'Admin', action: editing === 'new' ? 'Created playlist' : 'Updated playlist', detail: form.name })
       list.setError('')
       setEditing(null)
-      setCoverFile(null)
+      cover.reset()
       list.bumpVersion()
       return
     }
@@ -273,8 +244,8 @@ export default function PlaylistsAdmin() {
             </label>
             <label className="admin-field">
               <span>{t('admin.coverFile')}</span>
-              <input type="file" accept="image/*" className="admin-input" onChange={onCoverChange} />
-              {coverPreview && <img src={coverPreview} alt="" className="admin-cover-preview" />}
+              <input type="file" accept="image/*" className="admin-input" onChange={cover.onChange} />
+              {cover.preview && <img src={cover.preview} alt="" className="admin-cover-preview" />}
             </label>
           </div>
           <label className="admin-field">
@@ -282,119 +253,82 @@ export default function PlaylistsAdmin() {
             <textarea className="admin-input admin-textarea" rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </label>
 
-          <h3 className="admin-section-title">{t('admin.trackOrder')}</h3>
-          {orderedTracks.length === 0 ? (
-            <p className="admin-muted">{t('admin.noTracksInList')}</p>
-          ) : (
-            <ol className="admin-order-list">
-              {orderedTracks.map((tr, i) => (
-                <li key={tr.id} className="admin-order-item">
-                  <span>{i + 1}. {tr.titleTa || tr.titleEn}</span>
-                  <span className="admin-order-actions">
-                    <button type="button" className="admin-btn admin-btn-small" disabled={i === 0} onClick={() => moveTrack(i, -1)}>{t('common.moveUp')}</button>
-                    <button type="button" className="admin-btn admin-btn-small" disabled={i === orderedTracks.length - 1} onClick={() => moveTrack(i, 1)}>{t('common.moveDown')}</button>
-                    <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => toggleTrack(tr.id)}>{t('common.remove')}</button>
-                  </span>
-                </li>
-              ))}
-            </ol>
-          )}
+          <AdminTrackOrderEditor
+            t={t}
+            orderedTracks={orderedTracks}
+            unselectedTracks={unselectedTracks}
+            onMove={moveTrack}
+            onToggle={toggleTrack}
+          />
 
-          <h3 className="admin-section-title">{t('admin.addTracks')}</h3>
-          <div className="admin-checkbox-grid">
-            {unselectedTracks.map((tr) => (
-              <label key={tr.id} className="admin-check-label">
-                <input type="checkbox" checked={false} onChange={() => toggleTrack(tr.id)} />
-                {tr.titleTa || tr.titleEn} <span className="admin-muted">({tr.artist || '—'})</span>
-              </label>
-            ))}
-          </div>
-
-          <div className="admin-form-actions">
-            <button type="submit" className="admin-btn admin-btn-primary">{t('admin.savePlaylist')}</button>
-            <button type="button" className="admin-btn admin-btn-ghost" onClick={() => setEditing(null)}>{t('common.cancel')}</button>
-          </div>
+          <AdminFormActions t={t} saveLabel={t('admin.savePlaylist')} onCancel={() => setEditing(null)} />
         </form>
       )}
 
       <AdminToolbar t={t} list={list} searchPlaceholder={t('admin.searchPlaylists')} searchLabel={t('admin.searchPlaylists')} />
 
-      <AdminBulkBar t={t} list={list}>
-        <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => list.setConfirmState({ kind: 'bulkDelete' })}>
-          {t('admin.bulkDelete')}
-        </button>
-        <button type="button" className="admin-btn admin-btn-small admin-btn-ghost" onClick={() => list.clearSelection()}>
-          {t('common.cancel')}
-        </button>
-      </AdminBulkBar>
+      <AdminBulkBar t={t} list={list} />
 
-      {tracksLoading || playlistsLoading ? (
-        <AdminSkeleton label={t('admin.loadingRows')} />
-      ) : list.pageRows.length === 0 ? (
-        <AdminEmpty
-          title={t('admin.noPlaylistsFound')}
-          hint={t('admin.noTracksFoundHint')}
-          actionLabel={t('admin.addFirstPlaylist')}
-          onAction={startNew}
-        />
-      ) : (
-        <>
-          <AdminTable
-            list={list}
-            selectAllLabel={t('admin.playlists')}
-            columns={
-              <>
-                <th scope="col">{t('admin.cover')}</th>
-                <th scope="col" aria-sort={list.ariaSort('name')}>{list.sortHeader('name', t('admin.title'))}</th>
-                <th scope="col">{t('admin.description')}</th>
-                <th scope="col" aria-sort={list.ariaSort('count')}>{list.sortHeader('count', t('admin.tracks'))}</th>
-                <th scope="col">{t('common.actions')}</th>
-              </>
-            }
-          >
-            {list.pageRows.map((p) => (
-              <tr key={p.id}>
-                <td>
-                  <input type="checkbox" checked={list.selected.has(p.id)} onChange={() => list.toggleSelect(p.id)} aria-label={playlistName(p) || p.id} />
-                </td>
-                <td>{p.cover ? <img src={p.cover} alt="" className="admin-thumb" /> : <img src="/assets/nandha-logo.png" alt="" className="admin-thumb admin-thumb-logo" />}</td>
-                <td><span className="admin-cell-main">{p.name || p.titleTa || p.titleEn || '—'}</span></td>
-                <td className="admin-cell-truncate">{p.description || p.descriptionEn || p.descriptionTa || '—'}</td>
-                <td>{Array.isArray(p.trackIds) ? p.trackIds.length : 0}</td>
-                <td>
-                  <div className="admin-row-actions">
-                    <button type="button" className="admin-btn admin-btn-small" onClick={() => startEdit(p)}>{t('common.edit')}</button>
-                    <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => handleDelete(p)}>{t('common.delete')}</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </AdminTable>
-          <AdminCards>
-            {list.pageRows.map((p) => (
-              <AdminCard
-                key={p.id}
-                thumb={
-                  p.cover ? (
-                    <img src={p.cover} alt="" className="list-card-thumb" />
-                  ) : (
-                    <img src="/assets/nandha-logo.png" alt="" className="list-card-thumb" />
-                  )
-                }
-                title={playlistName(p) || '—'}
-                sub={p.description || p.descriptionEn || p.descriptionTa || ''}
-                meta={
-                  <span className="admin-cell-sub">{playlistTrackCount(p)} {t('admin.tracks')}</span>
-                }
-                menuLabel={`${t('common.actions')} — ${playlistName(p) || p.id}`}
-              >
-                <button type="button" className="admin-btn admin-btn-small" onClick={() => startEdit(p)}>{t('common.edit')}</button>
-                <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => handleDelete(p)}>{t('common.delete')}</button>
-              </AdminCard>
-            ))}
-          </AdminCards>
-        </>
-      )}
+      <AdminListContent
+        t={t}
+        list={list}
+        loading={tracksLoading || playlistsLoading}
+        emptyTitle={t('admin.noPlaylistsFound')}
+        emptyHint={t('admin.noTracksFoundHint')}
+        emptyActionLabel={t('admin.addFirstPlaylist')}
+        onEmptyAction={startNew}
+      >
+        <AdminTable
+          list={list}
+          selectAllLabel={t('admin.playlists')}
+          columns={
+            <>
+              <th scope="col">{t('admin.cover')}</th>
+              <th scope="col" aria-sort={list.ariaSort('name')}>{list.sortHeader('name', t('admin.title'))}</th>
+              <th scope="col">{t('admin.description')}</th>
+              <th scope="col" aria-sort={list.ariaSort('count')}>{list.sortHeader('count', t('admin.tracks'))}</th>
+              <th scope="col">{t('common.actions')}</th>
+            </>
+          }
+        >
+          {list.pageRows.map((p) => (
+            <tr key={p.id}>
+              <td>
+                <input type="checkbox" checked={list.selected.has(p.id)} onChange={() => list.toggleSelect(p.id)} aria-label={playlistName(p) || p.id} />
+              </td>
+              <td>{p.cover ? <img src={p.cover} alt="" className="admin-thumb" /> : <img src="/assets/nandha-logo.png" alt="" className="admin-thumb admin-thumb-logo" />}</td>
+              <td><span className="admin-cell-main">{p.name || p.titleTa || p.titleEn || '—'}</span></td>
+              <td className="admin-cell-truncate">{p.description || p.descriptionEn || p.descriptionTa || '—'}</td>
+              <td>{Array.isArray(p.trackIds) ? p.trackIds.length : 0}</td>
+              <td>
+                <AdminRowActions t={t} onEdit={() => startEdit(p)} onDelete={() => handleDelete(p)} />
+              </td>
+            </tr>
+          ))}
+        </AdminTable>
+        <AdminCards>
+          {list.pageRows.map((p) => (
+            <AdminCard
+              key={p.id}
+              thumb={
+                p.cover ? (
+                  <img src={p.cover} alt="" className="list-card-thumb" />
+                ) : (
+                  <img src="/assets/nandha-logo.png" alt="" className="list-card-thumb" />
+                )
+              }
+              title={playlistName(p) || '—'}
+              sub={p.description || p.descriptionEn || p.descriptionTa || ''}
+              meta={
+                <span className="admin-cell-sub">{playlistTrackCount(p)} {t('admin.tracks')}</span>
+              }
+              menuLabel={`${t('common.actions')} — ${playlistName(p) || p.id}`}
+            >
+              <AdminRowActions t={t} onEdit={() => startEdit(p)} onDelete={() => handleDelete(p)} />
+            </AdminCard>
+          ))}
+        </AdminCards>
+      </AdminListContent>
 
       <AdminPagination t={t} list={list} show={list.sorted.length > list.pageSize} />
 

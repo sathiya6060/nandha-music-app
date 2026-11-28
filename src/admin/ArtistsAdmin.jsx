@@ -16,13 +16,15 @@ import {
 } from '../lib/supabaseAdmin.js'
 import { useToast } from '../lib/toast.jsx'
 import { useAdminList } from './lib/useAdminList.jsx'
+import { useCoverFile } from './lib/useEditorForm.js'
 import {
   AdminPageHead,
   AdminErrorNotice,
   AdminToolbar,
   AdminBulkBar,
-  AdminSkeleton,
-  AdminEmpty,
+  AdminListContent,
+  AdminRowActions,
+  AdminFormActions,
   AdminTable,
   AdminCards,
   AdminCard,
@@ -59,8 +61,7 @@ export default function ArtistsAdmin() {
   const [version, setVersion] = useState(0)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_ARTIST)
-  const [photoPreview, setPhotoPreview] = useState('')
-  const [photoFile, setPhotoFile] = useState(null)
+  const photo = useCoverFile()
   const showToast = useToast()
 
   // Supabase read layer (B1); static catalog + local overrides are
@@ -88,8 +89,7 @@ export default function ArtistsAdmin() {
   const startNew = () => {
     setEditing('new')
     setForm(EMPTY_ARTIST)
-    setPhotoPreview('')
-    setPhotoFile(null)
+    photo.reset()
     list.setError('')
   }
 
@@ -108,17 +108,9 @@ export default function ArtistsAdmin() {
       spotify: socials.spotify || artist.spotify || '',
       website: socials.website || artist.website || '',
     })
-    setPhotoPreview(artist.photo || artist.image || '')
-    setPhotoFile(null)
+    photo.reset()
+    photo.setPreview(artist.photo || artist.image || '')
     list.setError('')
-  }
-
-  const onPhotoChange = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setPhotoFile(file)
-    if (photoPreview && photoPreview.startsWith('blob:')) URL.revokeObjectURL(photoPreview)
-    setPhotoPreview(URL.createObjectURL(file))
   }
 
   const handleSave = async (e) => {
@@ -160,7 +152,7 @@ export default function ArtistsAdmin() {
               bioEn: form.bioEn.trim(),
               socials,
             },
-            { photoFile },
+            { photoFile: photo.file },
           ),
           SAVE_TIMEOUT_MS,
           'Artist save',
@@ -183,7 +175,7 @@ export default function ArtistsAdmin() {
       await invalidateCaches()
       showToast(t('admin.saved'))
       setEditing(null)
-      setPhotoFile(null)
+      photo.reset()
       list.bumpVersion()
       return
     }
@@ -279,8 +271,8 @@ export default function ArtistsAdmin() {
             </label>
             <label className="admin-field">
               <span>{t('admin.photo')}</span>
-              <input type="file" accept="image/*" className="admin-input" onChange={onPhotoChange} />
-              {photoPreview && <img src={photoPreview} alt="" className="admin-cover-preview" />}
+              <input type="file" accept="image/*" className="admin-input" onChange={photo.onChange} />
+              {photo.preview && <img src={photo.preview} alt="" className="admin-cover-preview" />}
               {/* M31: the artists table has no photo column, so the
                   photo is stored in this browser only (localStorage
                   override) — say so, never present it as saved. */}
@@ -323,98 +315,81 @@ export default function ArtistsAdmin() {
               <input className="admin-input" value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} placeholder="https://…" />
             </label>
           </div>
-          <div className="admin-form-actions">
-            <button type="submit" className="admin-btn admin-btn-primary">{t('admin.saveArtist')}</button>
-            <button type="button" className="admin-btn admin-btn-ghost" onClick={() => setEditing(null)}>{t('common.cancel')}</button>
-          </div>
+          <AdminFormActions t={t} saveLabel={t('admin.saveArtist')} onCancel={() => setEditing(null)} />
         </form>
       )}
 
       <AdminToolbar t={t} list={list} searchPlaceholder={t('admin.searchArtists')} searchLabel={t('admin.searchArtists')} />
 
-      <AdminBulkBar t={t} list={list}>
-        <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => list.setConfirmState({ kind: 'bulkDelete' })}>
-          {t('admin.bulkDelete')}
-        </button>
-        <button type="button" className="admin-btn admin-btn-small admin-btn-ghost" onClick={() => list.clearSelection()}>
-          {t('common.cancel')}
-        </button>
-      </AdminBulkBar>
+      <AdminBulkBar t={t} list={list} />
 
-      {artistsLoading ? (
-        <AdminSkeleton label={t('admin.loadingRows')} />
-      ) : list.pageRows.length === 0 ? (
-        <AdminEmpty
-          title={t('admin.noArtistsFound')}
-          hint={t('admin.noTracksFoundHint')}
-          actionLabel={t('admin.addFirstArtist')}
-          onAction={startNew}
-        />
-      ) : (
-        <>
-          <AdminTable
-            list={list}
-            selectAllLabel={t('admin.artists')}
-            columns={
-              <>
-                <th scope="col">{t('admin.photo')}</th>
-                <th scope="col" aria-sort={list.ariaSort('name')}>{list.sortHeader('name', t('admin.userName'))}</th>
-                <th scope="col">{t('admin.description')}</th>
-                <th scope="col">{t('common.actions')}</th>
-              </>
-            }
-          >
-            {list.pageRows.map((a) => (
-              <tr key={a.id}>
-                <td>
-                  <input type="checkbox" checked={list.selected.has(a.id)} onChange={() => list.toggleSelect(a.id)} aria-label={a.nameTa || a.name || a.id} />
-                </td>
-                <td>
-                  {a.photo || a.image ? (
-                    <img src={a.photo || a.image} alt="" className="admin-thumb" />
-                  ) : (
-                    <img src="/assets/nandha-logo.png" alt="" className="admin-thumb admin-thumb-logo" />
-                  )}
-                </td>
-                <td>
-                  <span className="admin-cell-main">{a.nameTa || a.name || '—'}</span>
-                  <span className="admin-cell-sub">{a.name || ''}</span>
-                </td>
-                <td className="admin-cell-truncate">{a.bioEn || a.bioTa || '—'}</td>
-                <td>
-                  <div className="admin-row-actions">
-                    <button type="button" className="admin-btn admin-btn-small" onClick={() => startEdit(a)}>{t('common.edit')}</button>
-                    <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => handleDelete(a)}>{t('common.delete')}</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </AdminTable>
-          <AdminCards>
-            {list.pageRows.map((a) => (
-              <AdminCard
-                key={a.id}
-                thumb={
-                  a.photo || a.image ? (
-                    <img src={a.photo || a.image} alt="" className="list-card-thumb" />
-                  ) : (
-                    <img src="/assets/nandha-logo.png" alt="" className="list-card-thumb" />
-                  )
-                }
-                title={a.nameTa || a.name || '—'}
-                sub={a.name && a.nameTa ? a.name : ''}
-                meta={
-                  <span className="admin-cell-sub">{a.bioEn || a.bioTa || '—'}</span>
-                }
-                menuLabel={`${t('common.actions')} — ${a.nameTa || a.name || a.id}`}
-              >
-                <button type="button" className="admin-btn admin-btn-small" onClick={() => startEdit(a)}>{t('common.edit')}</button>
-                <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => handleDelete(a)}>{t('common.delete')}</button>
-              </AdminCard>
-            ))}
-          </AdminCards>
-        </>
-      )}
+      <AdminListContent
+        t={t}
+        list={list}
+        loading={artistsLoading}
+        emptyTitle={t('admin.noArtistsFound')}
+        emptyHint={t('admin.noTracksFoundHint')}
+        emptyActionLabel={t('admin.addFirstArtist')}
+        onEmptyAction={startNew}
+      >
+        <AdminTable
+          list={list}
+          selectAllLabel={t('admin.artists')}
+          columns={
+            <>
+              <th scope="col">{t('admin.photo')}</th>
+              <th scope="col" aria-sort={list.ariaSort('name')}>{list.sortHeader('name', t('admin.userName'))}</th>
+              <th scope="col">{t('admin.description')}</th>
+              <th scope="col">{t('common.actions')}</th>
+            </>
+          }
+        >
+          {list.pageRows.map((a) => (
+            <tr key={a.id}>
+              <td>
+                <input type="checkbox" checked={list.selected.has(a.id)} onChange={() => list.toggleSelect(a.id)} aria-label={a.nameTa || a.name || a.id} />
+              </td>
+              <td>
+                {a.photo || a.image ? (
+                  <img src={a.photo || a.image} alt="" className="admin-thumb" />
+                ) : (
+                  <img src="/assets/nandha-logo.png" alt="" className="admin-thumb admin-thumb-logo" />
+                )}
+              </td>
+              <td>
+                <span className="admin-cell-main">{a.nameTa || a.name || '—'}</span>
+                <span className="admin-cell-sub">{a.name || ''}</span>
+              </td>
+              <td className="admin-cell-truncate">{a.bioEn || a.bioTa || '—'}</td>
+              <td>
+                <AdminRowActions t={t} onEdit={() => startEdit(a)} onDelete={() => handleDelete(a)} />
+              </td>
+            </tr>
+          ))}
+        </AdminTable>
+        <AdminCards>
+          {list.pageRows.map((a) => (
+            <AdminCard
+              key={a.id}
+              thumb={
+                a.photo || a.image ? (
+                  <img src={a.photo || a.image} alt="" className="list-card-thumb" />
+                ) : (
+                  <img src="/assets/nandha-logo.png" alt="" className="list-card-thumb" />
+                )
+              }
+              title={a.nameTa || a.name || '—'}
+              sub={a.name && a.nameTa ? a.name : ''}
+              meta={
+                <span className="admin-cell-sub">{a.bioEn || a.bioTa || '—'}</span>
+              }
+              menuLabel={`${t('common.actions')} — ${a.nameTa || a.name || a.id}`}
+            >
+              <AdminRowActions t={t} onEdit={() => startEdit(a)} onDelete={() => handleDelete(a)} />
+            </AdminCard>
+          ))}
+        </AdminCards>
+      </AdminListContent>
 
       <AdminPagination t={t} list={list} show={list.sorted.length > list.pageSize} />
 

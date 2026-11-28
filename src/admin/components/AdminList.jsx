@@ -82,8 +82,129 @@ export function AdminBulkBar({ t, list, children }) {
   return (
     <div className="admin-bulkbar">
       <span>{t('admin.selectedCount', { count: list.selected.size })}</span>
-      {children}
+      {children ?? (
+        <>
+          <button
+            type="button"
+            className="admin-btn admin-btn-small admin-btn-danger"
+            onClick={() => list.setConfirmState({ kind: 'bulkDelete' })}
+          >
+            {t('admin.bulkDelete')}
+          </button>
+          <button
+            type="button"
+            className="admin-btn admin-btn-small admin-btn-ghost"
+            onClick={() => list.clearSelection()}
+          >
+            {t('common.cancel')}
+          </button>
+        </>
+      )}
     </div>
+  )
+}
+
+// The loading / empty / rows switch is identical in all four pages
+// (only the loading flag and the empty-state copy differ). The page
+// keeps its own columns, rows and cards as children.
+export function AdminListContent({
+  t,
+  list,
+  loading,
+  emptyTitle,
+  emptyHint,
+  emptyActionLabel,
+  onEmptyAction,
+  children,
+}) {
+  if (loading) return <AdminSkeleton label={t('admin.loadingRows')} />
+  if (list.pageRows.length === 0) {
+    return (
+      <AdminEmpty
+        title={emptyTitle}
+        hint={emptyHint}
+        actionLabel={emptyActionLabel}
+        onAction={onEmptyAction}
+      />
+    )
+  }
+  return <>{children}</>
+}
+
+// The Edit + Delete row actions are identical in the table rows and
+// the mobile cards of Albums / Playlists / Artists (Tracks has its
+// own restore / unpublish actions and keeps them).
+export function AdminRowActions({ t, onEdit, onDelete }) {
+  return (
+    <div className="admin-row-actions">
+      <button type="button" className="admin-btn admin-btn-small" onClick={onEdit}>
+        {t('common.edit')}
+      </button>
+      <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={onDelete}>
+        {t('common.delete')}
+      </button>
+    </div>
+  )
+}
+
+// The Save + Cancel buttons at the foot of an editor form (only the
+// save label differs per page).
+export function AdminFormActions({ t, saveLabel, onCancel }) {
+  return (
+    <div className="admin-form-actions">
+      <button type="submit" className="admin-btn admin-btn-primary">
+        {saveLabel}
+      </button>
+      <button type="button" className="admin-btn admin-btn-ghost" onClick={onCancel}>
+        {t('common.cancel')}
+      </button>
+    </div>
+  )
+}
+
+// The ordered-track editor shared by the Albums and Playlists forms:
+// the ordered list with move up / down / remove, plus the add-tracks
+// checkbox grid. `orderedTracks` / `unselectedTracks` are the page's
+// own derivations; onMove / onToggle come from useOrderedTracks.
+export function AdminTrackOrderEditor({ t, orderedTracks, unselectedTracks, onMove, onToggle }) {
+  return (
+    <>
+      <h3 className="admin-section-title">{t('admin.trackOrder')}</h3>
+      {orderedTracks.length === 0 ? (
+        <p className="admin-muted">{t('admin.noTracksInList')}</p>
+      ) : (
+        <ol className="admin-order-list">
+          {orderedTracks.map((tr, i) => (
+            <li key={tr.id} className="admin-order-item">
+              <span>
+                {i + 1}. {tr.titleTa || tr.titleEn}
+              </span>
+              <span className="admin-order-actions">
+                <button type="button" className="admin-btn admin-btn-small" disabled={i === 0} onClick={() => onMove(i, -1)}>
+                  {t('common.moveUp')}
+                </button>
+                <button type="button" className="admin-btn admin-btn-small" disabled={i === orderedTracks.length - 1} onClick={() => onMove(i, 1)}>
+                  {t('common.moveDown')}
+                </button>
+                <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => onToggle(tr.id)}>
+                  {t('common.remove')}
+                </button>
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      <h3 className="admin-section-title">{t('admin.addTracks')}</h3>
+      <div className="admin-checkbox-grid">
+        {unselectedTracks.map((tr) => (
+          <label key={tr.id} className="admin-check-label">
+            <input type="checkbox" checked={false} onChange={() => onToggle(tr.id)} />
+            {tr.titleTa || tr.titleEn} <span className="admin-muted">({tr.artist || '—'})</span>
+          </label>
+        ))}
+      </div>
+    </>
   )
 }
 

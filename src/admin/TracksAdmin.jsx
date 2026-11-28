@@ -21,8 +21,7 @@ import {
   AdminErrorNotice,
   AdminToolbar,
   AdminBulkBar,
-  AdminSkeleton,
-  AdminEmpty,
+  AdminListContent,
   AdminTable,
   AdminCards,
   AdminCard,
@@ -295,33 +294,31 @@ export default function TracksAdmin() {
         </button>
       </AdminBulkBar>
 
-      {tracksLoading ? (
-        <AdminSkeleton label={t('admin.loadingRows')} />
-      ) : list.pageRows.length === 0 ? (
-        <AdminEmpty
-          title={t('admin.noTracksFound')}
-          hint={t('admin.noTracksFoundHint')}
-          actionLabel={t('admin.addFirstTrack')}
-          onAction={() => navigate('/admin/tracks/new')}
-        />
-      ) : (
-        <>
-          <AdminTable
-            list={list}
-            selectAllLabel={t('admin.tracks')}
-            columns={
-              <>
-                <th scope="col">{t('admin.cover')}</th>
-                <th scope="col" aria-sort={list.ariaSort('title')}>{list.sortHeader('title', t('admin.title'))}</th>
-                <th scope="col" aria-sort={list.ariaSort('artist')}>{list.sortHeader('artist', t('admin.artist'))}</th>
-                <th scope="col" aria-sort={list.ariaSort('album')}>{list.sortHeader('album', t('admin.album'))}</th>
-                <th scope="col">{t('admin.genre')}</th>
-                <th scope="col">{t('admin.status')}</th>
-                <th scope="col" aria-sort={list.ariaSort('plays')}>{list.sortHeader('plays', t('admin.plays'))}</th>
-                <th scope="col">{t('common.actions')}</th>
-              </>
-            }
-          >
+      <AdminListContent
+        t={t}
+        list={list}
+        loading={tracksLoading}
+        emptyTitle={t('admin.noTracksFound')}
+        emptyHint={t('admin.noTracksFoundHint')}
+        emptyActionLabel={t('admin.addFirstTrack')}
+        onEmptyAction={() => navigate('/admin/tracks/new')}
+      >
+        <AdminTable
+          list={list}
+          selectAllLabel={t('admin.tracks')}
+          columns={
+            <>
+              <th scope="col">{t('admin.cover')}</th>
+              <th scope="col" aria-sort={list.ariaSort('title')}>{list.sortHeader('title', t('admin.title'))}</th>
+              <th scope="col" aria-sort={list.ariaSort('artist')}>{list.sortHeader('artist', t('admin.artist'))}</th>
+              <th scope="col" aria-sort={list.ariaSort('album')}>{list.sortHeader('album', t('admin.album'))}</th>
+              <th scope="col">{t('admin.genre')}</th>
+              <th scope="col">{t('admin.status')}</th>
+              <th scope="col" aria-sort={list.ariaSort('plays')}>{list.sortHeader('plays', t('admin.plays'))}</th>
+              <th scope="col">{t('common.actions')}</th>
+            </>
+          }
+        >
             {list.pageRows.map((tr) => (
               <tr key={tr.id}>
                 <td>
@@ -426,8 +423,7 @@ export default function TracksAdmin() {
               </AdminCard>
             ))}
           </AdminCards>
-        </>
-      )}
+      </AdminListContent>
 
       <AdminDeleteDialogs
         t={t}

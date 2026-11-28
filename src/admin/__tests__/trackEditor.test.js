@@ -82,28 +82,10 @@ vi.mock('../../lib/supabaseAdmin.js', () => ({
   SAVE_TIMEOUT_MS: 180000,
 }))
 
-vi.mock('../../lib/adminStore.js', () => ({
-  getMergedTracks: (b = []) => [...b],
-  logActivity: () => {},
-  STATUS_LABEL_KEYS: {
-    draft: 'admin.statusDraft',
-    scheduled: 'admin.statusScheduled',
-    published: 'admin.statusPublished',
-    unlisted: 'admin.statusUnlisted',
-    deleted: 'admin.statusDeleted',
-  },
-  GENRE_LABEL_KEYS: {
-    Devotional: 'admin.genreDevotional',
-    Love: 'admin.genreLove',
-    Melody: 'admin.genreMelody',
-    Siddhar: 'admin.genreSiddhar',
-    Sivan: 'admin.genreSivan',
-  },
-  normalizeStatus: (s) => {
-    const v = String(s || '').toLowerCase()
-    return ['draft', 'scheduled', 'published', 'unlisted', 'deleted'].includes(v) ? v : 'draft'
-  },
-}))
+vi.mock('../../lib/adminStore.js', async () => {
+  const { mockAdminStoreBase } = await import('../../lib/__tests__/testHelpers.js')
+  return mockAdminStoreBase()
+})
 
 // The mapped Malaiyoram row (shape of mapTrack output for the live
 // Supabase row, slug malaiyoram-veesiya-kaatre) — the edit case loads

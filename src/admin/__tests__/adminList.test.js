@@ -10,7 +10,7 @@
 // list pages. jsdom is a devDependency for these render tests; nothing
 // about it ships to the browser.
 import { describe, it, expect, vi } from 'vitest'
-import { installDom } from '../../lib/__tests__/testHelpers.js'
+import { installDom, rowNames, findButton, setSearch } from '../../lib/__tests__/testHelpers.js'
 
 // Mutable mock state: each test resets the recorded calls.
 const mockAdmin = vi.hoisted(() => ({
@@ -179,39 +179,21 @@ async function renderHarness(rows = ROWS) {
   }
 }
 
-function rowNames(container) {
-  return [...container.querySelectorAll('tbody tr td:nth-child(2)')].map((td) => td.textContent)
-}
-
-function findButton(container, text) {
-  return [...container.querySelectorAll('button')].find((b) => b.textContent.includes(text))
-}
-
-async function setSearch(container, act, value) {
-  const input = container.querySelector('input[type="search"]')
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
-  await act(async () => {
-    setter.call(input, value)
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    await new Promise((r) => setTimeout(r, 250))
-  })
-}
-
 describe('useAdminList + AdminList', () => {
   it('filters rows by search and toggles sort direction', async () => {
     resetMocks()
     const rendered = await renderHarness()
     try {
-      expect(rowNames(rendered.container)).toEqual(['Alpha', 'Beta', 'Gamma'])
+      expect(rowNames(rendered.container, 2)).toEqual(['Alpha', 'Beta', 'Gamma'])
       await setSearch(rendered.container, rendered.act, 'alp')
-      expect(rowNames(rendered.container)).toEqual(['Alpha'])
+      expect(rowNames(rendered.container, 2)).toEqual(['Alpha'])
       await setSearch(rendered.container, rendered.act, '')
-      expect(rowNames(rendered.container)).toEqual(['Alpha', 'Beta', 'Gamma'])
+      expect(rowNames(rendered.container, 2)).toEqual(['Alpha', 'Beta', 'Gamma'])
       // Sort header toggles asc -> desc.
       await rendered.act(async () => {
         findButton(rendered.container, 'Name').click()
       })
-      expect(rowNames(rendered.container)).toEqual(['Gamma', 'Beta', 'Alpha'])
+      expect(rowNames(rendered.container, 2)).toEqual(['Gamma', 'Beta', 'Alpha'])
     } finally {
       await rendered.cleanup()
     }
@@ -226,7 +208,7 @@ describe('useAdminList + AdminList', () => {
     }))
     const rendered = await renderHarness(many)
     try {
-      expect(rowNames(rendered.container)).toHaveLength(25)
+      expect(rowNames(rendered.container, 2)).toHaveLength(25)
       expect(rendered.container.textContent).not.toContain('admin.selectedCount')
       await rendered.act(async () => {
         rendered.container.querySelector('thead input[type="checkbox"]').click()
@@ -236,8 +218,8 @@ describe('useAdminList + AdminList', () => {
       await rendered.act(async () => {
         findButton(rendered.container, 'common.next').click()
       })
-      expect(rowNames(rendered.container)).toHaveLength(5)
-      expect(rowNames(rendered.container)[0]).toBe('Row 26')
+      expect(rowNames(rendered.container, 2)).toHaveLength(5)
+      expect(rowNames(rendered.container, 2)[0]).toBe('Row 26')
     } finally {
       await rendered.cleanup()
     }
@@ -287,7 +269,7 @@ describe('useAdminList + AdminList', () => {
       })
       expect(mockAdmin.deleted).toEqual([])
       expect(rendered.container.textContent).toContain('delete failed')
-      expect(rowNames(rendered.container)).toContain('Alpha')
+      expect(rowNames(rendered.container, 2)).toContain('Alpha')
     } finally {
       await rendered.cleanup()
     }
@@ -317,6 +299,76 @@ describe('useAdminList + AdminList', () => {
       // version bump) after a delete.
     } finally {
       await rendered.cleanup()
+    }
+  })
+
+  it('AdminListContent switches loading / empty / rows', async () => {
+    installDom('https://nandhamusic.pages.dev/admin/tracks')
+    const { createElement: h, act } = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { AdminListContent } = await import('../components/AdminList.jsx')
+    const t = (k) => k
+    const render = async (props) => {
+      const container = document.createElement('div')
+      document.body.appendChild(container)
+      const root = createRoot(container)
+      await act(async () => {
+        root.render(h(AdminListContent, { t, ...props }, h('div', { id: 'rows' }, 'row-body')))
+      })
+      return {
+        container,
+        cleanup: async () => {
+          await act(async () => {
+            root.unmount()
+          })
+          container.remove()
+        },
+      }
+    }
+    // Loading wins over empty rows.
+    const loading = await render({
+      list: { pageRows: [] },
+      loading: true,
+      emptyTitle: 'emptyTitle',
+      emptyHint: 'emptyHint',
+      emptyActionLabel: 'emptyAction',
+      onEmptyAction: () => {},
+    })
+    try {
+      expect(loading.container.querySelectorAll('.list-skeleton-row')).toHaveLength(5)
+      expect(loading.container.querySelector('#rows')).toBeNull()
+    } finally {
+      await loading.cleanup()
+    }
+    // No rows and not loading: the empty state.
+    const empty = await render({
+      list: { pageRows: [] },
+      loading: false,
+      emptyTitle: 'emptyTitle',
+      emptyHint: 'emptyHint',
+      emptyActionLabel: 'emptyAction',
+      onEmptyAction: () => {},
+    })
+    try {
+      expect(empty.container.textContent).toContain('emptyTitle')
+      expect(empty.container.querySelector('#rows')).toBeNull()
+    } finally {
+      await empty.cleanup()
+    }
+    // Rows present: children render, no skeleton or empty state.
+    const rows = await render({
+      list: { pageRows: [{ id: 'a' }] },
+      loading: false,
+      emptyTitle: 'emptyTitle',
+      emptyHint: 'emptyHint',
+      emptyActionLabel: 'emptyAction',
+      onEmptyAction: () => {},
+    })
+    try {
+      expect(rows.container.querySelector('#rows')).toBeTruthy()
+      expect(rows.container.textContent).not.toContain('emptyTitle')
+    } finally {
+      await rows.cleanup()
     }
   })
 })

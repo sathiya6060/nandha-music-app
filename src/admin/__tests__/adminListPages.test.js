@@ -15,6 +15,9 @@ import {
   mockVaazhvinil,
   mockMalaiyoram,
   mockMarakka,
+  rowNames,
+  findButton,
+  setSearch,
 } from '../../lib/__tests__/testHelpers.js'
 
 const mockData = vi.hoisted(() => ({
@@ -90,34 +93,17 @@ vi.mock('../../lib/supabaseAdmin.js', () => ({
   SAVE_TIMEOUT_MS: 180000,
 }))
 
-vi.mock('../../lib/adminStore.js', () => ({
-  getMergedTracks: (b = []) => [...b],
-  getMergedPlaylists: (b = []) => [...b],
-  getMergedAlbums: (b = []) => [...b],
-  getMergedArtists: (b = []) => [...b],
-  saveAdminArtist: () => {},
-  restoreAdminTrack: () => {},
-  invalidateCaches: async () => {},
-  logActivity: () => {},
-  STATUS_LABEL_KEYS: {
-    draft: 'admin.statusDraft',
-    scheduled: 'admin.statusScheduled',
-    published: 'admin.statusPublished',
-    unlisted: 'admin.statusUnlisted',
-    deleted: 'admin.statusDeleted',
-  },
-  GENRE_LABEL_KEYS: {
-    Devotional: 'admin.genreDevotional',
-    Love: 'admin.genreLove',
-    Melody: 'admin.genreMelody',
-    Siddhar: 'admin.genreSiddhar',
-    Sivan: 'admin.genreSivan',
-  },
-  normalizeStatus: (s) => {
-    const v = String(s || '').toLowerCase()
-    return ['draft', 'scheduled', 'published', 'unlisted', 'deleted'].includes(v) ? v : 'draft'
-  },
-}))
+vi.mock('../../lib/adminStore.js', async () => {
+  const { mockAdminStoreBase } = await import('../../lib/__tests__/testHelpers.js')
+  return mockAdminStoreBase({
+    getMergedPlaylists: (b = []) => [...b],
+    getMergedAlbums: (b = []) => [...b],
+    getMergedArtists: (b = []) => [...b],
+    saveAdminArtist: () => {},
+    restoreAdminTrack: () => {},
+    invalidateCaches: async () => {},
+  })
+})
 
 const MOCK_PLAYLISTS = [
   {
@@ -200,25 +186,24 @@ async function renderPage(route) {
   }
 }
 
-function rowNames(container) {
-  return [...container.querySelectorAll('tbody tr td:nth-child(3)')].map((td) => td.textContent)
-}
-
-function findButton(container, text) {
-  return [...container.querySelectorAll('button')].find((b) => b.textContent.includes(text))
-}
-
-async function setSearch(container, act, value) {
-  const input = container.querySelector('input[type="search"]')
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
-  await act(async () => {
-    setter.call(input, value)
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    await new Promise((r) => setTimeout(r, 250))
-  })
-}
-
 describe('Admin list pages (refactor)', () => {
+  // Renders the page and asserts the basics every list page shares:
+  // its title, its row count, and the one-page pagination rule (no
+  // pagination when all rows fit on one page). The caller keeps the
+  // returned render for its page-specific assertions and cleanup.
+  async function renderListPage(route, { title, rowText, rowCount = 2, cardCount }) {
+    resetData()
+    const rendered = await renderPage(route)
+    expect(rendered.container.textContent).toContain(title)
+    expect(rendered.container.querySelectorAll('tbody tr')).toHaveLength(rowCount)
+    if (cardCount !== undefined) {
+      expect(rendered.container.querySelectorAll('.list-card')).toHaveLength(cardCount)
+    }
+    if (rowText) expect(rendered.container.textContent).toContain(rowText)
+    expect(rendered.container.textContent).not.toContain('common.pageOf')
+    return rendered
+  }
+
   it('Tracks: columns, rows, cards, search, bulk bar, always-on pagination', async () => {
     resetData()
     const rendered = await renderPage('/admin/tracks')
@@ -276,15 +261,12 @@ describe('Admin list pages (refactor)', () => {
   })
 
   it('Playlists: rows, count sort, pagination hidden on one page', async () => {
-    resetData()
-    const rendered = await renderPage('/admin/playlists')
+    const rendered = await renderListPage('/admin/playlists', {
+      title: 'admin.playlists',
+      rowText: 'சிறந்த நந்தா',
+      cardCount: 2,
+    })
     try {
-      expect(rendered.container.textContent).toContain('admin.playlists')
-      expect(rendered.container.querySelectorAll('tbody tr')).toHaveLength(2)
-      expect(rendered.container.querySelectorAll('.list-card')).toHaveLength(2)
-      expect(rendered.container.textContent).toContain('சிறந்த நந்தா')
-      // 2 rows fit on one page: no pagination (Playlists rule).
-      expect(rendered.container.textContent).not.toContain('common.pageOf')
       // Sort by track count: Love (1) before Best (2) ascending.
       await rendered.act(async () => {
         findButton(rendered.container, 'admin.tracks').click()
@@ -296,13 +278,11 @@ describe('Admin list pages (refactor)', () => {
   })
 
   it('Albums: rows and delete dialog with type-to-confirm', async () => {
-    resetData()
-    const rendered = await renderPage('/admin/albums')
+    const rendered = await renderListPage('/admin/albums', {
+      title: 'admin.albums',
+      rowText: 'அண்ணாமலையார்',
+    })
     try {
-      expect(rendered.container.textContent).toContain('admin.albums')
-      expect(rendered.container.querySelectorAll('tbody tr')).toHaveLength(2)
-      expect(rendered.container.textContent).toContain('அண்ணாமலையார்')
-      expect(rendered.container.textContent).not.toContain('common.pageOf')
       // Delete opens the impact dialog with the typed-name input.
       await rendered.act(async () => {
         findButton(rendered.container, 'common.delete').click()
@@ -315,13 +295,11 @@ describe('Admin list pages (refactor)', () => {
   })
 
   it('Artists: rows, and delete with writes disabled shows the error, no dialog', async () => {
-    resetData()
-    const rendered = await renderPage('/admin/artists')
+    const rendered = await renderListPage('/admin/artists', {
+      title: 'admin.artists',
+      rowText: 'Nandha Music',
+    })
     try {
-      expect(rendered.container.textContent).toContain('admin.artists')
-      expect(rendered.container.querySelectorAll('tbody tr')).toHaveLength(2)
-      expect(rendered.container.textContent).toContain('Nandha Music')
-      expect(rendered.container.textContent).not.toContain('common.pageOf')
       // Writes are disabled in this harness: handleDelete errors
       // instead of opening the cascade dialog.
       await rendered.act(async () => {
