@@ -34,6 +34,12 @@ for each row execute function public.increment_track_plays();
 
 -- One-time backfill: count the play_events rows that arrived before this
 -- trigger existed (e.g. plays from the 28 Nov 2026 verification session).
+-- IDEMPOTENCY GUARD (L1, 28 Nov 2026): only tracks still at plays = 0
+-- are backfilled, so a re-run can never double-count rows the trigger
+-- (or a previous backfill) already counted. A track whose plays are
+-- already > 0 is skipped entirely — a re-run may UNDER-count such a
+-- track, never over-count it. Still: do NOT re-run this file live
+-- without cause; it was already applied once.
 update public.tracks t
 set plays = coalesce(t.plays, 0) + s.total
 from (
@@ -41,7 +47,8 @@ from (
   from public.play_events
   group by track_id
 ) s
-where t.id = s.track_id;
+where t.id = s.track_id
+  and coalesce(t.plays, 0) = 0;
 
 -- Verify (expect: trigger listed; tracks.plays now includes backfilled rows):
 --   select trigger_name from information_schema.triggers
