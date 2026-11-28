@@ -224,7 +224,10 @@ function slugify(value) {
     .toLowerCase()
     .normalize('NFKD')
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    // S8786: the old /^-+|-+$/g alternation risks super-linear
+    // backtracking — two anchored replaces are linear and identical.
+    .replace(/^-+/, '')
+    .replace(/-+$/, '')
     .slice(0, 80)
   return slug || `track-${Date.now().toString(36)}`
 }

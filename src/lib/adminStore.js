@@ -81,7 +81,15 @@ function writeJson(key, value) {
 
 function newId(prefix = 'admin') {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return `${prefix}-${crypto.randomUUID()}`
-  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
+  // No randomUUID (very old browser): use the CSPRNG getRandomValues —
+  // never Math.random, which Sonar S2245 flags in security contexts.
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const bytes = new Uint8Array(8)
+    crypto.getRandomValues(bytes)
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+    return `${prefix}-${Date.now().toString(36)}-${hex}`
+  }
+  return `${prefix}-${Date.now().toString(36)}`
 }
 
 /** Best-effort cache invalidation. */
