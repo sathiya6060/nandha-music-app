@@ -113,20 +113,39 @@ export function AuthProvider({ children }) {
     if (isSupabaseConfigured()) {
       setConfigError(false)
       let mounted = true
+      // 28 Nov 2026 — deep-link race (admin editor direct-load bounce):
+      // loading used to clear BEFORE the session user was applied —
+      // applySessionUser awaits the blocked check, so a full load of a
+      // deep /admin URL saw loading=false + user=null, the admin gate
+      // sent /login, and Login bounced the signed-in admin to /admin.
+      // The editor (and every deep admin URL) only worked via in-app
+      // navigation. Apply the session FIRST, then clear loading — the
+      // gate never sees a half-ready state. A failed restore still
+      // clears loading (fail closed: user stays null → /login, which
+      // is correct there). Role is already the allowlist value by then
+      // (resolveRole(sbUser, null) → 'admin' for the admin email), so
+      // the gate passes as soon as loading clears.
+      const settleSession = async (sbUser) => {
+        try {
+          await applySessionUser(sbUser || null)
+        } catch {
+          // Restore failed — user stays null, gate sends /login.
+        } finally {
+          if (mounted) setLoading(false)
+        }
+      }
       supabase.auth
         .getSession()
         .then(({ data }) => {
           if (!mounted) return
-          setLoading(false)
-          void applySessionUser(data?.session?.user || null)
+          void settleSession(data?.session?.user)
         })
         .catch(() => {
           if (mounted) setLoading(false)
         })
 
       const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-        setLoading(false)
-        void applySessionUser(session?.user || null)
+        void settleSession(session?.user)
       })
       return () => {
         mounted = false
