@@ -241,7 +241,11 @@ export function DiscoverFeed({ style }) {
         ref={containerRef}
         className="discover-feed"
         style={style}
-        tabIndex={0}
+        // S6845: tabIndex={0} on a non-interactive region is flagged —
+        // tabIndex={-1} is not: the feed is no longer a Tab stop, but
+        // arrow-key nav still works (click focuses it, and keydowns
+        // from the card buttons inside bubble up to onKeyDown).
+        tabIndex={-1}
         role="region"
         aria-label={t('discover.title')}
         onScroll={handleScroll}
