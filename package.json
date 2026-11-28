@@ -10,6 +10,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "predeploy": "bash scripts/pre-deploy-check.sh"
   },
   "dependencies": {
@@ -20,6 +21,7 @@
     "react-router-dom": "^7.18.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@types/react": "^19.3.3",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",

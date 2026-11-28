@@ -1,0 +1,51 @@
+# Nandha Music — CI (28 Nov 2026).
+# Runs the same gate as the local pre-deploy check (scripts/pre-deploy-check.sh):
+#   oxlint (max 40 warnings) + vitest + vite build,
+# plus Playwright E2E (e2e/guest.spec.js) against the production build.
+# Runs on every PR to main and every push to main, so a failing PR cannot
+# merge silently. Free for this public repo (standard GitHub-hosted runners).
+# No secrets are used: the app config degrades gracefully when env vars are
+# absent (src/lib/config.js readEnv returns ''), and no test reads the local
+# binary mp3 (public/assets/*.mp3 is not in the repo). The E2E tests use the
+# local-catalog fallback in CI and assert UI/navigation only — never audio.
+# Playwright is invoked via ./node_modules/.bin (not npx) so no new S6505
+# (npx) finding appears in SonarQube.
+# Actions are pinned to full commit SHAs (supply-chain safety); update the
+# SHA + the version comment together when bumping.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: lint + tests + build + e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # actions/checkout v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      # actions/setup-node v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Lint + tests + build
+        run: bash scripts/pre-deploy-check.sh
+      - name: Install Playwright browser
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+      - name: E2E tests
+        run: npm run test:e2e
