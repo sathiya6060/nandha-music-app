@@ -12,19 +12,22 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 const UUID1 = '11111111-2222-3333-4444-555555555555'
 const UUID2 = '22222222-3333-4444-5555-666666666666'
 
-const { resolveState, insertState, insertCalls, redisDelCalls, supabaseState } = vi.hoisted(() => {
+const { resolveState, insertState, insertCalls, redisDelCalls, redisDelState, supabaseState } = vi.hoisted(() => {
   const resolveState = { map: {} }
   const insertState = { error: null }
   const insertCalls = []
   const redisDelCalls = []
+  // A deferred Redis DEL for the ordering test: when armed, the
+  // DEL stays pending until the test releases it.
+  const redisDelState = { promise: null, resolve: null }
   const supabaseState = { value: null, sessionUserId: null }
-  return { resolveState, insertState, insertCalls, redisDelCalls, supabaseState }
+  return { resolveState, insertState, insertCalls, redisDelCalls, redisDelState, supabaseState }
 })
 
 vi.mock('../redisGuard.js', () => ({
-  redisDelViaProxy: async (...keys) => {
+  redisDelViaProxy: (...keys) => {
     redisDelCalls.push(keys)
-    return true
+    return redisDelState.promise ?? Promise.resolve(true)
   },
   invalidateCachedFetch: () => {},
 }))
@@ -73,6 +76,8 @@ beforeEach(() => {
   insertState.error = null
   insertCalls.length = 0
   redisDelCalls.length = 0
+  redisDelState.promise = null
+  redisDelState.resolve = null
   supabaseState.value = fakeSupabase()
   supabaseState.sessionUserId = null
   vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -215,5 +220,32 @@ describe('M35 — Redis DELs only ever target the home key', () => {
     await loadCache()
     await cache.invalidateHome()
     expect(redisDelCalls).toEqual([['home']])
+  })
+})
+
+describe('invalidateCatalog ordering (28 Nov 2026)', () => {
+  it('invalidates React Query BEFORE the Redis DEL resolves', async () => {
+    await loadCache()
+    // Arm a deferred DEL: the network round-trip stays pending.
+    let releaseDel
+    redisDelState.promise = new Promise((resolve) => {
+      releaseDel = resolve
+    })
+    redisDelState.resolve = releaseDel
+    const order = []
+    cache.bindQueryClient({
+      invalidateQueries: () => {
+        order.push('queries')
+      },
+    })
+    const done = cache.invalidateCatalog()
+    // The DEL is still pending, yet the query client must already
+    // have been invalidated — the old order awaited the DEL first,
+    // so the admin list kept showing the deleted row for seconds.
+    expect(order).toEqual(['queries'])
+    expect(redisDelCalls).toEqual([['home']])
+    releaseDel(true)
+    await done
+    expect(order).toEqual(['queries'])
   })
 })

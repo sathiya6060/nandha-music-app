@@ -53,6 +53,22 @@ export function stoppedPlayerState() {
   }
 }
 
+/**
+ * Pure queue resolution for play(track, queueList), exported for
+ * tests (see playerPlayTarget.test.js). A track that is already in
+ * the given queue plays at its own index; a track that is NOT in
+ * the queue is appended and plays at the appended index — it must
+ * never silently fall back to queue[0] (28 Nov 2026: pressing Play
+ * on Malaiyoram / on a draft played Vaazhvinil instead, because
+ * findIndex returned -1 and the target defaulted to 0).
+ */
+export function resolvePlayTarget(queueList, trackToPlay) {
+  const list = Array.isArray(queueList) ? queueList : []
+  const idx = list.findIndex((t) => t && trackToPlay && t.id === trackToPlay.id)
+  if (idx >= 0) return { queue: list, target: idx }
+  return { queue: [...list, trackToPlay], target: list.length }
+}
+
 const PlayerContext = createContext(null)
 
 const LS_VOLUME = 'nandha-player-volume'
@@ -732,10 +748,11 @@ export function PlayerProvider({ children }) {
       // guest hears nothing. Signed-in users keep hook playback.
       const hookAt = clampGuestHookStart(hookStartFor(trackToPlay, opts), guestRef.current)
       if (queueList && Array.isArray(queueList) && queueList.length > 0) {
-        queueRef.current = queueList
-        setQueue(queueList)
-        const idx = queueList.findIndex((t) => t && t.id === trackToPlay.id)
-        const target = idx >= 0 ? idx : 0
+        // resolvePlayTarget: a track missing from the queue is
+        // appended and played — never queue[0] by silent default.
+        const { queue, target } = resolvePlayTarget(queueList, trackToPlay)
+        queueRef.current = queue
+        setQueue(queue)
         queueIndexRef.current = target
         if (!loadTrackAt(target, { startAt: hookAt })) {
           skipToNextPlayable(target)

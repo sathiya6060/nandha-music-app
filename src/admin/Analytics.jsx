@@ -13,7 +13,7 @@ import { supabase } from '../lib/supabase.js'
 import { getMergedTracks, getNoResultSearches } from '../lib/adminStore.js'
 import { useI18n } from '../lib/i18n.js'
 import FallbackBanner from './FallbackBanner.jsx'
-import { bucketisePlaysByDay, totalPlays } from './lib/analytics.js'
+import { bucketisePlaysByDay, totalPlays, xLabelAnchor } from './lib/analytics.js'
 import './dashboard.css'
 
 const RANGES = [7, 30, 90]
@@ -84,7 +84,7 @@ function PlaysLineChart({ buckets, formatNumber, lang }) {
           </text>
         )}
         {xLabels.map((i) => (
-          <text key={buckets[i].date} className="dash-axis-label" x={x(i)} y={height - 8} textAnchor="middle">
+          <text key={buckets[i].date} className="dash-axis-label" x={x(i)} y={height - 8} textAnchor={xLabelAnchor(i, buckets.length)}>
             {shortDate(buckets[i].date)}
           </text>
         ))}

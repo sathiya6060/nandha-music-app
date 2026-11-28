@@ -167,7 +167,17 @@ export default function TrackEditor() {
   const [hookPlaying, setHookPlaying] = useState(false)
   // Only initialise the form once per track id — the Supabase row
   // arriving after the static fallback must not wipe typed input.
-  const initializedIdRef = useRef(null)
+  // initializedRef records WHICH source the form came from: a
+  // fallback init is upgraded to the DB row when it arrives, but
+  // only while the user has not typed yet (form still pristine).
+  // Initialising from the fallback's placeholder lines used to
+  // leave the editor showing 4 stale lines instead of the DB's 40
+  // Tamil lines — and a save then wrote the stale English lines as
+  // a real lyrics row (28 Nov 2026).
+  const initializedRef = useRef(null) // { id, fromDb } | null
+  const initialFormRef = useRef(EMPTY_FORM)
+  const audioFileRef = useRef(null)
+  audioFileRef.current = audioFile
   const shownDraftRef = useRef(false)
   const pendingStatusRef = useRef(null)
   const formRef = useRef(null)
@@ -206,8 +216,23 @@ export default function TrackEditor() {
 
   useEffect(() => {
     if (!existing) return
-    if (initializedIdRef.current === existing.id) return
-    initializedIdRef.current = existing.id
+    // While the DB row is still loading, do NOT initialise from the
+    // static fallback — the DB row arrives a moment later, and its
+    // lyrics are the source of truth. Initialising from the fallback
+    // first is what left the editor showing 4 stale lines instead
+    // of the DB's 40 (28 Nov 2026).
+    if (trackLoading) return
+    const fromDb = existing === sbTrack
+    const prev = initializedRef.current
+    if (prev && prev.id === existing.id) {
+      // Already initialised for this id. Upgrade a fallback init to
+      // the DB row only while the user has not typed yet (form still
+      // equals the values we initialised from) — typed input is
+      // never wiped.
+      if (prev.fromDb || !fromDb) return
+      if (JSON.stringify(formRefLatest.current) !== JSON.stringify(initialFormRef.current)) return
+    }
+    initializedRef.current = { id: existing.id, fromDb }
     const next = {
       titleTa: existing.titleTa || '',
       titleEn: existing.titleEn || '',
@@ -236,13 +261,25 @@ export default function TrackEditor() {
     }
     setForm(next)
     setInitialForm(next)
+    initialFormRef.current = next
     if (existing.audioName) {
       setAudioMeta({ name: existing.audioName, size: existing.audioSize || 0 })
+    } else if (!audioFileRef.current && (existing.audio128 || existing.audio320)) {
+      // FIX 4: stored audio (DB storage paths) — show the stored
+      // file on reopen so the Media tab does not look empty.
+      // Name only; the stored row carries no file size.
+      const storedPath = existing.audio128 || existing.audio320
+      setAudioMeta({ name: storedPath.split('/').pop().split('?')[0], size: 0 })
+    }
+    // FIX 4: the stored row's duration drives the Preview hook
+    // waveform — without it the tab shows "Duration unknown".
+    if (!audioFileRef.current && existing.durationSec) {
+      setAudioDurationSec(existing.durationSec)
     }
     if (existing.cover) setCoverPreview(existing.cover)
     maybeOfferDraft(next)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [existing])
+  }, [existing, trackLoading])
 
   // New tracks have no `existing` row, so the draft check runs here.
   useEffect(() => {
@@ -611,7 +648,9 @@ export default function TrackEditor() {
           }
           showToast(t('admin.editorSavedRow'))
           clearDraft()
-          setInitialForm({ ...form, status: effectiveStatus })
+          const savedForm = { ...form, status: effectiveStatus }
+          setInitialForm(savedForm)
+          initialFormRef.current = savedForm
           setAudioFile(null)
           setCoverFile(null)
           if (isNew) {

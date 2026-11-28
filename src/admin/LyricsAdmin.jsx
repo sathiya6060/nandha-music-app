@@ -1,7 +1,7 @@
 // Synced lyrics admin — per-track lines with timestamps (mm:ss).
 import { useMemo, useState } from 'react'
 import { tracks as catalogTracks } from '../data/catalog.js'
-import { useTracks } from '../lib/supabaseCatalog.js'
+import { useTracks, shapeLyricsRows } from '../lib/supabaseCatalog.js'
 import { supabase } from '../lib/supabase.js'
 import {
   supabaseWritesEnabled,
@@ -28,37 +28,16 @@ const TIME_RE = /^\d{1,2}:\d{2}$/
 // (supabaseCatalog.js) swallows read errors and returns empty, so a
 // failed fetch used to fall through to the stale localStorage copy
 // and let the admin save stale lines over newer DB rows. This local
-// fetch maps the rows the same way, but a failure reaches the
-// caller's catch — where the form stays unloaded and shows a retry.
+// fetch reuses the shared shapeLyricsRows from supabaseCatalog.js,
+// but a failure reaches the caller's catch — where the form stays
+// unloaded and shows a retry.
 async function fetchLyricsOrThrow(trackDbId) {
   const { data, error } = await supabase
     .from('lyrics')
     .select('lang, lines, synced')
     .eq('track_id', trackDbId)
   if (error) throw error
-  const byLang = {}
-  for (const row of data || []) byLang[row.lang] = row
-  const toTexts = (row) =>
-    (Array.isArray(row?.lines) ? row.lines : [])
-      .map((l) => (typeof l === 'string' ? l : l?.text || ''))
-      .filter(Boolean)
-  const ta = toTexts(byLang.ta)
-  const en = toTexts(byLang.en)
-  let synced = null
-  const syncedRow = byLang.ta || byLang.en
-  if (syncedRow?.synced) {
-    const taLines = Array.isArray(byLang.ta?.lines) ? byLang.ta.lines : []
-    const enLines = Array.isArray(byLang.en?.lines) ? byLang.en.lines : []
-    synced = taLines
-      .map((l, i) => ({
-        t: typeof l?.startSec === 'number' ? l.startSec : null,
-        ta: typeof l === 'string' ? l : l?.text || '',
-        en: typeof enLines[i] === 'string' ? enLines[i] : enLines[i]?.text || null,
-      }))
-      .filter((l) => l.ta || l.en)
-    if (synced.length === 0) synced = null
-  }
-  return { ta, en, synced }
+  return shapeLyricsRows(data)
 }
 
 function linesFromTrack(track) {

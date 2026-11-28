@@ -43,6 +43,15 @@ describe('real-only catalog', () => {
     }
   })
 
+  it('carries no lyrics — the DB lyrics table is the source of truth', () => {
+    // 28 Nov 2026: the 4 opening lines that used to sit here leaked
+    // into the editor and created a phantom English lyrics row on
+    // save. The fallback must never carry lyrics.
+    const track = tracks[0]
+    expect(track.lyricsTa ?? []).toEqual([])
+    expect(track.lyricsEn ?? []).toEqual([])
+  })
+
   it('albums and artists are real-only too', () => {
     expect(albums).toHaveLength(1)
     expect(albums[0].id).toBe('annamalaiyar')

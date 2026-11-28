@@ -258,18 +258,27 @@ export function mapTrack(row, artistsById = new Map(), albumsById = new Map()) {
     lyricsEn: [],
     syncedLyrics: null,
   }
-  // The seeded track's story + opening lines live only in the static
-  // catalog until an admin fills the DB columns — carry them over so
+  // The seeded track's story lives only in the static catalog
+  // until an admin fills the DB columns — carry it over so
   // Discover, Song of the Day and the player story card keep working.
   // DB values win when present; the fallback only fills gaps.
+  // Lyrics are DB-owned (lyrics table): the fallback only fills the
+  // gap when the track has no lines at all, and must never
+  // overwrite DB lines (28 Nov 2026: the 4-line placeholder
+  // overwrote the 40 DB lines in the editor and a save then
+  // created a phantom English lyrics row).
   if (track.slug === REAL_TRACK_ID) {
     const fb = getFallbackTrack(REAL_TRACK_ID)
     if (fb) {
       if (!track.storyTa) track.storyTa = fb.storyTa
       if (!track.storyEn) track.storyEn = fb.storyEn
       track.storyCredit = fb.storyCredit
-      track.lyricsTa = fb.lyricsTa || []
-      track.lyricsEn = fb.lyricsEn || []
+      if (track.lyricsTa.length === 0 && Array.isArray(fb.lyricsTa) && fb.lyricsTa.length > 0) {
+        track.lyricsTa = fb.lyricsTa
+      }
+      if (track.lyricsEn.length === 0 && Array.isArray(fb.lyricsEn) && fb.lyricsEn.length > 0) {
+        track.lyricsEn = fb.lyricsEn
+      }
     }
   }
   return track
@@ -472,8 +481,9 @@ async function fetchPlaylists({ admin = false } = {}) {
   })
 }
 
-/** One track by slug (public route id) or DB uuid, with lyrics attached. */
-async function fetchTrack(idOrSlug) {
+/** One track by slug (public route id) or DB uuid, with lyrics attached.
+ *  Exported for tests (see fetchTrack.test.js). */
+export async function fetchTrack(idOrSlug) {
   if (!idOrSlug) return null
   const fb = getFallbackTrack(String(idOrSlug))
   if (!isSupabaseConfigured || !supabase) {
@@ -521,8 +531,13 @@ async function fetchTrack(idOrSlug) {
     throw firstError || secondError
   }
   if (!row) {
-    setCatalogSource('fallback')
-    return fb
+    // The DB answered and the track is simply absent (deleted) —
+    // that is a 404, not an outage. Return null so the Track page
+    // shows Not Found; the static fallback is only for when the DB
+    // itself cannot be reached (28 Nov 2026: a deleted Vaazhvinil
+    // still rendered its full page from the fallback catalog).
+    setCatalogSource('supabase')
+    return null
   }
   setCatalogSource('supabase')
   const track = mapTrack(row, artistsById, albumsById)
@@ -541,8 +556,10 @@ async function fetchTrack(idOrSlug) {
   return track
 }
 
-/** Shape raw lyrics rows (one track, any langs) into { ta, en, synced }. */
-function shapeLyricsRows(rows) {
+/** Shape raw lyrics rows (one track, any langs) into { ta, en, synced }.
+ * Shared with LyricsAdmin.jsx (fetchLyricsOrThrow) — the same shaping
+ * used to live in both files; keep it here once. */
+export function shapeLyricsRows(rows) {
   const byLang = {}
   for (const row of rows || []) byLang[row.lang] = row
   const toTexts = (row) =>
