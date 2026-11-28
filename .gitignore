@@ -28,3 +28,17 @@ dist-ssr
 # (one careless `git add .` in this dir would leak them).
 .env*
 !.env.example
+
+# Keys / certificates / credentials (A1-1, 28 Nov 2026): a stray key
+# file dropped in the tree must never be committable by `git add .`.
+*.pem
+*.key
+*.pfx
+id_rsa*
+credentials*
+*secret*
+
+# Build artifacts mutated by `prebuild` (A1-2): version.json holds only
+# buildId + builtAt, but it changes on every build and must never be
+# committed. The bare pattern matches at any depth (src + public).
+version.json

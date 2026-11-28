@@ -91,20 +91,29 @@ export function foldForSearch(text) {
   // Vowel length is typed loosely.
   s = s.replace(/aa/g, 'a').replace(/ee/g, 'e').replace(/ii/g, 'i')
     .replace(/oo/g, 'o').replace(/uu/g, 'u')
+  // M37: hyphens, underscores and punctuation are typed loosely too.
+  // A pasted slug/URL ('vaazhvinil-orumurayenum') or a query with
+  // trailing punctuation ('vaazhvinil!') must match the spaced title
+  // — fold separators to spaces and drop the rest, on both sides.
+  s = s.replace(/[-_]+/g, ' ')
+  s = s.replace(/[^\p{L}\p{N} ]+/gu, '')
   return s.replace(/\s+/g, ' ').trim()
 }
 
 /**
  * True when the folded query appears in any folded catalog field
- * (Tamil title, Latin title, album, artist, composer, genre).
+ * (Tamil title, Latin title, album, artist, composer, genre, id/slug).
  * An empty query matches everything, as before.
  */
 export function trackMatchesQuery(track, query) {
   const q = foldForSearch(query)
   if (!q) return true
+  // M37: the id/slug is a searchable field — a pasted slug or track
+  // URL must find the track even when its words differ from the title.
   const fields = [
     track?.titleEn, track?.titleTa, track?.album,
     track?.artist, track?.composer, track?.genre,
+    track?.id, track?.slug,
   ]
   return fields.some((field) => foldForSearch(field).includes(q))
 }

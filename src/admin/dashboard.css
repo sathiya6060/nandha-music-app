@@ -1,0 +1,356 @@
+/* Admin redesign — dashboard / analytics / users / settings.
+   Companion to admin.css (owned by another agent — do not merge).
+   Brand tokens: Amber #F59E0B, Charcoal Slate #1E293B, Warm Sand
+   #FEF3C7, Steel Grey #64748B, White #FFFFFF. Amber only for the
+   primary action / active state. No gradients, no emoji icons. */
+
+.dash-sparkline {
+  display: block;
+  width: 100%;
+  height: 44px;
+  margin-top: 8px;
+}
+
+.dash-sparkline polyline {
+  fill: none;
+  stroke: #1e293b;
+  stroke-width: 2;
+}
+
+.dash-sparkline circle {
+  fill: #f59e0b;
+}
+
+/* Needs attention + quick actions */
+.dash-attention-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dash-attention-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid #e2e8f0;
+}
+
+.dash-attention-item:first-child {
+  border-top: 0;
+}
+
+.dash-attention-kind {
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+}
+
+.dash-attention-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #334155;
+}
+
+.dash-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Analytics charts */
+.dash-range-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dash-range-chip {
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #1e293b;
+  font: inherit;
+  cursor: pointer;
+}
+
+.dash-range-chip[aria-pressed="true"] {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #1e293b;
+  font-weight: 600;
+}
+
+.dash-range-chip:focus-visible,
+.dash-chart-wrap a:focus-visible,
+.dash-attention-item a:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
+}
+
+.dash-chart-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.dash-line-chart {
+  display: block;
+  width: 100%;
+  min-width: 480px;
+  height: auto;
+}
+
+.dash-line-chart .dash-axis-label {
+  fill: #64748b;
+  font-size: 11px;
+}
+
+.dash-line-chart .dash-grid-line {
+  stroke: #e2e8f0;
+  stroke-width: 1;
+}
+
+.dash-line-chart .dash-line {
+  fill: none;
+  stroke: #1e293b;
+  stroke-width: 2;
+}
+
+.dash-line-chart .dash-area {
+  fill: #fef3c7;
+}
+
+.dash-line-chart .dash-point {
+  fill: #f59e0b;
+  stroke: #fff;
+  stroke-width: 1;
+}
+
+.dash-line-chart .dash-value-label {
+  fill: #1e293b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dash-chart-fallback {
+  margin-top: 16px;
+}
+
+.dash-chart-fallback summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  color: #1e293b;
+  font-weight: 600;
+}
+
+.dash-chart-fallback summary:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
+}
+
+/* Upgraded top-tracks bar list: axis labels + values */
+.dash-bar-axis {
+  display: flex;
+  justify-content: space-between;
+  color: #64748b;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+/* Users: skeleton rows + mobile stacked cards */
+.dash-skeleton-row td {
+  padding: 12px 8px;
+}
+
+.dash-skeleton-bar {
+  display: block;
+  height: 16px;
+  border-radius: 4px;
+  background: #e2e8f0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dash-skeleton-bar {
+    animation: dash-skeleton-pulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes dash-skeleton-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+}
+
+.dash-users-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.dash-users-toolbar .admin-search {
+  flex: 1;
+  min-width: 200px;
+}
+
+/* Settings: sections, swatches, SEO preview */
+.dash-section {
+  margin-bottom: 24px;
+}
+
+.dash-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 4px;
+}
+
+.dash-section-note {
+  color: #64748b;
+  margin: 0 0 12px;
+}
+
+.dash-swatches {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+}
+
+.dash-swatch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #334155;
+}
+
+.dash-swatch-chip {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  flex: none;
+}
+
+.dash-seo-search {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: #fff;
+  max-width: 600px;
+}
+
+.dash-seo-url {
+  color: #64748b;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.dash-seo-title {
+  color: #1e293b;
+  font-size: 17px;
+  font-weight: 600;
+  margin: 2px 0;
+  overflow-wrap: anywhere;
+}
+
+.dash-seo-desc {
+  color: #475569;
+  font-size: 14px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.dash-seo-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  max-width: 480px;
+  background: #fff;
+}
+
+.dash-seo-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1200 / 630;
+  object-fit: cover;
+  background: #fef3c7;
+}
+
+.dash-seo-card-body {
+  padding: 12px;
+}
+
+.dash-diff {
+  color: #475569;
+  font-size: 14px;
+  margin: 0;
+}
+
+/* Mobile: controls >= 44px, tables become stacked cards, no h-scroll */
+@media (max-width: 720px) {
+  .dash-users-table table,
+  .dash-users-table tbody,
+  .dash-users-table tr,
+  .dash-users-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .dash-users-table thead {
+    display: none;
+  }
+
+  .dash-users-table tbody tr {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    padding: 4px 12px;
+    background: #fff;
+  }
+
+  .dash-users-table td {
+    border: 0;
+    padding: 8px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .dash-users-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: #64748b;
+    flex: none;
+  }
+
+  .dash-users-table td .admin-input-inline {
+    max-width: 60%;
+  }
+
+  .dash-attention-item {
+    flex-wrap: wrap;
+  }
+
+  .dash-range-chip,
+  .dash-users-toolbar .admin-btn {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-skeleton-bar {
+    animation: none;
+  }
+}

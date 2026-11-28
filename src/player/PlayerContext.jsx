@@ -16,6 +16,7 @@ import { getRadioCandidates } from '../lib/mixes.js'
 import { getHiddenIds } from '../lib/hiddenTracks.js'
 import { sleepEndsAt, sleepRemainingMs } from '../lib/sleepTimer.js'
 import { getPinnedAudioBlobUrl } from '../lib/pwa.js'
+import { clampGuestSeek, clampGuestHookStart, clampGuestResume } from '../lib/guestGate.js'
 import {
   resolvePlayableUrl,
   isSignedTrack,
@@ -213,7 +214,7 @@ export function PlayerProvider({ children }) {
   // Smart Shuffle-lite (PT-017) + radio autoplay (PT-016).
   const [smartShuffle, setSmartShuffle] = useState(() => readStoredFlag(LS_SMART_SHUFFLE, false))
   const [radioOn, setRadioOn] = useState(() => readStoredFlag(LS_RADIO, true))
-  // Sleep timer (PT-014): null | { mode: 'minutes' | 'end-of-track', endsAt: number | null }.
+  // Sleep timer (PT-014): null | { mode: 'minutes', minutes: number, endsAt: number } | { mode: 'end-of-track', endsAt: null }.
   const [sleepTimer, setSleepTimerState] = useState(null)
   const [sleepRemainingSec, setSleepRemainingSec] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -266,6 +267,30 @@ export function PlayerProvider({ children }) {
   useEffect(() => {
     if (Array.isArray(tracksQuery.data)) catalogRef.current = tracksQuery.data
   }, [tracksQuery.data])
+  // H17: the restored localStorage queue serves stale lyric-less
+  // objects — re-resolve each queued track id against the fresh
+  // catalog (order preserved; ids the catalog does not know keep
+  // their stored object). Runs once per catalog version.
+  const catalogUpdatedAt = tracksQuery.dataUpdatedAt
+  useEffect(() => {
+    const fresh = tracksQuery.data
+    if (!Array.isArray(fresh) || fresh.length === 0) return
+    const byId = new Map(fresh.map((tr) => [String(tr.id), tr]))
+    setQueue((prev) => {
+      if (prev.length === 0) return prev
+      let changed = false
+      const next = prev.map((item) => {
+        const replacement = byId.get(String(item?.id))
+        if (replacement && replacement !== item) {
+          changed = true
+          return replacement
+        }
+        return item
+      })
+      return changed ? next : prev
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogUpdatedAt])
   useEffect(() => {
     userQueueRef.current = userQueue
   }, [userQueue])
@@ -417,6 +442,11 @@ export function PlayerProvider({ children }) {
       if (!url) url = await resolvePlayableUrl(trackToLoad, qualityValue)
       if (seq !== loadSeqRef.current) return false
       if (!url) {
+        // H15: a failed mint used to leave the PREVIOUS track's src
+        // attached — it kept playing under the new track's UI. Clear
+        // the element first, so a failure is silence, not a wrong song.
+        audio.removeAttribute('src')
+        audio.load()
         if (!silent) {
           showNotice('Could not play this track — try again')
           setIsPlaying(false)
@@ -692,8 +722,10 @@ export function PlayerProvider({ children }) {
   const play = useCallback(
     (trackToPlay, queueList, opts = {}) => {
       if (!trackToPlay) return
-      let hookAt = hookStartFor(trackToPlay, opts)
-      if (guestRef.current && hookAt >= PREVIEW_SECONDS) hookAt = 0
+      // M4 / M23: for a guest, a hook at/past the 5s preview limit is
+      // forced to 0 — otherwise the gate pauses immediately and the
+      // guest hears nothing. Signed-in users keep hook playback.
+      const hookAt = clampGuestHookStart(hookStartFor(trackToPlay, opts), guestRef.current)
       if (queueList && Array.isArray(queueList) && queueList.length > 0) {
         queueRef.current = queueList
         setQueue(queueList)
@@ -764,21 +796,19 @@ export function PlayerProvider({ children }) {
       : Number.isFinite(trackRef.current?.durationSec)
         ? trackRef.current.durationSec
         : 0
-    let clamped = Math.min(Math.max(0, seconds), dur || 0)
     // Guest preview gate: seeking past 5s clamps to 5s, pauses, and shows
     // the sign-in prompt. Seeking back inside the preview window re-opens
-    // the preview. Signed-in users seek freely.
-    if (guestRef.current) {
-      if (clamped >= PREVIEW_SECONDS) {
-        clamped = PREVIEW_SECONDS
-        previewEndedRef.current = true
-        setPreviewEnded(true)
-        audio.pause()
-        setIsPlaying(false)
-      } else {
-        previewEndedRef.current = false
-        setPreviewEnded(false)
-      }
+    // the preview. Signed-in users seek freely. (M23: the clamp itself
+    // is the pure clampGuestSeek, tested in guestGate.test.js.)
+    const { time: clamped, previewEnded: ended } = clampGuestSeek(seconds, dur, guestRef.current)
+    if (ended) {
+      previewEndedRef.current = true
+      setPreviewEnded(true)
+      audio.pause()
+      setIsPlaying(false)
+    } else {
+      previewEndedRef.current = false
+      setPreviewEnded(false)
     }
     audio.currentTime = clamped
     setCurrentTime(clamped)
@@ -811,15 +841,18 @@ export function PlayerProvider({ children }) {
     const current = trackRef.current
     if (!audio || !current || !isPlayable(current, nextQ)) return
     const wasPlaying = !audio.paused
-    // Guests never resume past the 5s preview limit.
-    const resumeAt = guestRef.current
-      ? Math.min(audio.currentTime || 0, PREVIEW_SECONDS)
-      : audio.currentTime || 0
+    // Guests never resume past the 5s preview limit (M23: pure
+    // clampGuestResume, tested in guestGate.test.js).
+    const resumeAt = clampGuestResume(audio.currentTime || 0, guestRef.current)
     const seq = loadSeqRef.current + 1
     loadSeqRef.current = seq
     resolvePlayableUrl(current, nextQ).then((url) => {
       if (seq !== loadSeqRef.current) return
       if (!url) {
+        // H15: same as attachSrc — clear the old src so the previous
+        // track does not keep playing under the new quality's UI.
+        audio.removeAttribute('src')
+        audio.load()
         showNotice('Could not play this track — try again')
         setIsPlaying(false)
         return
@@ -840,6 +873,14 @@ export function PlayerProvider({ children }) {
         }
       }
       audio.addEventListener('loadedmetadata', onMeta)
+    }).catch(() => {
+      // S9383: a rejected mint used to float silently — surface it
+      // like a failed mint and stop, instead of hanging paused.
+      if (seq !== loadSeqRef.current) return
+      audio.removeAttribute('src')
+      audio.load()
+      showNotice('Could not play this track — try again')
+      setIsPlaying(false)
     })
   }, [showNotice])
 
@@ -876,43 +917,47 @@ export function PlayerProvider({ children }) {
     })
   }, [])
 
+  // M34: the old version did audio pause / setState / setTimeout
+  // INSIDE the setQueue updater — a state updater must be pure (it
+  // can run twice in StrictMode, and the stale-ref window meant the
+  // next-track load read a half-updated queue). All side effects now
+  // run outside, against queueRef, before setQueue.
   const removeFromQueue = useCallback(
     (index) => {
-      setQueue((prevQueue) => {
-        if (index < 0 || index >= prevQueue.length) return prevQueue
-        const nextQueue = prevQueue.filter((_, i) => i !== index)
-        const currentIdx = queueIndexRef.current
-        if (index === currentIdx) {
-          // Removing the playing track: stop audio, play the next item.
-          const audio = audioRef.current
-          if (audio) {
-            audio.pause()
-            audio.removeAttribute('src')
-            audio.load()
-          }
-          setIsPlaying(false)
-          setCurrentTime(0)
-          setDuration(0)
-          if (nextQueue.length > 0) {
-            const target = Math.min(currentIdx, nextQueue.length - 1)
-            queueIndexRef.current = target
-            setQueueIndex(target)
-            // Defer so the queue state has landed before loading.
-            setTimeout(() => {
-              queueRef.current = nextQueue
-              if (!loadTrackAt(target)) skipToNextPlayable(target)
-            }, 0)
-          } else {
-            setQueueIndex(0)
-            queueIndexRef.current = 0
-          }
-        } else if (index < currentIdx) {
-          const target = currentIdx - 1
+      const prevQueue = queueRef.current
+      if (index < 0 || index >= prevQueue.length) return
+      const nextQueue = prevQueue.filter((_, i) => i !== index)
+      const currentIdx = queueIndexRef.current
+      queueRef.current = nextQueue
+      setQueue(nextQueue)
+      if (index === currentIdx) {
+        // Removing the playing track: stop audio, play the next item.
+        const audio = audioRef.current
+        if (audio) {
+          audio.pause()
+          audio.removeAttribute('src')
+          audio.load()
+        }
+        setIsPlaying(false)
+        setCurrentTime(0)
+        setDuration(0)
+        if (nextQueue.length > 0) {
+          const target = Math.min(currentIdx, nextQueue.length - 1)
           queueIndexRef.current = target
           setQueueIndex(target)
+          // Defer so the queue state has landed before loading.
+          setTimeout(() => {
+            if (!loadTrackAt(target)) skipToNextPlayable(target)
+          }, 0)
+        } else {
+          setQueueIndex(0)
+          queueIndexRef.current = 0
         }
-        return nextQueue
-      })
+      } else if (index < currentIdx) {
+        const target = currentIdx - 1
+        queueIndexRef.current = target
+        setQueueIndex(target)
+      }
     },
     [loadTrackAt, skipToNextPlayable],
   )
@@ -924,6 +969,9 @@ export function PlayerProvider({ children }) {
       audio.removeAttribute('src')
       audio.load()
     }
+    // L6: stopPlayback drops cached signed URLs — clearQueue did not,
+    // so a cleared queue left short-lived signed URLs cached.
+    dropAllSignedAudioUrls()
     setQueue([])
     setQueueIndex(0)
     queueRef.current = []
@@ -1024,7 +1072,10 @@ export function PlayerProvider({ children }) {
       return
     }
     const endsAt = sleepEndsAt(minutes)
-    setSleepTimerState({ mode: 'minutes', endsAt })
+    // H14: the state used to be { mode, endsAt } with no minutes, so
+    // the sheet (which reads sleepTimer.minutes) never showed the
+    // active timer. The minutes field is the sheet's source of truth.
+    setSleepTimerState({ mode: 'minutes', minutes, endsAt })
     sleepTimeoutRef.current = setTimeout(() => {
       sleepTimeoutRef.current = null
       setSleepTimerState(null)
@@ -1110,7 +1161,11 @@ export function PlayerProvider({ children }) {
         }
       }
 
-      // Preload NEXT track only: past 80% or 30s remain.
+      // Preload NEXT track only: past 80% or 30s remain. H18: the old
+      // code created a second <audio> with preload='auto' and set its
+      // src — that downloaded the WHOLE next track. Only the 64KB
+      // Range fetch below remains: it warms the HTTP cache without
+      // downloading the file.
       if (current && total > 0) {
         const remaining = total - t
         const key = `${current.id}@${qualityRef.current}`
@@ -1131,19 +1186,13 @@ export function PlayerProvider({ children }) {
           ) {
             const url = resolveAudioUrl(nextTrack, qualityRef.current)
             if (url) {
-              try {
-                // Fetch just the first chunk (Range) — warms the HTTP
-                // cache without downloading the whole file.
-                fetch(url, { headers: { Range: 'bytes=0-65535' } }).catch(
-                  () => {},
-                )
-                const pre = new Audio()
-                pre.preload = 'auto'
-                pre.src = url
-                prefetchRef.current = pre
-              } catch {
-                /* prefetch is best-effort */
-              }
+              // Fetch just the first chunk (Range) — warms the HTTP
+              // cache without downloading the whole file. Best-effort:
+              // rejections are swallowed by the .catch (S4822: no try
+              // wrapper — the promise rejection is already captured).
+              fetch(url, { headers: { Range: 'bytes=0-65535' } }).catch(
+                () => {},
+              )
             }
           }
         }
@@ -1217,10 +1266,9 @@ export function PlayerProvider({ children }) {
         signedRetryRef.current !== current.id
       ) {
         signedRetryRef.current = current.id
-        // Guests never resume past the 5s preview limit.
-        const resumeAt = guestRef.current
-          ? Math.min(audio.currentTime || 0, PREVIEW_SECONDS)
-          : audio.currentTime || 0
+        // Guests never resume past the 5s preview limit (M23: pure
+        // clampGuestResume, tested in guestGate.test.js).
+        const resumeAt = clampGuestResume(audio.currentTime || 0, guestRef.current)
         dropSignedAudioUrl(fileNameOf(current, qualityRef.current))
         loadSeqRef.current += 1
         const seq = loadSeqRef.current
@@ -1247,6 +1295,13 @@ export function PlayerProvider({ children }) {
           }
           if (audio.readyState >= 1) onMeta()
           else audio.addEventListener('loadedmetadata', onMeta)
+        }).catch(() => {
+          // S9383: a rejected re-mint used to float silently — skip
+          // on, like a failed mint, instead of hanging.
+          if (seq !== loadSeqRef.current) return
+          showNotice('Could not play this track — skipping')
+          setIsPlaying(false)
+          skipToNextPlayable(queueIndexRef.current)
         })
         return
       }

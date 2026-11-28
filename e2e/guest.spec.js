@@ -35,6 +35,19 @@ test('track page renders', async ({ page }) => {
   await expect(page.getByText(TRACK_TA).first()).toBeVisible()
 })
 
+test('clicking a track title opens the track page (no false not-found)', async ({ page }) => {
+  // M17 regression: the Track page used to render "No results found"
+  // while its fetch was still in flight on client-side nav (live
+  // repro 28 Nov 2026: the dead end persisted in the cloud browser).
+  // The title link exists once the home feed loads; the click
+  // auto-waits for it. Vaazhvinil is the one track in the CI fallback
+  // catalog, so this runs in both environments.
+  await page.locator('a[href="/track/vaazhvinil-orumurayenum"]').first().click()
+  await expect(page).toHaveURL(/\/track\/vaazhvinil-orumurayenum$/)
+  await expect(page.getByText(TRACK_TA).first()).toBeVisible()
+  await expect(page.getByText('No results found')).toHaveCount(0)
+})
+
 test('library, liked and discover pages load', async ({ page }) => {
   await page.goto('/library')
   await expect(page.getByRole('heading', { name: 'Your Library' })).toBeVisible()

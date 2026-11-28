@@ -20,11 +20,23 @@ import { supabase } from './supabase.js'
  * reason:'not-deployed' } and the UI shows the honest "email us"
  * message instead of faking a deletion.
  */
+export const DELETE_ACCOUNT_TIMEOUT_MS = 15 * 1000
+
 export async function deleteAccount() {
   if (!config.supabaseUrl || !supabase) return { ok: false, reason: 'not-deployed' }
   const { data } = await supabase.auth.getSession()
   const token = data?.session?.access_token
   if (!token) return { ok: false, reason: 'no-session' }
+  // M38: the request has a timeout (it used to hang forever), and a
+  // 204 No Content / empty-body success counts as deleted — the old
+  // code required the body to contain { ok: true }, so a successful
+  // deletion was reported as failed.
+  const controller =
+    typeof AbortController !== 'undefined' ? new AbortController() : null
+  const timer =
+    controller !== null
+      ? setTimeout(() => controller.abort(), DELETE_ACCOUNT_TIMEOUT_MS)
+      : null
   try {
     const res = await fetch(`${config.supabaseUrl}/functions/v1/delete-account`, {
       method: 'POST',
@@ -32,12 +44,25 @@ export async function deleteAccount() {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
+      signal: controller?.signal,
     })
     if (res.status === 404) return { ok: false, reason: 'not-deployed' }
     if (!res.ok) return { ok: false, reason: 'failed' }
-    const body = await res.json().catch(() => ({}))
-    return body?.ok ? { ok: true } : { ok: false, reason: 'failed' }
+    if (res.status === 204) return { ok: true }
+    const text = await res.text().catch(() => '')
+    if (!text.trim()) return { ok: true }
+    let body = null
+    try {
+      body = JSON.parse(text)
+    } catch {
+      return { ok: false, reason: 'failed' }
+    }
+    if (body?.ok) return { ok: true }
+    if (body && typeof body === 'object' && Object.keys(body).length === 0) return { ok: true }
+    return { ok: false, reason: 'failed' }
   } catch {
     return { ok: false, reason: 'failed' }
+  } finally {
+    if (timer !== null) clearTimeout(timer)
   }
 }

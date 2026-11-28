@@ -8,9 +8,21 @@ import {
   supabaseWritesEnabled,
   saveTrackToSupabase,
   deleteTrackFromSupabase,
-  adminErrorMessage,
   adminDeleteErrorMessage,
+  withTimeout,
+  SAVE_TIMEOUT_MS,
 } from '../lib/supabaseAdmin.js'
+import { useToast } from '../lib/toast.jsx'
+import {
+  useDebouncedValue,
+  sortRows,
+  paginateRows,
+  pageCountFor,
+  clampPage,
+  LIST_PAGE_SIZES,
+} from './lib/listUtils.js'
+import ConfirmDialog from './components/ConfirmDialog.jsx'
+import './lists.css'
 import {
   getMergedTracks,
   restoreAdminTrack,
@@ -22,8 +34,8 @@ import {
 } from '../lib/adminStore.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useI18n } from '../lib/i18n.js'
+import FallbackBanner from './FallbackBanner.jsx'
 
-const PAGE_SIZE = 20
 const STATUS_VALUES = ['draft', 'scheduled', 'published', 'unlisted']
 const GENRES = ['Devotional', 'Love', 'Melody', 'Siddhar', 'Sivan']
 
@@ -44,20 +56,24 @@ export default function TracksAdmin() {
   const [showDeleted, setShowDeleted] = useState(false)
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState(new Set())
-  const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
+  const [confirmState, setConfirmState] = useState(null) // { kind: 'delete'|'bulkDelete', track? }
+  const [sort, setSort] = useState({ key: 'title', dir: 'asc' })
+  const [pageSize, setPageSize] = useState(25)
+  const showToast = useToast()
 
   const statusLabel = (s) => t(STATUS_LABEL_KEYS[normalizeStatus(s)] || 'admin.statusDraft')
   const genreLabel = (g) => (GENRE_LABEL_KEYS[g] ? t(GENRE_LABEL_KEYS[g]) : g || '—')
 
   // Supabase read layer (B1, all statuses for admin); static catalog +
   // local overrides are the fallback.
-  const { data: sbTracks } = useTracks({ publishedOnly: false })
-  const { data: sbAlbums } = useAlbums()
+  const { data: sbTracks, isLoading: tracksLoading, refetch: refetchTracks } = useTracks({ publishedOnly: false })
+  const { data: sbAlbums, isLoading: albumsLoading, refetch: refetchAlbums } = useAlbums()
   const adminTracks = useMemo(() => getMergedTracks(sbTracks || catalogTracks), [version, sbTracks])
   const albumOptions = sbAlbums || catalogAlbums
+  const debouncedSearch = useDebouncedValue(search)
   const visible = useMemo(() => {
-    const q = search.trim().toLowerCase()
+    const q = debouncedSearch.trim().toLowerCase()
     return adminTracks.filter((tr) => {
       if (!showDeleted && tr.status === 'deleted') return false
       if (showDeleted && tr.status !== 'deleted') return false
@@ -69,11 +85,43 @@ export default function TracksAdmin() {
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q))
     })
-  }, [adminTracks, search, albumFilter, genreFilter, statusFilter, showDeleted])
+  }, [adminTracks, debouncedSearch, albumFilter, genreFilter, statusFilter, showDeleted])
 
-  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE))
-  const currentPage = Math.min(page, pageCount)
-  const pageTracks = visible.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+  const trackSortValue = (tr, key) => {
+    if (key === 'title') return tr.titleTa || tr.titleEn || ''
+    if (key === 'artist') return tr.artist || ''
+    if (key === 'album') return tr.album || ''
+    if (key === 'plays') return Number(tr.plays || 0)
+    return ''
+  }
+  const trackSortKind = (key) => (key === 'plays' ? 'number' : 'text')
+  const sorted = useMemo(
+    () => sortRows(visible, sort.key, sort.dir, trackSortValue, trackSortKind(sort.key)),
+    [visible, sort],
+  )
+  const pageCount = pageCountFor(sorted.length, pageSize)
+  const currentPage = clampPage(page, sorted.length, pageSize)
+  const pageTracks = paginateRows(sorted, currentPage, pageSize)
+
+  const toggleSort = (key) => {
+    setSort((prev) => (prev.key === key
+      ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+      : { key, dir: 'asc' }))
+    setPage(1)
+  }
+  const sortHeader = (key, label) => (
+    <button
+      type="button"
+      className="list-sort-btn"
+      onClick={() => toggleSort(key)}
+      aria-label={`${label} — ${sort.key === key && sort.dir === 'desc' ? t('admin.sortDesc') : t('admin.sortAsc')}`}
+    >
+      {label}
+      <span className="list-sort-arrow" aria-hidden="true">
+        {sort.key === key ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}
+      </span>
+    </button>
+  )
 
   const toggleSelect = (id) => {
     setSelected((prev) => {
@@ -98,27 +146,35 @@ export default function TracksAdmin() {
 
   const bulkSetStatus = async (status) => {
     if (selected.size === 0) return
+    // H3: defense in depth — RLS is the real gate, but a non-admin
+    // must never reach the write loop at all.
+    if (!isAdmin) {
+      setError(t('admin.notAdmin'))
+      return
+    }
     setError('')
     // Supabase path (B1): 'unlisted' is stored as 'draft' (DB check
     // allows draft/scheduled/published only). A failed write stops
     // the batch with a clear message — no silent local fallback.
     if (supabaseWritesEnabled()) {
+      // M33: keep going through failures and report per-track — the
+      // old loop broke on the first failure, leaving earlier tracks
+      // published with only a count reported. H1: tracks are saved
+      // by slug as well as by dbId (fallback-served tracks have no
+      // dbId but do have a DB row), so nothing is silently skipped.
       let done = 0
-      let skipped = 0
+      const failed = []
       for (const id of selected) {
         const track = adminTracks.find((tr) => tr.id === id)
-        // L5: tracks without a DB row are skipped — count them and say
-        // so instead of silently reporting a smaller number.
-        if (!track || !track.dbId) {
-          skipped += 1
+        if (!track) {
+          failed.push(id)
           continue
         }
         try {
           await saveTrackToSupabase({ ...track, status })
           done += 1
-        } catch (err) {
-          setError(adminErrorMessage(err, t))
-          break
+        } catch {
+          failed.push(track.titleTa || track.titleEn || track.id)
         }
       }
       if (done > 0) {
@@ -127,10 +183,10 @@ export default function TracksAdmin() {
           action: `Bulk ${status === 'published' ? 'published' : 'unpublished'} tracks`,
           detail: `${done} track(s) → ${status}`,
         })
-        const skippedNote = skipped > 0 ? ` ${t('admin.bulkStatusSkipped', { count: skipped })}` : ''
-        setNotice(t('admin.bulkStatusSet', { count: done, status: statusLabel(status) }) + skippedNote)
-      } else if (skipped > 0) {
-        setError(t('admin.bulkStatusSkipped', { count: skipped }))
+        showToast(t('admin.bulkStatusSet', { count: done, status: statusLabel(status) }))
+      }
+      if (failed.length > 0) {
+        setError(t('admin.bulkStatusFailed', { count: failed.length, titles: failed.join(', ') }))
       }
       setSelected(new Set())
       setVersion((v) => v + 1)
@@ -140,13 +196,25 @@ export default function TracksAdmin() {
     setError(t('admin.dbNotConnected'))
   }
 
-  const handleDelete = async (track) => {
+  // Delete is a hard delete in the DB — there is no soft-delete to
+  // undo, so no Undo toast is offered (saying so honestly instead
+  // of faking one).
+  const handleDelete = (track) => {
+    setConfirmState({ kind: 'delete', track })
+  }
+
+  const doDeleteTrack = async (track) => {
     const title = track.titleTa || track.titleEn || track.id
-    if (!window.confirm(t('admin.confirmDelete', { title }))) return
+    // H3: defense in depth — RLS is the real gate.
+    if (!isAdmin) {
+      setError(t('admin.notAdmin'))
+      return
+    }
     setError('')
-    // Supabase rows are hard-deleted (no 'deleted' status in the DB);
-    // tracks without a DB row cannot be deleted from here.
-    if (supabaseWritesEnabled() && track.dbId) {
+    // Supabase rows are hard-deleted (no 'deleted' status in the DB).
+    // H1: delete works by slug too — fallback-served tracks have no
+    // dbId but deleteTrackFromSupabase resolves them by slug.
+    if (supabaseWritesEnabled()) {
       try {
         await deleteTrackFromSupabase(track)
       } catch (err) {
@@ -154,7 +222,12 @@ export default function TracksAdmin() {
         return
       }
       logActivity({ actor: user?.email || 'Admin', action: 'Deleted track', detail: title })
-      setNotice(t('admin.trackDeleted', { title }))
+      showToast(t('admin.itemDeleted', { title }))
+      setSelected((prev) => {
+        const next = new Set(prev)
+        next.delete(track.id)
+        return next
+      })
       setVersion((v) => v + 1)
       return
     }
@@ -163,12 +236,77 @@ export default function TracksAdmin() {
     setError(t('admin.dbNotConnected'))
   }
 
+  const doBulkDelete = async () => {
+    if (selected.size === 0) return
+    if (!isAdmin) {
+      setError(t('admin.notAdmin'))
+      return
+    }
+    setError('')
+    if (!supabaseWritesEnabled()) {
+      setError(t('admin.dbNotConnected'))
+      return
+    }
+    let done = 0
+    const failed = []
+    for (const id of selected) {
+      const track = adminTracks.find((tr) => tr.id === id)
+      if (!track) {
+        failed.push(id)
+        continue
+      }
+      try {
+        await deleteTrackFromSupabase(track)
+        done += 1
+      } catch {
+        failed.push(track.titleTa || track.titleEn || track.id)
+      }
+    }
+    if (done > 0) {
+      logActivity({ actor: user?.email || 'Admin', action: 'Bulk deleted tracks', detail: `${done} track(s)` })
+      showToast(t('admin.bulkDeleteResult', { done, total: selected.size }))
+    }
+    if (failed.length > 0) {
+      setError(t('admin.bulkDeleteFailed', { count: failed.length, titles: failed.join(', ') }))
+    }
+    setSelected(new Set())
+    setVersion((v) => v + 1)
+  }
+
+  // Row-level Unpublish: prefer unpublishing over deleting a
+  // published track. Uses the existing save path.
+  const handleUnpublish = async (track) => {
+    const title = track.titleTa || track.titleEn || track.id
+    if (!isAdmin) {
+      setError(t('admin.notAdmin'))
+      return
+    }
+    setError('')
+    if (!supabaseWritesEnabled()) {
+      setError(t('admin.dbNotConnected'))
+      return
+    }
+    try {
+      await withTimeout(
+        saveTrackToSupabase({ ...track, status: 'unlisted' }),
+        SAVE_TIMEOUT_MS,
+        'Track unpublish',
+      )
+    } catch (err) {
+      setError(err?.code === 'timeout' ? t('admin.saveTimeout') : adminDeleteErrorMessage(err, t))
+      return
+    }
+    logActivity({ actor: user?.email || 'Admin', action: 'Unpublished track', detail: title })
+    showToast(t('admin.trackUnpublished', { title }))
+    setVersion((v) => v + 1)
+  }
+
   const handleRestore = async (track) => {
     const title = track.titleTa || track.titleEn || track.id
     restoreAdminTrack(track.id)
     logActivity({ actor: user?.email || 'Admin', action: 'Restored track', detail: title })
     await invalidateCaches(track.id)
-    setNotice(t('admin.trackRestored', { title }))
+    showToast(t('admin.trackRestored', { title }))
     setVersion((v) => v + 1)
   }
 
@@ -186,15 +324,31 @@ export default function TracksAdmin() {
         </button>
       </div>
 
-      {notice && (
-        <div className="admin-notice" role="status" aria-live="polite">
-          {notice}
-          <button type="button" className="admin-notice-close" onClick={() => setNotice('')} aria-label={t('common.close')}>
-            ×
+      {error && (
+        <div className="admin-notice admin-notice-warn" role="alert" aria-live="polite">
+          {error}
+          <button
+            type="button"
+            className="admin-btn admin-btn-small"
+            onClick={() => {
+              setError('')
+              void refetchTracks()
+              void refetchAlbums()
+            }}
+            style={{ marginLeft: 12 }}
+          >
+            {t('admin.fallbackRetry')}
           </button>
         </div>
       )}
-      {error && <div className="admin-notice admin-notice-warn" role="alert" aria-live="polite">{error}</div>}
+
+      <FallbackBanner
+        loading={tracksLoading || albumsLoading}
+        onRetry={() => {
+          void refetchTracks()
+          void refetchAlbums()
+        }}
+      />
 
       <div className="admin-toolbar">
         <input
@@ -232,6 +386,19 @@ export default function TracksAdmin() {
           <input type="checkbox" checked={showDeleted} onChange={(e) => { setShowDeleted(e.target.checked); setPage(1) }} />
           {t('admin.statusDeleted')}
         </label>
+        <label className="list-page-size">
+          {t('admin.rowsPerPage')}
+          <select
+            className="admin-input"
+            value={pageSize}
+            onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }}
+            aria-label={t('admin.rowsPerPage')}
+          >
+            {LIST_PAGE_SIZES.map((size) => (
+              <option key={size} value={size}>{size}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {selected.size > 0 && (
@@ -243,19 +410,32 @@ export default function TracksAdmin() {
           <button type="button" className="admin-btn admin-btn-small" onClick={() => bulkSetStatus('unlisted')}>
             {t('common.unpublish')}
           </button>
+          <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => setConfirmState({ kind: 'bulkDelete' })}>
+            {t('admin.bulkDelete')}
+          </button>
           <button type="button" className="admin-btn admin-btn-small admin-btn-ghost" onClick={() => setSelected(new Set())}>
             {t('common.cancel')}
           </button>
         </div>
       )}
 
-      {pageTracks.length === 0 ? (
+      {tracksLoading ? (
+        <div className="list-skeleton" aria-busy="true" aria-label={t('admin.loadingRows')}>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className="list-skeleton-row" />
+          ))}
+        </div>
+      ) : pageTracks.length === 0 ? (
         <div className="admin-empty">
           <h2>{t('admin.noTracksFound')}</h2>
           <p>{t('admin.noTracksFoundHint')}</p>
+          <button type="button" className="admin-btn admin-btn-primary" onClick={() => navigate('/admin/tracks/new')}>
+            {t('admin.addFirstTrack')}
+          </button>
         </div>
       ) : (
-        <div className="admin-table-wrap">
+        <>
+        <div className="admin-table-wrap list-table-wrap">
           <table className="admin-table">
             <thead>
               <tr>
@@ -268,12 +448,12 @@ export default function TracksAdmin() {
                   />
                 </th>
                 <th scope="col">{t('admin.cover')}</th>
-                <th scope="col">{t('admin.title')}</th>
-                <th scope="col">{t('admin.artist')}</th>
-                <th scope="col">{t('admin.album')}</th>
+                <th scope="col" aria-sort={sort.key === 'title' ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>{sortHeader('title', t('admin.title'))}</th>
+                <th scope="col" aria-sort={sort.key === 'artist' ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>{sortHeader('artist', t('admin.artist'))}</th>
+                <th scope="col" aria-sort={sort.key === 'album' ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>{sortHeader('album', t('admin.album'))}</th>
                 <th scope="col">{t('admin.genre')}</th>
                 <th scope="col">{t('admin.status')}</th>
-                <th scope="col">{t('admin.plays')}</th>
+                <th scope="col" aria-sort={sort.key === 'plays' ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>{sortHeader('plays', t('admin.plays'))}</th>
                 <th scope="col">{t('common.actions')}</th>
               </tr>
             </thead>
@@ -304,6 +484,9 @@ export default function TracksAdmin() {
                     <span className={`admin-badge admin-badge-${normalizeStatus(tr.status)}`}>
                       {statusLabel(tr.status)}
                     </span>
+                    {normalizeStatus(tr.status) === 'scheduled' && (tr.scheduledAt || tr.releaseDate) && (
+                      <span className="admin-cell-sub"> {tr.scheduledAt || tr.releaseDate}</span>
+                    )}
                   </td>
                   <td>{Number(tr.plays || 0).toLocaleString(lang)}</td>
                   <td>
@@ -317,6 +500,11 @@ export default function TracksAdmin() {
                           <Link to={`/admin/tracks/${tr.id}/edit`} className="admin-btn admin-btn-small">
                             {t('common.edit')}
                           </Link>
+                          {isAdmin && normalizeStatus(tr.status) === 'published' && (
+                            <button type="button" className="admin-btn admin-btn-small" onClick={() => handleUnpublish(tr)}>
+                              {t('common.unpublish')}
+                            </button>
+                          )}
                           {isAdmin && (
                             <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => handleDelete(tr)}>
                               {t('common.delete')}
@@ -331,7 +519,77 @@ export default function TracksAdmin() {
             </tbody>
           </table>
         </div>
+        <div className="list-cards">
+          {pageTracks.map((tr) => (
+            <article key={tr.id} className="list-card">
+              {tr.cover ? (
+                <img src={tr.cover} alt="" className="list-card-thumb" />
+              ) : (
+                <img src="/assets/nandha-logo.png" alt="" className="list-card-thumb" />
+              )}
+              <div className="list-card-body">
+                <span className="list-card-title">{tr.titleTa || tr.titleEn || '—'}</span>
+                <span className="list-card-sub">
+                  {tr.titleEn && tr.titleTa ? tr.titleEn : ''}{tr.artist ? ` · ${tr.artist}` : ''}
+                </span>
+                <span className="list-card-meta">
+                  <span className={`admin-badge admin-badge-${normalizeStatus(tr.status)}`}>
+                    {statusLabel(tr.status)}
+                  </span>
+                  {normalizeStatus(tr.status) === 'scheduled' && (tr.scheduledAt || tr.releaseDate) && (
+                    <span className="admin-cell-sub">{tr.scheduledAt || tr.releaseDate}</span>
+                  )}
+                </span>
+              </div>
+              <details className="list-card-menu">
+                <summary aria-label={`${t('common.actions')} — ${tr.titleTa || tr.titleEn || tr.id}`}>⋯</summary>
+                <div className="list-card-menu-actions">
+                  <Link to={`/admin/tracks/${tr.id}/edit`} className="admin-btn admin-btn-small">
+                    {t('common.edit')}
+                  </Link>
+                  {isAdmin && normalizeStatus(tr.status) === 'published' && (
+                    <button type="button" className="admin-btn admin-btn-small" onClick={() => handleUnpublish(tr)}>
+                      {t('common.unpublish')}
+                    </button>
+                  )}
+                  {isAdmin && (
+                    <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => handleDelete(tr)}>
+                      {t('common.delete')}
+                    </button>
+                  )}
+                </div>
+              </details>
+            </article>
+          ))}
+        </div>
+        </>
       )}
+
+      <ConfirmDialog
+        open={confirmState?.kind === 'delete'}
+        title={t('admin.confirmDelete', { title: confirmState?.track?.titleTa || confirmState?.track?.titleEn || confirmState?.track?.id || '' })}
+        body={t('admin.deleteNoUndo')}
+        confirmLabel={t('common.delete')}
+        danger
+        onConfirm={() => {
+          const track = confirmState.track
+          setConfirmState(null)
+          void doDeleteTrack(track)
+        }}
+        onCancel={() => setConfirmState(null)}
+      />
+      <ConfirmDialog
+        open={confirmState?.kind === 'bulkDelete'}
+        title={t('admin.bulkDelete')}
+        body={t('admin.bulkDeleteConfirm', { count: selected.size })}
+        confirmLabel={t('admin.bulkDelete')}
+        danger
+        onConfirm={() => {
+          setConfirmState(null)
+          void doBulkDelete()
+        }}
+        onCancel={() => setConfirmState(null)}
+      />
 
       <div className="admin-pagination">
         <button type="button" className="admin-btn admin-btn-small" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>

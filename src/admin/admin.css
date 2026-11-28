@@ -25,9 +25,13 @@
   text-align: left;
 }
 
-/* --- sidebar --- */
+/* --- sidebar (fixed left rail, 232px) --- */
 .admin-sidebar {
-  width: 240px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 232px;
   flex-shrink: 0;
   background: var(--admin-slate);
   color: var(--admin-white);
@@ -35,6 +39,9 @@
   flex-direction: column;
   padding: 16px 12px;
   gap: 16px;
+  overflow-y: auto;
+  z-index: 40;
+  box-sizing: border-box;
 }
 .admin-brand {
   display: flex;
@@ -89,6 +96,19 @@
   flex-direction: column;
   gap: 2px;
 }
+/* Grouped nav: Dashboard sits ungrouped at the top; group headings
+   are small, quiet sentence-case labels — never all-caps. */
+.admin-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.admin-nav-group-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--admin-muted);
+  padding: 12px 12px 4px;
+}
 .admin-nav-link {
   display: block;
   padding: 9px 12px;
@@ -117,8 +137,13 @@
 .admin-main {
   flex: 1;
   min-width: 0;
+  margin-left: 232px;
   display: flex;
   flex-direction: column;
+}
+/* Status strip sits under the top bar, aligned with the content. */
+.admin-main > .admin-status-strip {
+  margin: 16px 24px 0;
 }
 .admin-topbar {
   display: flex;
@@ -128,26 +153,150 @@
   background: var(--admin-surface);
   border-bottom: 1px solid var(--admin-border);
 }
-.admin-topbar-user {
+.admin-topbar-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
 }
-/* Mobile nav toggle (Fix 1): hidden on desktop, hamburger below 720px. */
-.admin-nav-toggle {
-  display: none;
+.admin-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
 }
-.admin-user-email {
+/* Breadcrumb: links for ancestors, plain text for the current page. */
+.admin-crumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 14px;
+  min-width: 0;
+}
+.admin-crumbs li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.admin-crumbs li:not(:last-child)::after {
+  content: '/';
+  color: var(--admin-muted);
+}
+.admin-crumbs li[aria-current='page'] {
+  color: var(--admin-text);
+  font-weight: 600;
+}
+.admin-crumbs a {
+  color: var(--admin-muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.admin-crumbs a:hover {
+  color: var(--admin-white);
+  text-decoration: underline;
+}
+/* Top-bar dropdown menus ("+ New", account). */
+.admin-menu-wrap {
+  position: relative;
+}
+.admin-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  border-radius: 12px;
+  padding: 6px;
+  z-index: 60;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+.admin-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: var(--admin-text);
+  font: inherit;
   font-size: 14px;
   font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.admin-menu-item:hover {
+  background: var(--admin-surface-2);
+}
+/* Environment chip: Live (green) / Demo data (amber) / Checking… (neutral). */
+.admin-env-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--admin-border);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.admin-env-chip::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.admin-env-chip--live {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #86efac;
+}
+.admin-env-chip--demo {
+  background: var(--admin-sand);
+  color: #92400e;
+  border-color: var(--admin-gold);
+}
+.admin-env-chip--checking {
+  background: var(--admin-surface-2);
+  color: var(--admin-muted);
+}
+/* Signed-in email button (opens the account menu). */
+.admin-account-btn {
+  max-width: 100%;
+}
+.admin-account-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
 }
 .admin-topbar-field {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
   font-weight: 600;
+}
+.admin-topbar-field select {
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  font: inherit;
+  font-size: 14px;
 }
 .admin-content {
   padding: 24px;
@@ -155,6 +304,71 @@
   width: 100%;
   margin: 0 auto;
   box-sizing: border-box;
+}
+
+/* --- loading skeleton shell (auth gate) --- */
+.admin-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.admin-skeleton {
+  background: var(--admin-surface-2);
+  border-radius: 8px;
+}
+.admin-skeleton-rail {
+  width: 232px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 12px;
+  box-sizing: border-box;
+}
+.admin-skeleton--brand {
+  height: 36px;
+  margin-bottom: 8px;
+}
+.admin-skeleton--nav {
+  height: 38px;
+}
+.admin-skeleton--topbar {
+  height: 40px;
+}
+.admin-skeleton--line {
+  height: 18px;
+  margin-bottom: 12px;
+}
+.admin-skeleton--line-short {
+  width: 55%;
+}
+.admin-skeleton--block {
+  height: 220px;
+  margin-top: 8px;
+}
+
+/* --- mobile tab bar + sheets (hidden on desktop) --- */
+.admin-tabbar {
+  display: none;
+}
+.admin-sheet-layer {
+  display: none;
+}
+
+/* Reduced motion: the shell uses no animation; keep it that way. */
+@media (prefers-reduced-motion: reduce) {
+  .admin-shell *,
+  .admin-shell *::before,
+  .admin-shell *::after {
+    transition: none !important;
+    animation: none !important;
+  }
 }
 
 /* --- page furniture --- */
@@ -307,7 +521,13 @@
 .admin-sidebar-social a:focus-visible,
 .admin-link:focus-visible,
 .admin-input:focus-visible,
-select.admin-input:focus-visible {
+select.admin-input:focus-visible,
+.admin-menu-item:focus-visible,
+.admin-tab:focus-visible,
+.admin-sheet-close:focus-visible,
+.admin-sheet-backdrop:focus-visible,
+.admin-crumbs a:focus-visible,
+.admin-topbar-field select:focus-visible {
   outline: 2px solid var(--admin-gold);
   outline-offset: 2px;
 }
@@ -776,7 +996,9 @@ select.admin-input:focus-visible {
   .admin-btn-small,
   .admin-nav-link,
   .admin-input,
-  select.admin-input {
+  select.admin-input,
+  .admin-topbar-field select,
+  .admin-menu-item {
     min-height: 44px;
   }
   .admin-btn-small {
@@ -786,27 +1008,29 @@ select.admin-input:focus-visible {
     display: flex;
     align-items: center;
   }
+  /* Desktop sidebar stays hidden; the bottom tab bar is the nav. */
   .admin-sidebar {
-    width: auto;
-    padding: 12px;
+    display: none;
   }
-  .admin-nav {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 4px;
+  .admin-skeleton-rail {
+    display: none;
   }
-  .admin-nav-link {
-    padding: 7px 10px;
+  .admin-main {
+    margin-left: 0;
   }
-  .admin-sidebar-foot {
-    flex-direction: row;
-    align-items: center;
+  .admin-main > .admin-status-strip {
+    margin: 12px 16px 0;
   }
   .admin-content {
     padding: 16px;
+    /* Clear the fixed 56px tab bar + safe area. */
+    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 16px);
   }
   .admin-topbar {
     padding: 12px 16px;
+  }
+  .admin-account-email {
+    max-width: 120px;
   }
   .admin-stat-grid {
     grid-template-columns: 1fr;
@@ -814,40 +1038,130 @@ select.admin-input:focus-visible {
   .admin-page-head {
     flex-direction: column;
   }
-  /* --- mobile nav (Fix 1): the sidebar is hidden until the hamburger
-     in the topbar opens it; picking a section closes it again. --- */
-  .admin-nav-toggle {
-    display: inline-flex;
+  /* --- bottom tab bar: 4 items, 56px + safe area. Active tab gets
+     an amber underline bar + label, not just a colour change. --- */
+  .admin-tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    align-items: stretch;
+    height: calc(56px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-sizing: border-box;
+    background: var(--admin-surface);
+    border-top: 1px solid var(--admin-border);
+  }
+  .admin-tab {
+    position: relative;
+    display: flex;
     align-items: center;
     justify-content: center;
+    min-width: 0;
+    min-height: 44px;
+    padding: 6px 4px;
+    background: none;
+    border: none;
+    color: var(--admin-muted);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    text-align: center;
+    cursor: pointer;
+  }
+  .admin-tab-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .admin-tab.is-active {
+    color: var(--admin-text);
+  }
+  .admin-tab.is-active::after {
+    content: '';
+    position: absolute;
+    left: 16%;
+    right: 16%;
+    bottom: 4px;
+    height: 3px;
+    border-radius: 999px;
+    background: var(--admin-gold);
+  }
+  /* Upload is the primary centre action: amber, dark text. */
+  .admin-tab--upload {
+    align-self: center;
+    height: 44px;
+    margin: 0 6px;
+    border-radius: 12px;
+    background: var(--admin-gold);
+    color: var(--admin-slate);
+  }
+  .admin-tab--upload.is-active {
+    color: var(--admin-slate);
+  }
+  .admin-tab--upload.is-active::after {
+    background: var(--admin-slate);
+  }
+  /* --- bottom sheets (Content / More) --- */
+  .admin-sheet-layer {
+    display: contents;
+  }
+  .admin-sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: none;
+    background: rgba(0, 0, 0, 0.5);
+    cursor: pointer;
+  }
+  .admin-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 61;
+    max-height: 70vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+    box-sizing: border-box;
+    background: var(--admin-surface);
+    border-top: 1px solid var(--admin-border);
+    border-radius: 16px 16px 0 0;
+  }
+  .admin-sheet-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 44px;
+    padding: 0 4px;
+  }
+  .admin-sheet-title {
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .admin-sheet-close {
     min-width: 44px;
     min-height: 44px;
     padding: 0 12px;
-    font-size: 1.25rem;
-    line-height: 1;
-    background: var(--admin-surface-2);
-    color: var(--admin-text);
-    border: 1px solid var(--admin-border);
-    border-radius: 8px;
-    cursor: pointer;
-    flex-shrink: 0;
   }
-  .admin-sidebar {
-    display: none;
+  .admin-sheet-signout {
+    justify-content: flex-start;
+    padding-left: 12px;
   }
-  .admin-shell--nav-open .admin-sidebar {
-    display: flex;
-  }
-  .admin-shell--nav-open .admin-nav {
-    flex-direction: column;
-    flex-wrap: nowrap;
-  }
-  .admin-shell--nav-open .admin-sidebar-foot {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .admin-user-email {
-    overflow-wrap: anywhere;
+  .admin-sheet .admin-sidebar-social {
+    border-top: 1px solid var(--admin-border);
+    padding-top: 8px;
+    margin-top: 4px;
   }
   .admin-toolbar .admin-input {
     flex: 1 1 160px;

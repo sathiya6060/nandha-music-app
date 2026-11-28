@@ -1,9 +1,12 @@
+import { Link } from 'react-router-dom'
 import { useI18n } from '../lib/i18n.js'
 import { usePlayer } from '../player/PlayerContext.jsx'
 
 /**
  * Track card (grid / horizontal scroll).
- * Props: { track }. Click plays the track via usePlayer().
+ * Props: { track }. The cover plays the track; the title is a real
+ * /track/ link (M20 — before this, no track link existed anywhere
+ * in-app, so a card could only be played, never opened).
  */
 export default function TrackCard({ track }) {
   const { t } = useI18n()
@@ -34,11 +37,11 @@ export default function TrackCard({ track }) {
             N
           </span>
         )}
-        <h3 className="track-card__title">
-          {title}
-        </h3>
-        <p className="track-card__artist">{track.artist || 'Nandha Music'}</p>
       </button>
+      <h3 className="track-card__title">
+        <Link to={`/track/${track.id}`}>{title}</Link>
+      </h3>
+      <p className="track-card__artist">{track.artist || 'Nandha Music'}</p>
     </article>
   )
 }

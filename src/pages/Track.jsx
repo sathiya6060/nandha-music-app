@@ -1,13 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useI18n } from '../lib/i18n.js'
-import { getTrack as getFallbackTrack } from '../data/catalog.js'
-import { useTrack, useTracks } from '../lib/supabaseCatalog.js'
+import { getTrack as getFallbackTrack, tracks as fallbackTracks } from '../data/catalog.js'
+import { useTrack, useTracks, findByIdOrSlug } from '../lib/supabaseCatalog.js'
 import { shareOrDownloadStoryCard } from '../lib/shareCard.js'
 import TrackRow from '../components/TrackRow.jsx'
 import PinButton from '../components/PinButton.jsx'
 import HideButton from '../components/HideButton.jsx'
 import EmptyState from '../components/EmptyState.jsx'
+import { DetailLoading, DetailLoadError } from '../components/DetailStates.jsx'
 import Icon from '../components/Icons.jsx'
 import { usePlayer, formatTime } from '../player/PlayerContext.jsx'
 import { setPageMeta, resetPageMeta } from '../lib/pageMeta.js'
@@ -15,10 +16,10 @@ import { setPageMeta, resetPageMeta } from '../lib/pageMeta.js'
 /**
  * Route '/track/:id' — deep link to a single song (H1, OpenCodeReview
  * 26 Nov 2026: shared links used to be dead — /track/:id had no route
- * and the catch-all sent the visitor home). Resolves the track, shows
- * it, and auto-opens the player for it (playback is attempted; if the
- * browser blocks autoplay without a gesture the track is loaded paused
- * and the visitor taps play). Unknown ids show the not-found state.
+ * and the catch-all sent the visitor home). Resolves the track and
+ * shows it; playback starts only when the visitor presses Play (B2:
+ * the old auto-open + autoplay on direct load meant the track page
+ * itself was never seen). Unknown ids show the not-found state.
  */
 export default function Track() {
   const { t } = useI18n()
@@ -27,15 +28,22 @@ export default function Track() {
   const [shared, setShared] = useState(false)
   const [cardState, setCardState] = useState('')
   const [cardBusy, setCardBusy] = useState(false)
-  const playedForRef = useRef(null)
 
   // Supabase read layer first (B1); the static catalog is the sync
   // fallback so there is no loading flash and the page still works
   // offline / when Supabase is unreachable.
-  const { data: sbTrack } = useTrack(id)
-  const { data: sbTracks } = useTracks()
-  const track = sbTrack ?? getFallbackTrack(id)
-  const allTracks = sbTracks || []
+  const { data: sbTrack, isLoading: trackLoading, isError: trackError, refetch: refetchTrack } = useTrack(id)
+  const { data: sbTracks, isLoading: tracksLoading } = useTracks()
+  // M17: resolve from the already-loaded list first — on client-side
+  // nav from Home the list is in hand, so the page renders at once
+  // instead of flashing "No results found" while the single fetch
+  // is still in flight (live repro 28 Nov 2026: 1 s flash in the
+  // harness, longer in the cloud browser). The single fetch is the
+  // fallback for direct loads; the static catalog is the last resort.
+  const track = findByIdOrSlug(sbTracks, id) ?? sbTrack ?? getFallbackTrack(id)
+  // L20: the "more from this album" list reads this too — the
+  // Supabase-only list left it empty while the catalog was loading.
+  const allTracks = sbTracks || fallbackTracks
 
   // Per-route title + OG tags (S7): "<song> — <artist> | Nandha Music",
   // absolute og:url + the track cover. Cleanup restores site defaults.
@@ -54,18 +62,21 @@ export default function Track() {
     return resetPageMeta
   }, [track])
 
-  // Deep link: load the track and open the player for it. Guarded by
-  // track id so StrictMode's double-effect in dev doesn't restart it.
-  useEffect(() => {
-    if (!track || playedForRef.current === track.id) return
-    playedForRef.current = track.id
-    const current = player?.track
-    if (!current || current.id !== track.id) {
-      player?.play?.(track, allTracks)
-    }
-    player?.openPlayer?.()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [track?.id])
+  // B2: no auto-open, no autoplay on direct load — the visitor sees
+  // the track page first and presses Play. (The old effect played the
+  // track and opened the full player here, so the page was never seen.)
+
+  // M17: while either query is still in flight and nothing has
+  // resolved yet, show a loading state — never the not-found state.
+  if ((trackLoading || tracksLoading) && !track) {
+    return <DetailLoading />
+  }
+
+  // The single fetch failed (a query error, not a 404 — fetchTrack
+  // throws on one): offer a retry instead of a dead-end "No results".
+  if (trackError && !track) {
+    return <DetailLoadError onRetry={() => refetchTrack()} />
+  }
 
   if (!track) {
     return (
@@ -87,7 +98,12 @@ export default function Track() {
   )
 
   function playTrack() {
-    player?.play?.(track, allTracks)
+    // M15: never play with an empty queue or a stale fallback object —
+    // re-resolve against the loaded tracks (Supabase first) so the
+    // queue and the played object carry lyrics + the fresh row.
+    const fresh = allTracks.find((tr) => tr.id === track.id) || track
+    const queue = allTracks.length > 0 ? allTracks : [fresh]
+    player?.play?.(fresh, queue)
     player?.openPlayer?.()
   }
 

@@ -1,0 +1,201 @@
+/* Admin redesign — lists (Section 3).
+ * Shared list styles for Tracks / Albums / Artists / Playlists /
+ * Lyrics. Brand tokens only: Amber #F59E0B, Charcoal Slate #1E293B,
+ * Warm Sand #FEF3C7, Steel Grey #64748B, White #FFFFFF. No gradients,
+ * no emoji. Focus ring is 2px amber everywhere.
+ */
+
+.list-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.list-sort-btn:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
+}
+
+.list-sort-btn .list-sort-arrow {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.list-page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  color: #1e293b;
+}
+
+.list-page-size select {
+  min-height: 36px;
+  border-radius: 6px;
+}
+
+/* Loading skeletons: grey bars in place of rows. */
+.list-skeleton {
+  display: grid;
+  gap: 8px;
+  padding: 12px 0;
+}
+
+.list-skeleton-row {
+  height: 48px;
+  border-radius: 8px;
+  background: #e2e8f0;
+  animation: list-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes list-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* Mobile stacked cards: hidden on desktop, shown below 720px. */
+.list-cards {
+  display: none;
+}
+
+.list-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px;
+  margin-bottom: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.list-card-thumb {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.list-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-card-title {
+  display: block;
+  font-weight: 600;
+  color: #1e293b;
+  overflow-wrap: anywhere;
+}
+
+.list-card-sub {
+  display: block;
+  margin-top: 2px;
+  color: #64748b;
+  overflow-wrap: anywhere;
+}
+
+.list-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.list-card-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.list-card-menu summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  color: #1e293b;
+}
+
+.list-card-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.list-card-menu summary:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
+}
+
+.list-card-menu-actions {
+  position: absolute;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+  padding: 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgb(30 41 59 / 0.16);
+}
+
+.list-card-menu-actions .admin-btn {
+  justify-content: flex-start;
+  min-height: 44px;
+}
+
+/* Lyrics rows: roomier inputs, same focus ring. */
+.list-lyric-row .admin-input {
+  min-height: 44px;
+}
+
+.list-lyric-row .admin-input:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 1px;
+}
+
+@media (max-width: 719px) {
+  .list-cards {
+    display: block;
+  }
+
+  .list-table-wrap {
+    display: none;
+  }
+
+  .list-sort-btn {
+    min-height: 44px;
+  }
+
+  .list-page-size select {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .list-skeleton-row {
+    animation: none;
+  }
+}

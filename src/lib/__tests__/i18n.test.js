@@ -3,7 +3,32 @@ import { describe, it, expect } from 'vitest'
 import en from '../../locales/en.js'
 import ta from '../../locales/ta.js'
 import hi from '../../locales/hi.js'
-import { pluralFormKey } from '../i18n.js'
+import { pluralFormKey, isKnownLocale } from '../i18n.js'
+
+describe('isKnownLocale (S8475 — localStorage language poisoning)', () => {
+  it('accepts the three real locales', () => {
+    expect(isKnownLocale('en')).toBe(true)
+    expect(isKnownLocale('ta')).toBe(true)
+    expect(isKnownLocale('hi')).toBe(true)
+  })
+
+  it('rejects prototype-chain keys that a plain lookup would accept', () => {
+    // LOCALES['__proto__'] is Object.prototype (truthy) — an own-property
+    // check is the whole fix; these must be false.
+    expect(isKnownLocale('__proto__')).toBe(false)
+    expect(isKnownLocale('constructor')).toBe(false)
+    expect(isKnownLocale('prototype')).toBe(false)
+  })
+
+  it('rejects anything else', () => {
+    expect(isKnownLocale('EN')).toBe(false)
+    expect(isKnownLocale('fr')).toBe(false)
+    expect(isKnownLocale('')).toBe(false)
+    expect(isKnownLocale(null)).toBe(false)
+    expect(isKnownLocale(undefined)).toBe(false)
+    expect(isKnownLocale(123)).toBe(false)
+  })
+})
 
 describe('plural i18n', () => {
   it('picks _one for 1 and _other for 0 / 2 / many', () => {

@@ -1,5 +1,17 @@
 // Site settings / EPK — bio, announcement, Artist Pick, press photos, contact,
 // plus Song of the Day (admin override for catalog.js getSongOfTheDay).
+//
+// Admin redesign §8: the EXISTING settings are grouped into labelled
+// sections. Branding shows the preview image + the brand colours
+// read-only (brand colours are fixed — no editor). A search / share
+// preview card shows title, description and preview image exactly as
+// saved. One Save carries a diff summary ("N changes — fields") vs
+// the loaded settings, in the button area and in the success toast.
+// Settings stay localStorage-backed (loadSiteSettings /
+// saveSiteSettings) — they are not moved to the DB.
+// Social links are NOT editable here: the sidebar links are
+// hardcoded in AdminLayout (another agent's file) with no shared
+// read path, so there is nothing for a settings field to read or write.
 import { useMemo, useState } from 'react'
 import { tracks as catalogTracks, REAL_TRACK_ID } from '../data/catalog.js'
 import { useTracks, getSongOfTheDayFrom } from '../lib/supabaseCatalog.js'
@@ -14,21 +26,55 @@ import {
 } from '../lib/adminStore.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useI18n } from '../lib/i18n.js'
+import { useToast } from '../lib/toast.jsx'
+import { SITE_URL } from '../lib/pageMeta.js'
+import { uploadCover } from '../lib/supabaseAdmin.js'
+import { changedFieldKeys } from './lib/analytics.js'
+import ConfirmDialog from './components/ConfirmDialog.jsx'
+import FallbackBanner from './FallbackBanner.jsx'
+import './dashboard.css'
+
+// Brand colours are fixed (user-provided 23 Nov 2026) — shown
+// read-only in the Branding section, never edited here.
+const BRAND_COLOURS = [
+  { name: 'Amber Gold', hex: '#F59E0B' },
+  { name: 'Charcoal Slate', hex: '#1E293B' },
+  { name: 'Warm Sand', hex: '#FEF3C7' },
+  { name: 'Steel Grey', hex: '#64748B' },
+  { name: 'Pure White', hex: '#FFFFFF' },
+]
+
+const FIELD_LABEL_KEYS = {
+  bioTa: 'admin.siteBioTa',
+  bioEn: 'admin.siteBioEn',
+  announcement: 'admin.announcement',
+  artistPickTrackId: 'admin.artistPick',
+  pressPhotos: 'admin.pressPhotos',
+  contactEmail: 'admin.contactEmail',
+  previewImage: 'admin.previewImage',
+}
 
 export default function SiteSettings() {
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const { t, lang } = useI18n()
+  const showToast = useToast()
   // Supabase read layer (B1, all statuses for admin); static catalog +
   // local overrides are the fallback. Site settings themselves stay
   // localStorage-backed (no DB table for them in this phase).
-  const { data: sbTracks } = useTracks({ publishedOnly: false })
+  const { data: sbTracks, isLoading: tracksLoading, refetch: refetchTracks } = useTracks({ publishedOnly: false })
   const adminTracks = useMemo(
     () => getMergedTracks(sbTracks || catalogTracks).filter((tr) => tr.status !== 'deleted'),
     [sbTracks],
   )
   const [form, setForm] = useState(() => loadSiteSettings())
+  // Snapshot of the loaded settings — the diff summary compares
+  // the live form against this, never against a re-read.
+  const [savedForm, setSavedForm] = useState(() => loadSiteSettings())
   const [pressPhotoInput, setPressPhotoInput] = useState('')
-  const [notice, setNotice] = useState('')
+  const [error, setError] = useState('')
+  const [pressPhotoUploading, setPressPhotoUploading] = useState(false)
+  const [pressPhotoError, setPressPhotoError] = useState('')
+  const [pendingPhotoIndex, setPendingPhotoIndex] = useState(null)
   const [sotdVersion, setSotdVersion] = useState(0)
 
   // Song of the Day pick: devotional tracks first; default Vaazhvinil Orumurayenum.
@@ -61,12 +107,32 @@ export default function SiteSettings() {
 
   const set = (key, value) => setForm((f) => ({ ...f, [key]: value }))
 
-  const onPressPhotoFile = (e) => {
+  // Diff vs the loaded settings, for the summary near Save and in
+  // the success toast. Field names come from the existing labels.
+  const changedKeys = useMemo(() => changedFieldKeys(savedForm, form), [savedForm, form])
+  const changedLabels = changedKeys.map((key) => t(FIELD_LABEL_KEYS[key] || key))
+  const diffSummary =
+    changedKeys.length > 0
+      ? t('admin.changesSummary', { count: changedKeys.length, fields: changedLabels.join(', ') })
+      : ''
+
+  const onPressPhotoFile = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    // Keep an object URL for the session; URLs typed in are persisted.
-    const url = URL.createObjectURL(file)
-    setForm((f) => ({ ...f, pressPhotos: [...(f.pressPhotos || []), url] }))
+    // H7: upload the photo to the covers bucket and store the public
+    // URL — a blob: URL "saved" to localStorage vanished on reload.
+    // Typed-in URLs are still persisted as-is.
+    setPressPhotoUploading(true)
+    setPressPhotoError('')
+    try {
+      const url = await uploadCover(file, 'press-photo')
+      setForm((f) => ({ ...f, pressPhotos: [...(f.pressPhotos || []), url] }))
+    } catch (err) {
+      setPressPhotoError(t('admin.pressPhotoUploadFailed', { detail: err?.message || String(err) }))
+    } finally {
+      setPressPhotoUploading(false)
+      e.target.value = ''
+    }
   }
 
   const addPressPhotoUrl = () => {
@@ -76,12 +142,15 @@ export default function SiteSettings() {
     setPressPhotoInput('')
   }
 
-  const removePressPhoto = (index) => {
-    setForm((f) => ({ ...f, pressPhotos: (f.pressPhotos || []).filter((_, i) => i !== index) }))
-  }
-
   const handleSave = async (e) => {
     e.preventDefault()
+    // H3: defense in depth — settings are localStorage-backed, but
+    // only an admin may change them.
+    if (!isAdmin) {
+      setError(t('admin.notAdmin'))
+      return
+    }
+    setError('')
     const saved = saveSiteSettings({
       bioTa: form.bioTa,
       bioEn: form.bioEn,
@@ -93,11 +162,18 @@ export default function SiteSettings() {
     })
     logActivity({ actor: user?.email || 'Admin', action: 'Updated site settings', detail: 'EPK / announcement / Artist Pick' })
     await invalidateCaches()
-    setNotice(t('admin.saved'))
+    showToast(t('admin.settingsSaved', { summary: diffSummary }))
+    setSavedForm(saved)
     setForm(saved)
   }
 
   const handleSaveSotd = async () => {
+    // H3: defense in depth — only an admin may change the pick.
+    if (!isAdmin) {
+      setError(t('admin.notAdmin'))
+      return
+    }
+    setError('')
     saveSongOfDay(sotdTrackId)
     logActivity({
       actor: user?.email || 'Admin',
@@ -105,12 +181,14 @@ export default function SiteSettings() {
       detail: sotdTrackId,
     })
     await invalidateCaches()
-    setNotice(t('admin.saved'))
+    showToast(t('admin.saved'))
     setSotdVersion((v) => v + 1)
   }
 
   const artistPick = adminTracks.find((tr) => tr.id === form.artistPickTrackId)
   const sotdTrack = adminTracks.find((tr) => tr.id === sotdTrackId)
+  const seoDescription = form.bioEn || t('admin.seoDefaultDesc')
+  const seoImage = form.previewImage || '/assets/nandha-og.jpg'
 
   return (
     <div className="admin-page">
@@ -120,99 +198,160 @@ export default function SiteSettings() {
         </div>
       </div>
 
-      {notice && <div className="admin-notice admin-notice-success" role="status" aria-live="polite">{notice}</div>}
+      {error && <div className="admin-notice admin-notice-warn" role="alert" aria-live="polite">{error}</div>}
+
+      <FallbackBanner
+        loading={tracksLoading}
+        onRetry={() => void refetchTracks()}
+      />
 
       <form className="admin-form" onSubmit={handleSave} noValidate>
-        <div className="admin-form-grid">
-          <label className="admin-field">
-            <span>{t('admin.siteBioTa')}</span>
-            <textarea className="admin-input admin-textarea" rows={5} value={form.bioTa || ''} onChange={(e) => set('bioTa', e.target.value)} />
-          </label>
-          <label className="admin-field">
-            <span>{t('admin.siteBioEn')}</span>
-            <textarea className="admin-input admin-textarea" rows={5} value={form.bioEn || ''} onChange={(e) => set('bioEn', e.target.value)} />
-          </label>
-        </div>
-
-        <label className="admin-field">
-          <span>{t('admin.announcement')}</span>
-          <input className="admin-input" value={form.announcement || ''} onChange={(e) => set('announcement', e.target.value)} />
-        </label>
-
-        <label className="admin-field">
-          <span>{t('admin.artistPick')}</span>
-          <select className="admin-input" value={form.artistPickTrackId || ''} onChange={(e) => set('artistPickTrackId', e.target.value)}>
-            <option value="">{t('common.none')}</option>
-            {adminTracks.map((tr) => (
-              <option key={tr.id} value={tr.id}>
-                {tr.titleTa || tr.titleEn} — {tr.artist || ''}
-              </option>
+        <section className="dash-section" aria-labelledby="admin-settings-branding">
+          <h2 className="dash-section-title" id="admin-settings-branding">{t('admin.sectionBranding')}</h2>
+          <p className="dash-section-note">{t('admin.brandColoursNote')}</p>
+          <ul className="dash-swatches" aria-label={t('admin.brandColours')}>
+            {BRAND_COLOURS.map((colour) => (
+              <li key={colour.hex} className="dash-swatch">
+                <span
+                  className="dash-swatch-chip"
+                  style={{ backgroundColor: colour.hex }}
+                  aria-hidden="true"
+                />
+                <span>{colour.name} · {colour.hex}</span>
+              </li>
             ))}
-          </select>
-          {artistPick && (
-            <span className="admin-field-hint">
-              {artistPick.titleTa || artistPick.titleEn}
-              {artistPick.artist ? ` — ${artistPick.artist}` : ''}
-            </span>
-          )}
-        </label>
+          </ul>
+          <label className="admin-field">
+            <span>{t('admin.previewImage')}</span>
+            <select className="admin-input" value={form.previewImage || '/assets/nandha-og.jpg'} onChange={(e) => set('previewImage', e.target.value)}>
+              <option value="/assets/nandha-og.jpg">Nandha Music — brand card (default)</option>
+              <option value="/assets/vaazhvinil-cover.jpg">Vaazhvinil Orumurayenum — song cover</option>
+              <option value="https://qldhyzgpxuzpsymongvf.supabase.co/storage/v1/object/public/covers/malaiyoram-veesiya-kaatre-cover-800.jpg">Malaiyoram Veesiya Kaatre — song cover</option>
+              <option value="https://qldhyzgpxuzpsymongvf.supabase.co/storage/v1/object/public/covers/marakka-mudiyuma-cover-800.jpg">Marakka Mudiyuma — song cover</option>
+            </select>
+            <span className="admin-field-hint">{t('admin.previewImageHint')}</span>
+            {form.previewImage && (
+              <img src={form.previewImage} alt="" className="admin-thumb" style={{ marginTop: 8 }} />
+            )}
+          </label>
+        </section>
 
-        <div className="admin-field">
-          <span className="admin-field-label">{t('admin.pressPhotos')}</span>
-          {(form.pressPhotos || []).length > 0 && (
-            <ul className="admin-press-list">
-              {(form.pressPhotos || []).map((url, i) => (
-                <li key={`${url}-${i}`} className="admin-press-item">
-                  {url.startsWith('http') || url.startsWith('blob:') || url.startsWith('data:') ? (
-                    <img src={url} alt="" className="admin-thumb" />
-                  ) : null}
-                  <span className="admin-press-url">{url}</span>
-                  <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => removePressPhoto(i)}>
-                    {t('common.remove')}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="admin-inline-row">
-            <input
-              className="admin-input"
-              value={pressPhotoInput}
-              onChange={(e) => setPressPhotoInput(e.target.value)}
-              placeholder={t('admin.pressPhotoUrl')}
-              aria-label={t('admin.pressPhotoUrl')}
-            />
-            <button type="button" className="admin-btn" onClick={addPressPhotoUrl}>
-              {t('admin.addPhotoUrl')}
-            </button>
-            <label className="admin-btn">
-              {t('admin.uploadFile')}
-              <input type="file" accept="image/*" className="admin-file-hidden" onChange={onPressPhotoFile} />
+        <section className="dash-section" aria-labelledby="admin-settings-bio">
+          <h2 className="dash-section-title" id="admin-settings-bio">{t('admin.sectionBio')}</h2>
+          <div className="admin-form-grid">
+            <label className="admin-field">
+              <span>{t('admin.siteBioTa')}</span>
+              <textarea className="admin-input admin-textarea" rows={5} value={form.bioTa || ''} onChange={(e) => set('bioTa', e.target.value)} />
+            </label>
+            <label className="admin-field">
+              <span>{t('admin.siteBioEn')}</span>
+              <textarea className="admin-input admin-textarea" rows={5} value={form.bioEn || ''} onChange={(e) => set('bioEn', e.target.value)} />
             </label>
           </div>
-        </div>
+        </section>
 
-        <label className="admin-field">
-          <span>{t('admin.contactEmail')}</span>
-          <input type="email" className="admin-input" value={form.contactEmail || ''} onChange={(e) => set('contactEmail', e.target.value)} />
-        </label>
+        <section className="dash-section" aria-labelledby="admin-settings-announcement">
+          <h2 className="dash-section-title" id="admin-settings-announcement">{t('admin.sectionAnnouncement')}</h2>
+          <label className="admin-field">
+            <span>{t('admin.announcement')}</span>
+            <input className="admin-input" value={form.announcement || ''} onChange={(e) => set('announcement', e.target.value)} />
+          </label>
+        </section>
 
-        <label className="admin-field">
-          <span>{t('admin.previewImage')}</span>
-          <select className="admin-input" value={form.previewImage || '/assets/nandha-og.jpg'} onChange={(e) => set('previewImage', e.target.value)}>
-            <option value="/assets/nandha-og.jpg">Nandha Music — brand card (default)</option>
-            <option value="/assets/vaazhvinil-cover.jpg">Vaazhvinil Orumurayenum — song cover</option>
-            <option value="https://qldhyzgpxuzpsymongvf.supabase.co/storage/v1/object/public/covers/malaiyoram-veesiya-kaatre-cover-800.jpg">Malaiyoram Veesiya Kaatre — song cover</option>
-            <option value="https://qldhyzgpxuzpsymongvf.supabase.co/storage/v1/object/public/covers/marakka-mudiyuma-cover-800.jpg">Marakka Mudiyuma — song cover</option>
-          </select>
-          <span className="admin-field-hint">{t('admin.previewImageHint')}</span>
-          {form.previewImage && (
-            <img src={form.previewImage} alt="" className="admin-thumb" style={{ marginTop: 8 }} />
-          )}
-        </label>
+        <section className="dash-section" aria-labelledby="admin-settings-artist-pick">
+          <h2 className="dash-section-title" id="admin-settings-artist-pick">{t('admin.sectionArtistPick')}</h2>
+          <label className="admin-field">
+            <span>{t('admin.artistPick')}</span>
+            <select className="admin-input" value={form.artistPickTrackId || ''} onChange={(e) => set('artistPickTrackId', e.target.value)}>
+              <option value="">{t('common.none')}</option>
+              {adminTracks.map((tr) => (
+                <option key={tr.id} value={tr.id}>
+                  {tr.titleTa || tr.titleEn} — {tr.artist || ''}
+                </option>
+              ))}
+            </select>
+            {artistPick && (
+              <span className="admin-field-hint">
+                {artistPick.titleTa || artistPick.titleEn}
+                {artistPick.artist ? ` — ${artistPick.artist}` : ''}
+              </span>
+            )}
+          </label>
+        </section>
+
+        <section className="dash-section" aria-labelledby="admin-settings-press">
+          <h2 className="dash-section-title" id="admin-settings-press">{t('admin.sectionPress')}</h2>
+          <div className="admin-field">
+            <span className="admin-field-label">{t('admin.pressPhotos')}</span>
+            {(form.pressPhotos || []).length > 0 && (
+              <ul className="admin-press-list">
+                {(form.pressPhotos || []).map((url, i) => (
+                  <li key={`${url}-${i}`} className="admin-press-item">
+                    {url.startsWith('http') || url.startsWith('blob:') || url.startsWith('data:') ? (
+                      <img src={url} alt="" className="admin-thumb" />
+                    ) : null}
+                    <span className="admin-press-url">{url}</span>
+                    <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => setPendingPhotoIndex(i)}>
+                      {t('common.remove')}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="admin-inline-row">
+              <input
+                className="admin-input"
+                value={pressPhotoInput}
+                onChange={(e) => setPressPhotoInput(e.target.value)}
+                placeholder={t('admin.pressPhotoUrl')}
+                aria-label={t('admin.pressPhotoUrl')}
+              />
+              <button type="button" className="admin-btn" onClick={addPressPhotoUrl}>
+                {t('admin.addPhotoUrl')}
+              </button>
+              <label className="admin-btn">
+                {pressPhotoUploading ? t('admin.pressPhotoUploading') : t('admin.uploadFile')}
+                <input type="file" accept="image/*" className="admin-file-hidden" onChange={onPressPhotoFile} disabled={pressPhotoUploading} />
+              </label>
+            </div>
+            {pressPhotoError && <p className="admin-field-error" role="alert">{pressPhotoError}</p>}
+          </div>
+        </section>
+
+        <section className="dash-section" aria-labelledby="admin-settings-contact">
+          <h2 className="dash-section-title" id="admin-settings-contact">{t('admin.sectionContact')}</h2>
+          <label className="admin-field">
+            <span>{t('admin.contactEmail')}</span>
+            <input type="email" className="admin-input" value={form.contactEmail || ''} onChange={(e) => set('contactEmail', e.target.value)} />
+          </label>
+        </section>
+
+        <section className="dash-section" aria-labelledby="admin-settings-seo">
+          <h2 className="dash-section-title" id="admin-settings-seo">{t('admin.sectionSeo')}</h2>
+          <h3 className="admin-field-label">{t('admin.seoSearchPreview')}</h3>
+          <div className="dash-seo-search" aria-label={t('admin.seoSearchPreview')}>
+            <div className="dash-seo-url">{SITE_URL.replace('https://', '')}</div>
+            <div className="dash-seo-title">Nandha Music</div>
+            <p className="dash-seo-desc">{seoDescription}</p>
+          </div>
+          <h3 className="admin-field-label">{t('admin.seoSharePreview')}</h3>
+          <div className="dash-seo-card" aria-label={t('admin.seoSharePreview')}>
+            <img src={seoImage} alt="" />
+            <div className="dash-seo-card-body">
+              <div className="dash-seo-url">{SITE_URL.replace('https://', '')}</div>
+              <div className="dash-seo-title">Nandha Music</div>
+              <p className="dash-seo-desc">{seoDescription}</p>
+            </div>
+          </div>
+        </section>
 
         <div className="admin-form-actions">
-          <button type="submit" className="admin-btn admin-btn-primary">{t('admin.saveSettings')}</button>
+          <p className="dash-diff" aria-live="polite">
+            {changedKeys.length > 0 ? diffSummary : t('admin.noChanges')}
+          </p>
+          <button type="submit" className="admin-btn admin-btn-primary" disabled={changedKeys.length === 0}>
+            {t('admin.saveSettings')}
+          </button>
         </div>
       </form>
 
@@ -249,6 +388,22 @@ export default function SiteSettings() {
           </p>
         )}
       </section>
+
+      <ConfirmDialog
+        open={pendingPhotoIndex !== null}
+        title={t('admin.removePhotoTitle')}
+        body={t('admin.confirmRemovePhoto')}
+        confirmLabel={t('common.remove')}
+        danger
+        onCancel={() => setPendingPhotoIndex(null)}
+        onConfirm={() => {
+          const index = pendingPhotoIndex
+          setPendingPhotoIndex(null)
+          if (index !== null) {
+            setForm((f) => ({ ...f, pressPhotos: (f.pressPhotos || []).filter((_, i) => i !== index) }))
+          }
+        }}
+      />
     </div>
   )
 }

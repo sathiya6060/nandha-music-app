@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useI18n } from '../lib/i18n.js'
 import { albums as fallbackAlbums, artists as fallbackArtists, tracks as fallbackTracks } from '../data/catalog.js'
-import { useAlbums, useArtists, useTracks } from '../lib/supabaseCatalog.js'
+import { useAlbums, useArtists, useTracks, findByIdOrSlug } from '../lib/supabaseCatalog.js'
 import TrackRow from '../components/TrackRow.jsx'
 import EmptyState from '../components/EmptyState.jsx'
+import { DetailLoading, DetailLoadError } from '../components/DetailStates.jsx'
 import { getFollowedArtistIds, FOLLOWED_KEY } from './Library.jsx'
 import { usePlayer } from '../player/PlayerContext.jsx'
 import { useToast } from '../lib/toast.jsx'
@@ -32,13 +33,14 @@ export default function Artist() {
   const player = usePlayer()
   const showToast = useToast()
   // Supabase read layer (B1); static catalog is the fallback.
-  const { data: sbArtists } = useArtists()
-  const { data: sbAlbums } = useAlbums()
-  const { data: sbTracks } = useTracks()
+  const { data: sbArtists, isLoading: artistsLoading, isError: artistsError, refetch: refetchArtists } = useArtists()
+  const { data: sbAlbums, isLoading: albumsLoading } = useAlbums()
+  const { data: sbTracks, isLoading: tracksLoading } = useTracks()
   const artists = sbArtists || fallbackArtists
   const albums = sbAlbums || fallbackAlbums
   const tracks = sbTracks || fallbackTracks
-  const artist = artists.find((a) => String(a.id) === String(id))
+  // B1/H8: the route id may be a slug ('nandha-music') or a DB uuid.
+  const artist = findByIdOrSlug(artists, id)
   const [following, setFollowing] = useState(() => (artist ? getFollowedArtistIds().has(artist.id) : false))
 
   useEffect(() => {
@@ -57,6 +59,16 @@ export default function Artist() {
     })
     return resetPageMeta
   }, [artist])
+
+  // M17: while the lists are still loading and the artist has not
+  // resolved yet, show a loading state — never "No results found".
+  if ((artistsLoading || albumsLoading || tracksLoading) && !artist) {
+    return <DetailLoading />
+  }
+
+  if (artistsError && !artist) {
+    return <DetailLoadError onRetry={() => refetchArtists()} />
+  }
 
   if (!artist) {
     return (
@@ -80,6 +92,17 @@ export default function Artist() {
     (al) => String(al.artistId) === String(artist.id) || al.artist === artist.name,
   )
   const socials = artist.socials || artist.links || {}
+  // L17: social links come from the DB — only https: URLs may render
+  // as links (no javascript:, data: or schemeless hrefs).
+  const safeSocials = Object.fromEntries(
+    Object.entries(socials).filter(([, url]) => {
+      try {
+        return new URL(String(url)).protocol === 'https:'
+      } catch {
+        return false
+      }
+    }),
+  )
 
   function playTop() {
     if (artistTracks.length > 0) player?.play?.(artistTracks[0], artistTracks)
@@ -97,8 +120,8 @@ export default function Artist() {
 
   async function handleShare() {
     const url = typeof window !== 'undefined'
-      ? `${window.location.origin}/artist/${artist.id}`
-      : `/artist/${artist.id}`
+      ? `${window.location.origin}/artist/${artist.slug || artist.id}`
+      : `/artist/${artist.slug || artist.id}`
     const result = await shareLink({
       title: artist.name,
       text: `${artist.name} | Nandha Music`,
@@ -171,7 +194,7 @@ export default function Artist() {
           <div className="grid-cards">
             {artistAlbums.map((album) => (
               <article className="track-card" key={album.id}>
-                <Link to={`/album/${album.id}`} className="card-link">
+                <Link to={`/album/${album.slug || album.id}`} className="card-link">
                   {album.cover ? (
                     <img className="track-card__cover" src={album.cover} alt="" loading="lazy" width={800} height={800} />
                   ) : (
@@ -186,13 +209,13 @@ export default function Artist() {
         )}
       </section>
 
-      {Object.keys(socials).length > 0 && (
+      {Object.keys(safeSocials).length > 0 && (
         <section className="section" aria-label={t('epk.contact')}>
           <div className="section-head">
             <div><h2 className="section-title">{t('epk.contact')}</h2></div>
           </div>
           <ul className="link-list">
-            {Object.entries(socials).map(([label, url]) => (
+            {Object.entries(safeSocials).map(([label, url]) => (
               <li key={label}>
                 <a href={url} target="_blank" rel="noreferrer">
                   <span>{label}</span>

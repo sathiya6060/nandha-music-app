@@ -6,7 +6,7 @@ import { useArtists, useTracks } from '../lib/supabaseCatalog.js'
 import { getLikedIds } from '../components/TrackRow.jsx'
 import { getPinnedTracks, unpinTrack } from '../lib/pwa.js'
 import { getHiddenIds, unhideTrack } from '../lib/hiddenTracks.js'
-import { usePlayer } from '../player/PlayerContext.jsx'
+import { usePlayer, isPlayable } from '../player/PlayerContext.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import Icon from '../components/Icons.jsx'
 
@@ -46,7 +46,10 @@ export default function Library() {
   const allTracks = sbTracks || fallbackTracks
   const allArtists = sbArtists || fallbackArtists
   const [userPlaylists, setUserPlaylists] = useState(() => getUserPlaylists())
-  const [likedCount, setLikedCount] = useState(() => getLikedIds().size)
+  // #8/H11: the liked COUNT is the raw localStorage set size — an id
+  // with no catalog track still counted. Keep the id set in state and
+  // derive the count by joining the loaded catalog below.
+  const [likedIds, setLikedIds] = useState(() => getLikedIds())
   const [followedIds, setFollowedIds] = useState(() => getFollowedArtistIds())
   // Spotify batch (27 Nov 2026): pinned (offline) + hidden tracks.
   const [pinned, setPinned] = useState([])
@@ -55,17 +58,21 @@ export default function Library() {
   useEffect(() => {
     let alive = true
     async function loadPinned() {
-      const list = await getPinnedTracks()
-      if (alive) setPinned(list)
+      try {
+        const list = await getPinnedTracks()
+        if (alive) setPinned(list)
+      } catch {
+        /* pinned list is best-effort — Library works without it */
+      }
     }
     function sync() {
       setUserPlaylists(getUserPlaylists())
-      setLikedCount(getLikedIds().size)
+      setLikedIds(getLikedIds())
       setFollowedIds(getFollowedArtistIds())
       setHiddenIds(getHiddenIds())
-      loadPinned()
+      loadPinned().catch(() => {})
     }
-    loadPinned()
+    loadPinned().catch(() => {})
     window.addEventListener('nandha-liked-changed', sync)
     window.addEventListener('nandha-followed-changed', sync)
     window.addEventListener('nandha-playlists-changed', sync)
@@ -83,7 +90,10 @@ export default function Library() {
     }
   }, [])
 
-  const likedTracks = allTracks.filter((tr) => getLikedIds().has(tr.id)).slice(0, 3)
+  const likedTracks = allTracks.filter((tr) => likedIds.has(tr.id)).slice(0, 3)
+  // #8/H11: count only liked ids that exist in the loaded catalog —
+  // orphan ids (deleted tracks) no longer inflate the count.
+  const likedCount = allTracks.filter((tr) => likedIds.has(tr.id)).length
   const followedArtists = allArtists.filter((a) => followedIds.has(a.id))
   // Pinned meta carries only {trackId, title, pinnedAt} — join the
   // catalog for cover/artist; fall back to the stored title.
@@ -160,7 +170,13 @@ export default function Library() {
                 <button
                   type="button"
                   className="pinned-row__main"
-                  onClick={() => player?.play?.(tr, [tr])}
+                  onClick={() => {
+                    // L18: a pinned track missing from the catalog is a
+                    // synthetic object with no audio — its play button
+                    // used to do nothing at all. Say so instead.
+                    if (isPlayable(tr)) player?.play?.(tr, [tr])
+                    else player?.setNotice?.(t('player.unplayable'))
+                  }}
                 >
                   <span className="pinned-row__title">{tr.titleTa || tr.titleEn}</span>
                   {tr.artist && <span className="pinned-row__artist">{tr.artist}</span>}

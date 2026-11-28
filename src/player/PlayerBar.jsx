@@ -227,7 +227,7 @@ export default function PlayerBar() {
 
         <button
           type="button"
-          className="player-icon-btn"
+          className="player-icon-btn player-prev"
           onClick={prev}
           aria-label={t('common.previous')}
           title={t('common.previous')}
@@ -251,7 +251,7 @@ export default function PlayerBar() {
 
         <button
           type="button"
-          className="player-icon-btn"
+          className="player-icon-btn player-next"
           onClick={next}
           aria-label={t('common.next')}
           title={t('common.next')}

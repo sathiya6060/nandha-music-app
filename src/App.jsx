@@ -123,10 +123,14 @@ function useVersionCheck() {
         /* offline or version file not deployed yet — ignore */
       }
     }
-    check()
-    const interval = setInterval(check, 5 * 60 * 1000)
+    // check() never rejects (it try/catches internally), but the
+    // .catch keeps the floating promise explicit for S9383.
+    check().catch(() => {})
+    const interval = setInterval(() => {
+      check().catch(() => {})
+    }, 5 * 60 * 1000)
     function onVisible() {
-      if (document.visibilityState === 'visible') check()
+      if (document.visibilityState === 'visible') check().catch(() => {})
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => {
@@ -157,13 +161,16 @@ function UpdateBanner() {
   )
 }
 
-// ResettableBoundary (27 Nov 2026 — click/loading fix): the route
-// boundary that clears a latched error fallback when the user navigates
-// (see ErrorBoundary componentDidUpdate). Must live inside BrowserRouter
-// (useLocation) — all three usages below are.
+// ResettableBoundary (27 Nov 2026 — click/loading fix; M14, 28 Nov):
+// the route boundary that clears a latched error fallback when the
+// user navigates (see ErrorBoundary getDerivedStateFromProps). The
+// key is pathname + search + hash, not pathname alone — a query-only
+// navigation (/search?q=a -> /search?q=b) must reset the latch too.
+// Must live inside BrowserRouter (useLocation) — all three usages
+// below are.
 function ResettableBoundary({ children }) {
-  const { pathname } = useLocation()
-  return <ErrorBoundary resetKey={pathname}>{children}</ErrorBoundary>
+  const { pathname, search, hash } = useLocation()
+  return <ErrorBoundary resetKey={`${pathname}${search}${hash}`}>{children}</ErrorBoundary>
 }
 
 function AppShell() {
@@ -276,7 +283,9 @@ export default function App() {
   useEffect(() => {
     // PWA: register the service worker in production builds only, so
     // `npm run dev` never serves a stale cached shell while developing.
-    if (import.meta.env.PROD) registerServiceWorker()
+    // registerServiceWorker() is async — a failed registration must not
+    // surface as an unhandled rejection (S9383).
+    if (import.meta.env.PROD) registerServiceWorker().catch(() => {})
   }, [])
 
   return (

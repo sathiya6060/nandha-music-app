@@ -6,7 +6,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 echo "== lint (oxlint, max 40 warnings — see docs/lint-baseline.md) =="
-npx oxlint --max-warnings 40
+# S6505: never invoke via the package runner (it can install packages
+# on-demand and run their lifecycle scripts) — use the locally
+# installed binary.
+./node_modules/.bin/oxlint --max-warnings 40
 
 echo "== tests (vitest) =="
 npm test

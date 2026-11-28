@@ -23,10 +23,18 @@ const SHELL_CACHE = 'nandha-shell-v2'
 const API_CACHE = 'nandha-api-v2'
 const AUDIO_CACHE = 'nandha-audio-v2'
 const COVER_CACHE = 'nandha-covers-v2'
+const FONT_CACHE = 'nandha-fonts-v2'
 
 const MAX_COVERS = 200
+const MAX_FONTS = 30
 const COVER_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
 const API_TTL_MS = 5 * 60 * 1000 // 5 minutes
+
+// Google Fonts origins (L26): the only cross-origin hosts the worker
+// touches. Fonts are static, credential-less assets — caching them
+// (only when the Content-Type matches) keeps brand typography offline
+// without weakening the SW posture: no auth, no cookies, and an opaque
+// or mistyped response is never stored.
 
 const APP_SHELL = [
   '/',
@@ -135,7 +143,7 @@ async function trimCoversByAge() {
       keys.map(async (key) => {
         const res = await cache.match(key)
         const dateHeader = res?.headers.get('date')
-        const storedAt = dateHeader ? Date.parse(dateHeader) : NaN
+        const storedAt = dateHeader ? Date.parse(dateHeader) : Number.NaN
         if (Number.isFinite(storedAt) && now - storedAt > COVER_TTL_MS) {
           await cache.delete(key)
         }
@@ -161,7 +169,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
-      const allowed = new Set([SHELL_CACHE, API_CACHE, AUDIO_CACHE, COVER_CACHE])
+      const allowed = new Set([SHELL_CACHE, API_CACHE, AUDIO_CACHE, COVER_CACHE, FONT_CACHE])
       const names = await caches.keys()
       await Promise.all(
         names.filter((name) => !allowed.has(name)).map((name) => caches.delete(name)),
@@ -174,18 +182,56 @@ self.addEventListener('activate', (event) => {
 
 // --- fetch routing ------------------------------------------------------
 
+/** True for Google Fonts (stylesheet + font files) — the only
+ *  cross-origin hosts the worker serves from cache. */
+function isGoogleFontsRequest(request) {
+  const url = new URL(request.url)
+  return (
+    url.origin === 'https://fonts.googleapis.com' ||
+    url.origin === 'https://fonts.gstatic.com'
+  )
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event
   if (request.method !== 'GET') return
   const url = new URL(request.url)
-  // Only handle same-origin + Supabase origins; leave everything else alone.
-  if (url.origin !== self.location.origin && !url.origin.includes('supabase.co')) {
+  // Only handle same-origin + Supabase + Google Fonts origins; leave
+  // everything else alone.
+  if (
+    url.origin !== self.location.origin &&
+    !url.origin.includes('supabase.co') &&
+    !isGoogleFontsRequest(request)
+  ) {
     return
   }
 
   // 0. Freshness files — always network, never cached.
   if (isFreshnessRequest(request)) {
     event.respondWith(fetch(request))
+    return
+  }
+
+  // 0b. Google Fonts — cache-first in their own cache (L26). The CSS
+  // from fonts.googleapis.com and the woff2 files from
+  // fonts.gstatic.com are static, credential-less, and served with
+  // CORS, so the Content-Type check below can read them; anything
+  // mistyped (or opaque) is never stored. Offline loads keep the
+  // brand fonts instead of falling back to system-ui.
+  if (isGoogleFontsRequest(request)) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(FONT_CACHE)
+        const cached = await cache.match(request)
+        if (cached) return cached
+        const response = await fetch(request)
+        if (response.ok && isCacheableAssetResponse(request, response)) {
+          cache.put(request, response.clone()).catch(() => {})
+          trimCache(FONT_CACHE, MAX_FONTS).catch(() => {})
+        }
+        return response
+      })(),
+    )
     return
   }
 
@@ -220,7 +266,7 @@ self.addEventListener('fetch', (event) => {
           const cached = await cache.match(request)
           if (cached) {
             const dateHeader = cached.headers.get('date')
-            const storedAt = dateHeader ? Date.parse(dateHeader) : NaN
+            const storedAt = dateHeader ? Date.parse(dateHeader) : Number.NaN
             if (!Number.isFinite(storedAt) || Date.now() - storedAt < API_TTL_MS) {
               return cached
             }
@@ -243,7 +289,8 @@ self.addEventListener('fetch', (event) => {
           const response = await fetch(request)
           if (isCacheableAssetResponse(request, response)) {
             cache.put(request, response.clone()).catch(() => {})
-            trimCache(COVER_CACHE, MAX_COVERS)
+            // S9383: trimCache() is async — a rejection must not float.
+            trimCache(COVER_CACHE, MAX_COVERS).catch(() => {})
           }
           return response
         } catch {

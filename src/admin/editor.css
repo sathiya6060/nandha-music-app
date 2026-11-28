@@ -1,0 +1,532 @@
+/* Track editor — admin redesign, Section 4.
+ *
+ * Scoped to .track-editor so it never leaks into the public site or
+ * other admin pages. Brand tokens: Amber #F59E0B (primary action /
+ * active step only), Charcoal Slate #1E293B text, Warm Sand #FEF3C7
+ * work-surface tint, Steel Grey #64748B muted text, White #FFFFFF.
+ * Font is inherited (not changed). No gradients, no emoji.
+ * Controls are >= 44px on mobile; focus ring is 2px amber.
+ */
+
+.track-editor {
+  --te-amber: #f59e0b;
+  --te-ink: #1e293b;
+  --te-muted: #64748b;
+  --te-sand: #fef3c7;
+  --te-white: #fff;
+  --te-border: #e2e8f0;
+  --te-danger: #b91c1c;
+  --te-focus: #f59e0b;
+}
+
+/* --- sticky page header (back arrow sticks under the top bar) --- */
+.track-editor__head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  margin-bottom: 4px;
+  background: var(--admin-surface, var(--te-white));
+}
+.track-editor__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--te-ink);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+}
+.track-editor__back:hover {
+  background: var(--te-sand);
+}
+.track-editor__head-text {
+  min-width: 0;
+  flex: 1;
+}
+.track-editor__head-text .admin-title {
+  margin: 0;
+}
+
+/* --- stepper --- */
+.track-editor__steps {
+  display: flex;
+  gap: 4px;
+  margin: 12px 0 20px;
+  padding: 4px;
+  background: var(--te-sand);
+  border-radius: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.track-editor__steps::-webkit-scrollbar {
+  display: none;
+}
+.track-editor__step {
+  flex: 1 0 auto;
+  min-height: 44px;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--te-muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.track-editor__step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--te-white);
+  border: 1px solid var(--te-border);
+  font-size: 13px;
+  font-weight: 700;
+}
+.track-editor__step--active {
+  background: var(--te-white);
+  color: var(--te-ink);
+  box-shadow: 0 1px 2px rgb(30 41 59 / 0.12);
+}
+.track-editor__step--active .track-editor__step-num {
+  background: var(--te-amber);
+  border-color: var(--te-amber);
+  color: var(--te-white);
+}
+.track-editor__step--error .track-editor__step-num {
+  background: var(--te-danger);
+  border-color: var(--te-danger);
+  color: var(--te-white);
+}
+.track-editor__step--done .track-editor__step-num {
+  background: var(--te-ink);
+  border-color: var(--te-ink);
+  color: var(--te-white);
+}
+.track-editor__mobile-step {
+  display: none;
+  margin: 12px 0 16px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--te-ink);
+}
+
+/* --- step panels --- */
+.track-editor__step-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.track-editor__step-nav {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+.track-editor__step-nav .admin-btn {
+  min-height: 44px;
+}
+
+/* --- fields: reuse .admin-field/.admin-input, tighten for the editor --- */
+.track-editor .admin-field {
+  min-width: 0;
+}
+.track-editor .admin-input {
+  min-height: 44px;
+  color: var(--te-ink);
+}
+.track-editor textarea.admin-input {
+  min-height: 120px;
+  line-height: 1.7;
+}
+.track-editor .admin-input:focus-visible,
+.track-editor__step:focus-visible,
+.track-editor__back:focus-visible,
+.track-editor__dropzone:focus-visible,
+.track-editor__bar-btn:focus-visible {
+  outline: 2px solid var(--te-focus);
+  outline-offset: 2px;
+}
+.track-editor__counter {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--te-muted);
+  text-align: right;
+}
+.track-editor__counter--over {
+  color: var(--te-danger);
+  font-weight: 700;
+}
+
+/* --- drag-and-drop zones --- */
+.track-editor__dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 16px;
+  border: 2px dashed var(--te-border);
+  border-radius: 12px;
+  background: var(--te-white);
+  text-align: center;
+  cursor: pointer;
+  min-height: 120px;
+  justify-content: center;
+}
+.track-editor__dropzone:hover {
+  border-color: var(--te-amber);
+}
+.track-editor__dropzone--over {
+  border-color: var(--te-amber);
+  background: var(--te-sand);
+}
+.track-editor__dropzone-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--te-ink);
+}
+.track-editor__dropzone-hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--te-muted);
+}
+.track-editor__file-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: 14px;
+  color: var(--te-ink);
+}
+.track-editor__file-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+.track-editor__file-meta {
+  color: var(--te-muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.track-editor__remove {
+  margin-left: auto;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--te-border);
+  border-radius: 8px;
+  background: var(--te-white);
+  color: var(--te-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.track-editor__remove:hover {
+  border-color: var(--te-danger);
+  color: var(--te-danger);
+}
+
+/* --- cover: square 1:1 preview --- */
+.track-editor__cover-wrap {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.track-editor__cover-wrap .track-editor__dropzone {
+  flex: 1;
+  min-width: 220px;
+}
+.track-editor__cover-preview {
+  width: 160px;
+  height: 160px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  border: 1px solid var(--te-border);
+  background: var(--te-sand);
+}
+.track-editor__cover-empty {
+  width: 160px;
+  height: 160px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  border: 1px dashed var(--te-border);
+  background: var(--te-sand);
+  color: var(--te-muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 8px;
+}
+
+/* --- lyrics preview: numbered lines, Tamil-safe line-height --- */
+.track-editor__lyrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.track-editor__lyrics-preview {
+  border: 1px solid var(--te-border);
+  border-radius: 12px;
+  background: var(--te-white);
+  padding: 16px;
+  min-height: 200px;
+}
+.track-editor__lyrics-preview h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--te-ink);
+}
+.track-editor__lyrics-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  counter-reset: lyric-line;
+}
+.track-editor__lyrics-lines li {
+  counter-increment: lyric-line;
+  display: flex;
+  gap: 10px;
+  font-size: 15px;
+  line-height: 1.9;
+  color: var(--te-ink);
+  overflow-wrap: anywhere;
+}
+.track-editor__lyrics-lines li::before {
+  content: counter(lyric-line);
+  flex: 0 0 24px;
+  color: var(--te-muted);
+  font-size: 12px;
+  line-height: 2.4;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.track-editor__lyrics-empty {
+  color: var(--te-muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+/* --- hook: waveform + duration bar --- */
+.track-editor__waveform {
+  border: 1px solid var(--te-border);
+  border-radius: 12px;
+  background: var(--te-white);
+  padding: 16px;
+}
+.track-editor__waveform svg {
+  display: block;
+  width: 100%;
+  height: 96px;
+}
+.track-editor__waveform-bar {
+  position: relative;
+  height: 48px;
+  border-radius: 8px;
+  background: var(--te-sand);
+  overflow: hidden;
+}
+.track-editor__waveform-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--te-amber);
+  opacity: 0.55;
+}
+.track-editor__waveform-marks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--te-muted);
+  font-variant-numeric: tabular-nums;
+}
+.track-editor__hook-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.track-editor__hook-range {
+  font-size: 14px;
+  color: var(--te-ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- publish preview card (self-contained; NOT the public player) --- */
+.track-editor__preview-card {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  max-width: 480px;
+  padding: 12px;
+  border: 1px solid var(--te-border);
+  border-radius: 12px;
+  background: var(--te-white);
+}
+.track-editor__preview-cover {
+  width: 64px;
+  height: 64px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--te-sand);
+}
+.track-editor__preview-cover--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--te-amber);
+}
+.track-editor__preview-text {
+  min-width: 0;
+  flex: 1;
+}
+.track-editor__preview-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--te-ink);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.track-editor__preview-sub {
+  font-size: 13px;
+  color: var(--te-muted);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.track-editor__chip {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--te-sand);
+  color: var(--te-ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* --- sticky bottom save bar --- */
+.track-editor__bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 24px;
+  padding: 12px 0;
+  background: var(--admin-surface, var(--te-white));
+  border-top: 1px solid var(--te-border);
+}
+.track-editor__bar-btn {
+  min-height: 44px;
+}
+.track-editor__dirty {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--te-muted);
+}
+.track-editor__dirty-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--te-amber);
+  flex: 0 0 auto;
+}
+.track-editor__autosaved {
+  font-size: 12px;
+  color: var(--te-muted);
+  margin-left: auto;
+}
+
+/* --- save error with retry --- */
+.track-editor__save-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.track-editor__save-error .track-editor__retry {
+  min-height: 44px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--te-danger);
+  background: var(--te-white);
+  color: var(--te-danger);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* --- narrow screens --- */
+@media (max-width: 720px) {
+  .track-editor__steps {
+    display: none;
+  }
+  .track-editor__mobile-step {
+    display: block;
+  }
+  .track-editor__lyrics-grid {
+    grid-template-columns: 1fr;
+  }
+  .track-editor__cover-preview,
+  .track-editor__cover-empty {
+    width: 120px;
+    height: 120px;
+  }
+  .track-editor__bar {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .track-editor__autosaved {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .track-editor *,
+  .track-editor *::before,
+  .track-editor *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

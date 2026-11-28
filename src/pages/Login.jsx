@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useI18n } from '../lib/i18n.js'
-import { ADMIN_EMAILS, useAuth } from '../lib/auth.jsx'
+import { ADMIN_EMAILS, mapAuthError } from '../lib/authHelpers.js'
+import { useAuth } from '../lib/auth.jsx'
 
 /**
  * Route '/login' — deliberately NOT linked anywhere in the public UI.
@@ -19,11 +20,14 @@ import { ADMIN_EMAILS, useAuth } from '../lib/auth.jsx'
 export default function Login() {
   const { t } = useI18n()
   const navigate = useNavigate()
-  const { user, isAdmin, loading, configError, signInEmail, signUpEmail } = useAuth()
-  const [searchParams] = useSearchParams()
-  // The Profile page's "Create one" link lands here with ?mode=signup —
-  // honour it so the sign-up form (not the sign-in form) is what opens.
-  const [mode, setMode] = useState(() => (searchParams.get('mode') === 'signup' ? 'signup' : 'signin')) // 'signin' | 'signup'
+  const { user, isAdmin, loading, configError, blocked, signInEmail, signUpEmail } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+  // M19: mode is DERIVED from ?mode= during render, not stored in
+  // state — clicking TopBar "Sign up" while already on /login changes
+  // the URL and the form follows it at once (a useEffect + setMode
+  // here used to leave the Sign-in form showing). switchMode only
+  // updates the URL; the render derives the new mode from it.
+  const mode = searchParams.get('mode') === 'signup' ? 'signup' : 'signin' // 'signin' | 'signup'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -59,13 +63,15 @@ export default function Login() {
       const { user: created, session, error: err } = await signUpEmail(email.trim(), password)
       setBusy(false)
       if (err || !created) {
-        setError(t('auth.signInError'))
+        // M19/C10: a failed sign-up shows its OWN error — "email
+        // already registered" must never read as a sign-in error.
+        setError(t(mapAuthError(err, 'signup') || 'auth.signInError'))
         return
       }
       if (!session) {
         // Email confirmation is still required — tell the user plainly.
         setNotice(t('auth.confirmEmail'))
-        setMode('signin')
+        setSearchParams({}, { replace: true })
         return
       }
       goAfterSignIn(created)
@@ -74,16 +80,19 @@ export default function Login() {
     const { user: signedIn, error: err } = await signInEmail(email.trim(), password)
     setBusy(false)
     if (err || !signedIn) {
-      setError(t('auth.signInError'))
+      setError(t(mapAuthError(err, 'signin') || 'auth.signInError'))
       return
     }
     goAfterSignIn(signedIn)
   }
 
   function switchMode(next) {
-    setMode(next)
     setError('')
     setNotice('')
+    // Keep the URL in step with the form, so a reload or a shared
+    // link opens the same mode. Mode is derived from the URL during
+    // render, so this alone switches the form.
+    setSearchParams(next === 'signup' ? { mode: 'signup' } : {}, { replace: true })
   }
 
   if (loading) {
@@ -106,6 +115,12 @@ export default function Login() {
           fail-closed state. */}
       {configError && (
         <p role="alert" className="form-error">{t('auth.configError')}</p>
+      )}
+
+      {/* Blocked account (migration 007): the last sign-in / session
+          restore was refused because this account is blocked. */}
+      {blocked && (
+        <p role="alert" className="form-error">{t('auth.accountBlocked')}</p>
       )}
 
       <form onSubmit={handleSubmit} className="inline-form" style={{ flexDirection: 'column', alignItems: 'stretch' }}>

@@ -21,6 +21,18 @@
 
 const env = import.meta.env ?? {};
 
+/**
+ * Strip trailing slashes without a regex (S8786: the old
+ * `.replace(/\/+$/, '')` shape is flagged for backtracking risk).
+ * Pure string walk; used for base URLs below.
+ */
+export function stripTrailingSlashes(s) {
+  const str = typeof s === 'string' ? s : ''
+  let end = str.length
+  while (end > 0 && str[end - 1] === '/') end -= 1
+  return str.slice(0, end)
+}
+
 function readEnv(name) {
   const fromImportMeta = env[name];
   if (typeof fromImportMeta === 'string' && fromImportMeta.trim() !== '') {
@@ -45,8 +57,8 @@ export const config = {
   supabaseUrl: readEnv('VITE_SUPABASE_URL'),
   supabaseAnonKey: readEnv('VITE_SUPABASE_ANON_KEY'),
   /** Cloudflare R2 public base URL for audio files (no trailing slash). */
-  audioBaseUrl: readEnv('VITE_AUDIO_BASE_URL').replace(/\/+$/, ''),
-  upstashRedisUrl: readEnv('VITE_UPSTASH_REDIS_REST_URL').replace(/\/+$/, ''),
+  audioBaseUrl: stripTrailingSlashes(readEnv('VITE_AUDIO_BASE_URL')),
+  upstashRedisUrl: stripTrailingSlashes(readEnv('VITE_UPSTASH_REDIS_REST_URL')),
   upstashRedisToken: readEnv('VITE_UPSTASH_REDIS_REST_TOKEN'),
   /** Monthly Redis command budget (redisGuard.js). Default 450,000. */
   redisMonthlyBudget: parseBudget(readEnv('VITE_REDIS_MONTHLY_BUDGET')),

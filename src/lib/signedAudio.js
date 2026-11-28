@@ -16,18 +16,18 @@
 // client by design) — it only passes the Edge Function's JWT check.
 // No secret ever leaves the server.
 
-import { config, audioUrl } from './config.js'
+import { config, audioUrl, stripTrailingSlashes } from './config.js'
 
-/** The real tracks whose audio is served signed, never public.
- *  Keep in sync with ALLOWED_TRACKS in
- *  supabase/functions/get-audio-url/index.ts — a track added to one
- *  and not the other can never play (the client never asks the
- *  function) or is refused by it (403 track_not_allowed). */
-const SIGNED_TRACK_FILES = new Set([
-  'vaazhvinil-orumurayenum.mp3',
-  'malaiyoram-veesiya-kaatre.mp3',
-  'marakka-mudiyuma.mp3',
-])
+// The real tracks' audio lives in the PRIVATE Supabase Storage bucket
+// and is served signed, never public. Which tracks are signed is NOT
+// a client-side list any more (28 Nov 2026, C1/H26): any track whose
+// stored audio path is a Storage path (a bare file name, or the
+// `audio/<file>.mp3` form the admin upload writes) resolves through
+// the get-audio-url Edge Function, which checks the DB (track exists
+// AND status='published') before minting. A local /assets path (the
+// 1-second silent mp3 fallback) or an http(s) URL is NOT signed — it
+// plays as-is via audioUrl(). A new track therefore plays with no
+// client or function allowlist change.
 
 const SIGNED_URL_TTL_MS = 300_000
 // Reuse a cached URL until 60 s before expiry, so a play/pause or a
@@ -39,7 +39,7 @@ const cache = new Map()
 
 function functionUrl() {
   if (!config.supabaseUrl) return ''
-  return `${config.supabaseUrl.replace(/\/+$/, '')}/functions/v1/get-audio-url`
+  return `${stripTrailingSlashes(config.supabaseUrl)}/functions/v1/get-audio-url`
 }
 
 export function fileNameOf(track, quality = '128') {
@@ -48,9 +48,16 @@ export function fileNameOf(track, quality = '128') {
   return String(localPath).split('/').filter(Boolean).pop() || ''
 }
 
-/** True when this track's audio must come from a signed URL. */
+/**
+ * True when this track's audio must come from a signed URL: the stored
+ * path is a Storage path (bare file name or `audio/<file>.mp3`), not
+ * a local /assets path and not a remote http(s) URL.
+ */
 export function isSignedTrack(track, quality = '128') {
-  return SIGNED_TRACK_FILES.has(fileNameOf(track, quality))
+  const localPath = quality === '320' ? track?.audio320 : track?.audio128
+  if (!localPath || typeof localPath !== 'string') return false
+  if (localPath.startsWith('/') || /^https?:\/\//i.test(localPath)) return false
+  return true
 }
 
 /** Mint (or reuse a still-fresh) signed URL for a file name. */
@@ -91,7 +98,7 @@ export function dropSignedAudioUrl(fileName) {
 
 /** Drop every cached signed URL (stop: no track keeps a live URL). */
 export function dropAllSignedAudioUrls() {
-  for (const file of SIGNED_TRACK_FILES) cache.delete(file)
+  cache.clear()
 }
 
 /**

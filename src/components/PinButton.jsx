@@ -23,14 +23,22 @@ export default function PinButton({ track, variant = 'button' }) {
   useEffect(() => {
     if (!track) return
     let alive = true
-    isTrackPinned(track).then((p) => {
-      if (alive) setPinned(p)
-    })
-    const sync = (e) => {
-      if (e?.detail?.trackId && String(e.detail.trackId) !== String(track.id)) return
-      isTrackPinned(track).then((p) => {
+    isTrackPinned(track)
+      .then((p) => {
         if (alive) setPinned(p)
       })
+      .catch(() => {
+        /* best-effort read — a failed pin check leaves the toggle off (S9383) */
+      })
+    const sync = (e) => {
+      if (e?.detail?.trackId && String(e.detail.trackId) !== String(track.id)) return
+      isTrackPinned(track)
+        .then((p) => {
+          if (alive) setPinned(p)
+        })
+        .catch(() => {
+          /* best-effort re-read — ignore (S9383) */
+        })
     }
     window.addEventListener('nandha-pinned-changed', sync)
     return () => {
@@ -62,6 +70,10 @@ export default function PinButton({ track, variant = 'button' }) {
           player?.setNotice?.(t('player.pinFailed'))
         }
       }
+    } catch {
+      // L15: resolvePlayableUrl / cachePinnedTrack threw — the pin
+      // failed, so say so instead of an unhandled rejection.
+      player?.setNotice?.(t('player.pinFailed'))
     } finally {
       setBusy(false)
     }

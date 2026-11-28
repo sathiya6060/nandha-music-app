@@ -59,9 +59,76 @@ export function getCatalogSource() {
   return lastSource
 }
 
+// Admin shell subscription (admin redesign — shell): the env chip
+// ("Live" / "Demo data" / "Checking…") needs to re-render when a
+// fetch settles. setCatalogSource() is the single place that assigns
+// lastSource — every fetcher below goes through it — and it notifies
+// listeners on the first settle and on every flip (a repeat of the
+// same value is not an update). A listener added after a fetch has
+// settled is called immediately with the current source, so a shell
+// that mounts late still shows the right chip instead of
+// "Checking…" forever; before any fetch settles, nobody is called.
+let catalogSourceSettled = false
+const catalogSourceListeners = new Set()
+export function setCatalogSource(value) {
+  const next = value === 'supabase' ? 'supabase' : 'fallback'
+  const changed = next !== lastSource
+  const firstSettle = !catalogSourceSettled
+  lastSource = next
+  catalogSourceSettled = true
+  if (changed || firstSettle) {
+    for (const listener of [...catalogSourceListeners]) listener(next)
+  }
+}
+export function onCatalogSourceChange(listener) {
+  catalogSourceListeners.add(listener)
+  if (catalogSourceSettled) listener(lastSource)
+  return () => {
+    catalogSourceListeners.delete(listener)
+  }
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 export function isUuid(value) {
   return UUID_RE.test(String(value || ''))
+}
+
+/**
+ * URL slug for a Latin name/title ("Nandha Music" -> "nandha-music").
+ * Tamil-only strings collapse to '' — callers fall back to the id.
+ */
+export function slugify(value) {
+  // S8786: no quantified negated class — single-char replacement plus
+  // split/filter/join collapses runs and trims edges with the same
+  // result as the old /[^a-z0-9]+/g + /^-+|-+$/g pair.
+  return String(value || '')
+    .normalize('NFKD')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '-')
+    .split('-')
+    .filter(Boolean)
+    .join('-')
+}
+
+/**
+ * Resolve a route id that may be a DB uuid, a slug, or a slugified
+ * name/title (B1/H8): /album/annamalaiyar and /artist/nandha-music
+ * are the slugs the app itself links to, while the DB rows carry
+ * uuids. Matches id first, then the mapped `slug`, then a slugified
+ * name/title, so both forms keep working.
+ */
+export function findByIdOrSlug(list, idOrSlug) {
+  const key = String(idOrSlug || '')
+  if (!key) return null
+  return (
+    (list || []).find((item) => {
+      if (!item) return false
+      if (String(item.id) === key) return true
+      if (item.slug === key) return true
+      const names = [item.name, item.nameEn, item.nameTa, item.titleEn, item.titleTa, item.title]
+      return names.some((n) => n && slugify(n) === key)
+    }) || null
+  )
 }
 
 // slug -> DB uuid, populated by every successful fetch. Used by
@@ -117,6 +184,9 @@ function mapArtist(row) {
   if (!row) return null
   return {
     id: row.id,
+    // B1/H8: the route id is the slug ('nandha-music'); the DB id is
+    // a uuid. Expose both so pages can link + resolve either form.
+    slug: slugify(row.name) || slugify(row.name_ta) || row.id,
     name: row.name || '',
     nameEn: row.name || '',
     nameTa: row.name_ta || '',
@@ -132,6 +202,7 @@ function mapAlbum(row, artistsById = new Map()) {
   const artist = artistsById.get(row.artist_id)
   return {
     id: row.id,
+    slug: slugify(row.title_en) || slugify(row.title_ta) || row.id,
     titleEn: row.title_en || '',
     titleTa: row.title_ta || '',
     title: row.title_en || row.title_ta || '',
@@ -324,7 +395,7 @@ async function fetchJoinContext() {
 async function fetchArtists() {
   const { rows } = await fetchArtistsRows()
   const list = rows ? rows.map(mapArtist) : [...fallbackArtists]
-  lastSource = rows ? 'supabase' : 'fallback'
+  setCatalogSource(rows ? 'supabase' : 'fallback')
   return list
 }
 
@@ -332,7 +403,7 @@ async function fetchAlbums() {
   const { artistsById } = await fetchJoinContext()
   const { rows } = await fetchAlbumsRows()
   const list = rows ? rows.map((r) => mapAlbum(r, artistsById)) : [...fallbackAlbums]
-  lastSource = rows ? 'supabase' : 'fallback'
+  setCatalogSource(rows ? 'supabase' : 'fallback')
   return list
 }
 
@@ -340,18 +411,35 @@ async function fetchTracks({ publishedOnly = true } = {}) {
   const { artistsById, albumsById } = await fetchJoinContext()
   const { rows } = await fetchTracksRows({ publishedOnly })
   if (!rows) {
-    lastSource = 'fallback'
+    setCatalogSource('fallback')
     return [...fallbackTracks].filter((t) => !publishedOnly || t.status === 'published')
   }
-  lastSource = 'supabase'
+  setCatalogSource('supabase')
   const list = rows.map((r) => mapTrack(r, artistsById, albumsById))
   registerTrackDbIds(list)
+  // H17: fetchTrack attached lyrics, fetchTracks did not — so the
+  // player (which plays list tracks) showed "Lyrics coming soon"
+  // even though the lyrics table has rows. One lyrics query for the
+  // whole list; DB rows win, fallback lines stay when there are none.
+  try {
+    const lyricsByTrack = await fetchLyricsMap()
+    for (const track of list) {
+      const lyrics = lyricsByTrack.get(track.dbId)
+      if (lyrics && (lyrics.ta.length > 0 || lyrics.en.length > 0)) {
+        track.lyricsTa = lyrics.ta
+        track.lyricsEn = lyrics.en
+        track.syncedLyrics = lyrics.synced
+      }
+    }
+  } catch {
+    /* lyrics are optional — keep the fallback lines */
+  }
   return list
 }
 
 async function fetchPlaylists({ admin = false } = {}) {
   if (!isSupabaseConfigured || !supabase) {
-    lastSource = 'fallback'
+    setCatalogSource('fallback')
     return [...fallbackPlaylists]
   }
   const { artistsById, albumsById } = await fetchJoinContext()
@@ -374,10 +462,10 @@ async function fetchPlaylists({ admin = false } = {}) {
   const { data, error } = await query
   if (error || !Array.isArray(data) || data.length === 0) {
     if (error) console.warn('[supabaseCatalog] playlists read failed, using fallback:', error.message)
-    lastSource = 'fallback'
+    setCatalogSource('fallback')
     return [...fallbackPlaylists]
   }
-  lastSource = 'supabase'
+  setCatalogSource('supabase')
   return data.map((row) => {
     const ordered = [...(row.playlist_tracks || [])].sort((a, b) => (a.position || 0) - (b.position || 0))
     return mapPlaylist({ ...row, playlist_tracks: ordered }, tracksByDbId)
@@ -389,7 +477,7 @@ async function fetchTrack(idOrSlug) {
   if (!idOrSlug) return null
   const fb = getFallbackTrack(String(idOrSlug))
   if (!isSupabaseConfigured || !supabase) {
-    lastSource = 'fallback'
+    setCatalogSource('fallback')
     return fb
   }
   const { artistsById, albumsById } = await fetchJoinContext()
@@ -424,12 +512,19 @@ async function fetchTrack(idOrSlug) {
       '[supabaseCatalog] track read failed, using fallback:',
       (firstError || secondError).message,
     )
+    // M17: a query error is not a 404 — throw so React Query marks
+    // the track query failed (one retry, then the error state) instead
+    // of caching `undefined` as a successful result, which latched
+    // the Track page on "No results found" for the 5-min staleTime
+    // (live repro 28 Nov 2026: client-side nav showed the dead end
+    // while the fetch was still in flight / had failed).
+    throw firstError || secondError
   }
   if (!row) {
-    lastSource = 'fallback'
+    setCatalogSource('fallback')
     return fb
   }
-  lastSource = 'supabase'
+  setCatalogSource('supabase')
   const track = mapTrack(row, artistsById, albumsById)
   registerTrackDbIds([track])
   // Lyrics (no rows seeded today — empty is fine, fallback lines stay).
@@ -446,17 +541,10 @@ async function fetchTrack(idOrSlug) {
   return track
 }
 
-/** Lyrics rows for a track DB uuid -> plain + synced shapes. */
-export async function fetchLyricsForTrack(trackDbId) {
-  const empty = { ta: [], en: [], synced: null }
-  if (!trackDbId || !isSupabaseConfigured || !supabase) return empty
-  const { data, error } = await supabase
-    .from('lyrics')
-    .select('lang, lines, synced')
-    .eq('track_id', trackDbId)
-  if (error || !Array.isArray(data)) return empty
+/** Shape raw lyrics rows (one track, any langs) into { ta, en, synced }. */
+function shapeLyricsRows(rows) {
   const byLang = {}
-  for (const row of data) byLang[row.lang] = row
+  for (const row of rows || []) byLang[row.lang] = row
   const toTexts = (row) =>
     (Array.isArray(row?.lines) ? row.lines : [])
       .map((l) => (typeof l === 'string' ? l : l?.text || ''))
@@ -476,6 +564,36 @@ export async function fetchLyricsForTrack(trackDbId) {
     if (synced.length === 0) synced = null
   }
   return { ta, en, synced }
+}
+
+/** All lyrics rows, grouped by track DB uuid — one query for fetchTracks. */
+async function fetchLyricsMap() {
+  const out = new Map()
+  if (!isSupabaseConfigured || !supabase) return out
+  const { data, error } = await supabase
+    .from('lyrics')
+    .select('track_id, lang, lines, synced')
+  if (error || !Array.isArray(data)) return out
+  const byTrack = new Map()
+  for (const row of data) {
+    if (!row?.track_id) continue
+    if (!byTrack.has(row.track_id)) byTrack.set(row.track_id, [])
+    byTrack.get(row.track_id).push(row)
+  }
+  for (const [id, rows] of byTrack) out.set(id, shapeLyricsRows(rows))
+  return out
+}
+
+/** Lyrics rows for a track DB uuid -> plain + synced shapes. */
+export async function fetchLyricsForTrack(trackDbId) {
+  const empty = { ta: [], en: [], synced: null }
+  if (!trackDbId || !isSupabaseConfigured || !supabase) return empty
+  const { data, error } = await supabase
+    .from('lyrics')
+    .select('lang, lines, synced')
+    .eq('track_id', trackDbId)
+  if (error || !Array.isArray(data)) return empty
+  return shapeLyricsRows(data)
 }
 
 // ---------------------------------------------------------------------------

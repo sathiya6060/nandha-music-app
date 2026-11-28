@@ -26,7 +26,23 @@ export default function SleepTimerSheet({ open, onClose }) {
   ) : null)
 
   return (
-    <div className="sheet-backdrop" onClick={onClose}>
+    // S6848: the backdrop is a click-to-close surface — give it the
+    // button role + label (Escape also closes; see MobilePlayer).
+    // S6852: a button-role surface must be tabbable AND operable —
+    // Enter/Space closes it too.
+    <div
+      className="sheet-backdrop"
+      role="button"
+      tabIndex={0}
+      aria-label={t('common.close')}
+      onClick={onClose}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClose()
+        }
+      }}
+    >
       <div
         className="sheet sleep-sheet"
         role="dialog"

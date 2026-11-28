@@ -163,7 +163,10 @@ export async function invalidateTrack(id) {
   memoryDelete(memoryKeyFor(cacheKeys.tracks()));
   lsDelete(`track:${id}`);
   lsDelete('tracks');
-  await redisDel(`track:${id}`, 'tracks');
+  // M35: no Redis DEL here — only 'home' is ever written to Redis
+  // (Home's cachedFetch, guard key 'home'), so 'track:<id>' /
+  // 'tracks' keys can never exist; each DEL was a wasted Edge
+  // Function call + a counted command.
   invalidateQueryClient(
     (q) => q.queryKey[0] === 'track' || q.queryKey[0] === 'tracks',
   );
@@ -179,10 +182,8 @@ export async function invalidateHome() {
 export async function invalidateSearch() {
   memoryClear('search:');
   lsClear('search:');
-  // Redis: search keys are per-query; without SCAN over REST we clear the
-  // known prefix bucket instead of enumerating — callers that cached a
-  // specific query should also call redisDel(`search:<query>`).
-  await redisDel('search');
+  // M35: search is never wired through Redis (per-query keys would
+  // burn the budget), so there is no 'search' Redis key to delete.
   invalidateQueryClient((q) => q.queryKey[0] === 'search');
 }
 
@@ -200,11 +201,13 @@ export async function invalidateCatalog(trackId) {
   // otherwise a React Query refetch after an admin write would serve
   // the stale 'home' / 'track:<id>' value for up to its TTL.
   invalidateCachedFetch();
-  await redisDel('home', 'tracks', 'search');
+  // M35: 'home' is the only Redis key the app ever writes (Home's
+  // cachedFetch, guard key 'home'). 'tracks' / 'search' keys can
+  // never exist — the DELs for them were wasted Edge Function calls.
+  await redisDel('home');
   if (trackId) {
     memoryDelete(memoryKeyFor(cacheKeys.track(trackId)));
     lsDelete(`track:${trackId}`);
-    await redisDel(`track:${trackId}`);
   }
   invalidateQueryClient((q) =>
     ['track', 'tracks', 'album', 'albums', 'artist', 'artists', 'playlist', 'playlists', 'home', 'search', 'library'].includes(
@@ -266,6 +269,11 @@ export async function flushPlays() {
   const entries = [...playBuffer.entries()];
   playBuffer.clear();
   if (!supabase) return { flushed: 0, skipped: 'no-supabase' };
+  // M12: only RESOLVABLE rows are ever re-queued. The old catch block
+  // re-queued all `entries`, including rows already filtered out as
+  // unresolvable — so a dropped row cycled through resolveTrackDbIds
+  // on every flush forever.
+  let resolvableEntries = [];
   try {
     // NOTE (S9, 27 Nov 2026): this dynamic import() is INTENTIONALLY
     // kept, even though Vite flags it INEFFECTIVE_DYNAMIC_IMPORT.
@@ -279,13 +287,12 @@ export async function flushPlays() {
     // "fix" this one without moving QUERY_DEFAULTS out of module scope.
     const { resolveTrackDbIds } = await import('./supabaseCatalog.js');
     const dbIds = await resolveTrackDbIds(entries.map(([trackId]) => trackId));
-    const rows = entries
-      .filter(([trackId]) => dbIds.get(trackId))
-      .map(([track_id, count]) => ({
-        track_id: dbIds.get(track_id),
-        count,
-        played_at: new Date().toISOString(),
-      }));
+    resolvableEntries = entries.filter(([trackId]) => dbIds.get(trackId));
+    const rows = resolvableEntries.map(([track_id, count]) => ({
+      track_id: dbIds.get(track_id),
+      count,
+      played_at: new Date().toISOString(),
+    }));
     const dropped = entries.filter(([trackId]) => !dbIds.get(trackId));
     if (dropped.length > 0) {
       console.warn('[cache] dropping play counts with no DB track id:', dropped.map(([id]) => id));
@@ -295,8 +302,10 @@ export async function flushPlays() {
     if (error) throw error;
     return { flushed: rows.length };
   } catch (err) {
-    // Put the counts back so the next flush retries them.
-    entries.forEach(([track_id, count]) => {
+    // Put the RESOLVABLE counts back (under their original ids) so
+    // the next flush retries them; dropped (unresolvable) rows stay
+    // dropped.
+    resolvableEntries.forEach(([track_id, count]) => {
       playBuffer.set(track_id, (playBuffer.get(track_id) ?? 0) + count);
     });
     console.warn('[cache] play flush failed, will retry:', err?.message ?? err);

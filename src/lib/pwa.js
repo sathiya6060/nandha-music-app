@@ -242,9 +242,30 @@ export function pinnedAudioKey(track) {
   return `/pinned-audio/${encodeURIComponent(String(track.id))}.mp3`
 }
 
+/** Is this pin entry expired (7-day TTL)? */
+function isExpired(entry, now = Date.now()) {
+  return !entry || typeof entry.pinnedAt !== 'number' || now - entry.pinnedAt >= PIN_TTL_MS
+}
+
 /** Blob URL for a pinned track's cached audio (offline playback), or null. */
 export async function getPinnedAudioBlobUrl(track) {
   if (!track || !('caches' in window)) return null
+  // H16: the 7-day TTL was enforced when LISTING pins but never on
+  // READ — an expired pin kept playing forever. Enforce it here and
+  // delete the expired cache entry + meta so it never serves again.
+  const meta = readMeta()
+  const entry = meta.find((m) => String(m.trackId) === String(track.id))
+  if (isExpired(entry)) {
+    try {
+      const cache = await caches.open(AUDIO_CACHE)
+      await cache.delete(pinnedAudioKey(track))
+      if (entry?.url) await cache.delete(entry.url)
+    } catch {
+      /* cache cleanup is best-effort */
+    }
+    if (entry) writeMeta(meta.filter((m) => m !== entry))
+    return null
+  }
   try {
     const cache = await caches.open(AUDIO_CACHE)
     const res = await cache.match(pinnedAudioKey(track))
@@ -297,9 +318,12 @@ export async function unpinTrack(track) {
 }
 
 /** Is this track's audio already pinned? (Stable key first, then the
- *  legacy URL form for pins made before the stable key existed.) */
+ *  legacy URL form for pins made before the stable key existed.)
+ *  H16: expired pins (7-day TTL) no longer count as pinned. */
 export async function isTrackPinned(track) {
   if (!track || !('caches' in window)) return false
+  const entry = readMeta().find((m) => String(m.trackId) === String(track.id))
+  if (isExpired(entry)) return false
   try {
     const cache = await caches.open(AUDIO_CACHE)
     if (await cache.match(pinnedAudioKey(track))) return true

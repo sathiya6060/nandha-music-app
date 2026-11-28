@@ -26,11 +26,16 @@ function drawCoverFit(ctx, img, x, y, w, h) {
   ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh)
 }
 
-function wrapText(ctx, text, maxWidth) {
+function wrapText(ctx, text, maxWidth, maxLines = 4) {
   const words = String(text || '').split(/\s+/)
   const lines = []
   let line = ''
-  for (const word of words) {
+  for (let word of words) {
+    // A single unbreakable word wider than the box (e.g. a long Tamil
+    // compound) would otherwise overflow the canvas — truncate it.
+    if (ctx.measureText(word).width > maxWidth) {
+      word = truncateText(ctx, word, maxWidth)
+    }
     const test = line ? `${line} ${word}` : word
     if (ctx.measureText(test).width > maxWidth && line) {
       lines.push(line)
@@ -40,7 +45,22 @@ function wrapText(ctx, text, maxWidth) {
     }
   }
   if (line) lines.push(line)
-  return lines.slice(0, 4)
+  return lines.slice(0, maxLines)
+}
+
+/** Single-line truncate with an ellipsis so text never runs off the canvas. */
+function truncateText(ctx, text, maxWidth) {
+  const str = String(text || '')
+  if (ctx.measureText(str).width <= maxWidth) return str
+  const ellipsis = '…'
+  let low = 0
+  let high = str.length
+  while (low < high) {
+    const mid = Math.floor((low + high + 1) / 2)
+    if (ctx.measureText(str.slice(0, mid) + ellipsis).width <= maxWidth) low = mid
+    else high = mid - 1
+  }
+  return str.slice(0, low) + ellipsis
 }
 
 function roundedRect(ctx, x, y, w, h, r) {
@@ -114,25 +134,36 @@ async function generateStoryCard(track, { lyric } = {}) {
   ctx.stroke()
 
   // Tamil lyric line (centre safe area — inside 75% width).
+  // M36: the old layout drew up to 4 lyric lines from y=1180, then
+  // the title + artist with bare fillText — a long title ran off the
+  // 1080px canvas and the 4th lyric line collided with the logo at
+  // y=1640. Lyrics now cap at 3 lines, the title wraps to 2 lines,
+  // the artist truncates to one line, and every y is computed from
+  // what was actually drawn, with the logo zone kept clear.
   const lyricText = lyric || (track.lyricsTa && track.lyricsTa[0]) || track.titleTa || track.titleEn || ''
   ctx.fillStyle = '#FEF3C7'
   ctx.font = '700 62px "Noto Sans Tamil", sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
-  const lines = wrapText(ctx, lyricText, W * 0.76)
-  let ly = 1180
+  const lines = wrapText(ctx, lyricText, W * 0.76, 3)
+  let ly = 1170
   for (const line of lines) {
     ctx.fillText(line, W / 2, ly)
-    ly += 84
+    ly += 80
   }
 
-  // Title + artist (English, smaller).
+  // Title (English, smaller) — wrapped to 2 lines inside the safe area.
   ctx.fillStyle = '#FFFFFF'
   ctx.font = '700 44px "Inter", sans-serif'
-  ctx.fillText(track.titleEn || track.titleTa || '', W / 2, ly + 30)
+  const titleLines = wrapText(ctx, track.titleEn || track.titleTa || '', W * 0.8, 2)
+  for (const line of titleLines) {
+    ctx.fillText(line, W / 2, ly + 28)
+    ly += 56
+  }
+  // Artist — one truncated line, never wider than the safe area.
   ctx.fillStyle = 'rgba(254, 243, 199, 0.75)'
   ctx.font = '400 36px "Inter", sans-serif'
-  ctx.fillText(track.artist || 'Nandha Music', W / 2, ly + 92)
+  ctx.fillText(truncateText(ctx, track.artist || 'Nandha Music', W * 0.8), W / 2, ly + 28)
 
   // Brand lockup at the bottom: N logo + NANDHA MUSIC + tagline.
   try {

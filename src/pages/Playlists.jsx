@@ -104,7 +104,6 @@ export default function Playlists() {
               onChange={(e) => { setName(e.target.value); setError('') }}
               placeholder={t('playlists.namePlaceholder')}
               maxLength={80}
-              autoFocus
             />
             <button type="submit" className="btn btn-primary">{t('common.save')}</button>
             <button type="button" className="btn btn-ghost" onClick={() => { setShowForm(false); setName(''); setError('') }}>{t('common.cancel')}</button>
@@ -113,25 +112,30 @@ export default function Playlists() {
         )}
       </div>
 
-      {userPlaylists.length > 0 && (
-        <section className="section" aria-label={t('playlists.yours')}>
-          <div className="section-head">
-            <div><h2 className="section-title">{t('playlists.yours')}</h2></div>
-          </div>
-          <div className="grid-cards">{userPlaylists.map(playlistCard)}</div>
-        </section>
-      )}
-
-      <section className="section" aria-label={t('playlists.curated')}>
+      {/* B4: the curated section is hidden entirely when there are no
+          curated playlists — showing "No playlists yet" under
+          "Curated by Nandha Music" misleads (today the live curated
+          playlist has 0 songs because its DB membership is empty).
+          The empty state belongs to the user's own section only. */}
+      <section className="section" aria-label={t('playlists.yours')}>
         <div className="section-head">
-          <div><h2 className="section-title">{t('playlists.curated')}</h2></div>
+          <div><h2 className="section-title">{t('playlists.yours')}</h2></div>
         </div>
-        {playlists.length === 0 ? (
+        {userPlaylists.length === 0 ? (
           <EmptyState title={t('playlists.empty')} message={t('library.emptyHint')} />
         ) : (
-          <div className="grid-cards">{playlists.map(playlistCard)}</div>
+          <div className="grid-cards">{userPlaylists.map(playlistCard)}</div>
         )}
       </section>
+
+      {playlists.length > 0 && (
+        <section className="section" aria-label={t('playlists.curated')}>
+          <div className="section-head">
+            <div><h2 className="section-title">{t('playlists.curated')}</h2></div>
+          </div>
+          <div className="grid-cards">{playlists.map(playlistCard)}</div>
+        </section>
+      )}
     </div>
   )
 }

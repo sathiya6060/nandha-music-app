@@ -129,12 +129,27 @@ export function loadAlarm() {
 }
 
 export function saveAlarm(alarm) {
+  // H12: never persist an invalid time — an empty string used to
+  // parse as midnight (00:00) and fire a 12am alarm. Returns false
+  // when the time is invalid and nothing was saved.
+  if (!isValidAlarmTime(alarm?.time)) return false
   try {
     localStorage.setItem(ALARM_KEY, JSON.stringify(alarm))
   } catch {
     // ignore
   }
   window.dispatchEvent(new CustomEvent('nandha-alarm-changed', { detail: alarm }))
+  return true
+}
+
+/** True for a real 24-hour "HH:MM" time (empty/invalid -> false). */
+export function isValidAlarmTime(time) {
+  if (typeof time !== 'string') return false
+  const match = /^(\d{2}):(\d{2})$/.exec(time)
+  if (!match) return false
+  const h = Number(match[1])
+  const m = Number(match[2])
+  return h >= 0 && h <= 23 && m >= 0 && m <= 59
 }
 
 /** "HH:MM" -> minutes since midnight. */

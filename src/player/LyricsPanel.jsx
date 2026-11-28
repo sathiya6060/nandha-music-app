@@ -137,29 +137,35 @@ export default function LyricsPanel({ track, className }) {
   }
 
   const showEnglish = lang === 'en'
+  // L9: the English toggle used to be a silent no-op when a track has
+  // no English lines (it just re-showed the Tamil text). Hide it
+  // unless at least one line actually has an English version.
+  const hasEnglish = lines.some((line) => line.en)
 
   return (
     <div className={rootClassName}>
       <div className="lyrics-head">
         <h3>{t('common.lyrics')}</h3>
-        <div className="lyrics-lang-toggle" role="group" aria-label={t('common.lyrics')}>
-          <button
-            type="button"
-            className={lang === 'ta' ? 'is-active' : ''}
-            onClick={() => setLang('ta')}
-            aria-pressed={lang === 'ta'}
-          >
-            {t('player.tamil')}
-          </button>
-          <button
-            type="button"
-            className={lang === 'en' ? 'is-active' : ''}
-            onClick={() => setLang('en')}
-            aria-pressed={lang === 'en'}
-          >
-            {t('player.english')}
-          </button>
-        </div>
+        {hasEnglish && (
+          <div className="lyrics-lang-toggle" role="group" aria-label={t('common.lyrics')}>
+            <button
+              type="button"
+              className={lang === 'ta' ? 'is-active' : ''}
+              onClick={() => setLang('ta')}
+              aria-pressed={lang === 'ta'}
+            >
+              {t('player.tamil')}
+            </button>
+            <button
+              type="button"
+              className={lang === 'en' ? 'is-active' : ''}
+              onClick={() => setLang('en')}
+              aria-pressed={lang === 'en'}
+            >
+              {t('player.english')}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="lyrics-list" ref={listRef}>

@@ -1,0 +1,102 @@
+/* Admin redesign — shared components: StatusStrip.
+   Dark slate bar, sand text. Red (--bad) whenever any health signal
+   is wrong. No gradients. Buttons are >=44px tall on mobile. */
+.admin-status-strip {
+  background: #1e293b;
+  color: #fef3c7;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.admin-status-strip--bad {
+  border-color: #f87171;
+  background: #2a1a22;
+}
+
+.admin-status-strip__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-status-strip__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  font-size: 14px;
+}
+
+.admin-status-strip__label {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.admin-status-strip__value {
+  font-weight: 700;
+  color: #fef3c7;
+}
+
+.admin-status-strip__value--live,
+.admin-status-strip__value--ok {
+  color: #4ade80;
+}
+
+.admin-status-strip__value--fallback,
+.admin-status-strip__value--missing,
+.admin-status-strip__value--fail {
+  color: #f87171;
+}
+
+.admin-status-strip__value--unknown {
+  color: #94a3b8;
+}
+
+.admin-status-strip__fix {
+  margin-top: 10px;
+}
+
+.admin-status-strip__fix-button,
+.admin-status-strip__copy {
+  min-height: 44px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: #273449;
+  color: #fef3c7;
+  cursor: pointer;
+}
+
+.admin-status-strip__fix-button:focus-visible,
+.admin-status-strip__copy:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
+}
+
+.admin-status-strip__fix-panel {
+  margin-top: 10px;
+}
+
+.admin-status-strip__sql {
+  margin: 0 0 10px;
+  padding: 12px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #fef3c7;
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.admin-status-strip__sql code {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}

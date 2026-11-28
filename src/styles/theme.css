@@ -488,6 +488,9 @@ input[type="search"]::-webkit-search-decoration {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* M20: the title is a /track/ link — it keeps the card-title colour,
+   not the global gold link colour. */
+.track-card__title a { color: inherit; }
 /* Phase 2 (S4): explicit button/link resets — the old inline
    `all: unset` also reset outline-style to none and, as an inline style,
    beat the global :focus-visible rule, so these had no focus ring. These
@@ -909,6 +912,37 @@ input[type="search"]::-webkit-search-decoration {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Toast with an action (admin redesign — Undo): the region is
+   pointer-events:none, so the action button re-enables pointer
+   events for itself. Positioning logic above is unchanged. */
+.toast--with-action {
+  display: flex;
+  align-items: center;
+  gap: 4px 12px;
+  text-align: left;
+  pointer-events: auto;
+}
+.toast__message {
+  flex: 1 1 auto;
+}
+.toast__action {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 10px 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--gold);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.toast__action:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
 /* ---------- Top bar ---------- */
 .topbar__search { display: none; flex: 1; max-width: 480px; }
 .topbar__actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
@@ -975,7 +1009,11 @@ input[type="search"]::-webkit-search-decoration {
   box-sizing: border-box;
 }
 .topbar__menu-item:hover,
-.topbar__menu-item:focus-visible { background: var(--surface-2); color: var(--text-strong); outline: none; }
+.topbar__menu-item:focus-visible { background: var(--surface-2); color: var(--text-strong); }
+/* L19: the old rule set `outline: none` on :focus-visible here, so
+   account-menu items had no focus ring at all. The ring is restored
+   (gold, offset) — keyboard users must see where they are. */
+.topbar__menu-item:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .topbar__notice {
   width: auto;
   margin: 0;
@@ -1086,6 +1124,14 @@ input[type="search"]::-webkit-search-decoration {
   gap: 8px;
   margin: 16px 0 4px;
 }
+/* B6: at 320px the greeting + streak hero stack pushes the tabs to
+   y=524, 20px under the bottom nav (top 504) at scroll 0 — compact
+   the three blocks above the tabs so they clear the nav. */
+@media (max-width: 360px) {
+  .page-head { margin-top: 8px; }
+  .streak-hero { padding: 16px; }
+  .home-tabs { margin-top: 8px; }
+}
 .home-tabs__tab {
   min-height: 44px;
   padding: 10px 20px;
@@ -1178,7 +1224,8 @@ input[type="search"]::-webkit-search-decoration {
     padding-bottom: 8px;
     padding-left: 12px;
     padding-right: 12px;
-    row-gap: 8px;
+    /* S4657: `row-gap` was overridden by the `gap` shorthand below —
+       the overridden property is removed, `gap` alone sets both axes. */
     gap: 8px;
   }
   .lang-select { padding: 8px 6px; }
@@ -1212,6 +1259,24 @@ input[type="search"]::-webkit-search-decoration {
 }
 .discover-card { user-select: none; -webkit-user-select: none; }
 .discover-feed:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+/* B3: at small widths the wrapped topbar + two-line route subtitle
+   make the real overhead larger than --topbar-h (60px) + 48px, so the
+   feed ran 78px behind the mini player at 320px (measured 28 Nov
+   2026: topbar 113px at <=339px, subtitle block 72px at <=380px;
+   feed bottom 521 vs player top 443). The corrections below use those
+   measured heights, with a few px of margin. */
+@media (max-width: 380px) {
+  .discover-feed {
+    height: calc(100dvh - var(--topbar-h) - var(--chrome-bottom) - 74px - env(safe-area-inset-bottom, 0px));
+    height: calc(100svh - var(--topbar-h) - var(--chrome-bottom) - 74px - env(safe-area-inset-bottom, 0px));
+  }
+}
+@media (max-width: 339px) {
+  .discover-feed {
+    height: calc(100dvh - 116px - var(--chrome-bottom) - 74px - env(safe-area-inset-bottom, 0px));
+    height: calc(100svh - 116px - var(--chrome-bottom) - 74px - env(safe-area-inset-bottom, 0px));
+  }
+}
 .discover-card {
   position: relative;
   height: 100%;

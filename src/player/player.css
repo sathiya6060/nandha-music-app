@@ -1307,6 +1307,18 @@
     height: 44px;
   }
 
+  /* B5: at 320px the title was squeezed to ~70px by four 44px
+     control buttons. Prev/Next drop out here (they stay one tap
+     away in the full player) so the title gets ~150px instead. */
+  .player-bar .player-prev,
+  .player-bar .player-next {
+    display: none;
+  }
+
+  .player-bar-main {
+    gap: 8px;
+  }
+
   .mobile-player {
     padding-left: 16px;
     padding-right: 16px;

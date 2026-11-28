@@ -3,9 +3,16 @@
 // No error-reporting service, no RUM, nothing leaves the device: errors
 // were invisible until a user reported them (the redis-cache CORS errors
 // were found only by manual console checks), so this module keeps the
-// last 50 errors in a small in-memory ring buffer and exposes it on
-// `window.nandhaErrors` for debugging (open DevTools and read it, or
-// call `window.nandhaErrors` after a bug report).
+// last 50 errors in a small in-memory ring buffer.
+//
+// L11: the buffer itself is NEVER exposed on window. DevTools reads
+// `window.nandhaErrors`, but it is a getter that returns a fresh copy
+// on every read — a page script can inspect errors, never mutate the
+// live buffer (pushing to the copy does nothing). Code uses
+// `getErrors()` (also a copy) or `window.nandhaErrorLog.getErrors`
+// (main.jsx). The getter carries a no-op setter so the legacy
+// `window.nandhaErrors = ...` boot assignment in main.jsx does not
+// throw in strict-mode modules.
 //
 // The single logging point is ErrorBoundary.componentDidCatch, which
 // calls recordError() here (plus its existing console.error). Global
@@ -14,6 +21,28 @@
 const MAX_ENTRIES = 50
 
 const buffer = []
+
+let snapshotExposed = false
+
+/** Install the read-only `window.nandhaErrors` snapshot getter once.
+ *  Safe to call repeatedly and outside a browser (no-op there). */
+function exposeErrorsSnapshot() {
+  if (typeof window === 'undefined' || snapshotExposed) return
+  try {
+    Object.defineProperty(window, 'nandhaErrors', {
+      configurable: true,
+      enumerable: true,
+      get() {
+        return [...buffer]
+      },
+      // No-op setter: legacy boot-time assignment must not throw.
+      set() {},
+    })
+    snapshotExposed = true
+  } catch {
+    /* DevTools exposure is best-effort; recording still works */
+  }
+}
 
 function describe(error) {
   if (error instanceof Error) return { message: error.message, stack: error.stack }
@@ -27,18 +56,18 @@ function describe(error) {
 
 /** Record one error. Returns the stored entry. */
 export function recordError(source, error, extra = {}) {
+  // L11: caller extras spread FIRST — core fields (at/source/message/
+  // stack) are set after them, so a caller can never overwrite them
+  // (e.g. a forged `message` or `source` in `extra`).
   const entry = {
+    ...extra,
     at: new Date().toISOString(),
     source,
     ...describe(error),
-    ...extra,
   }
   buffer.push(entry)
   while (buffer.length > MAX_ENTRIES) buffer.shift()
-  if (typeof window !== 'undefined') {
-    // Live reference: DevTools sees new entries without re-reading.
-    window.nandhaErrors = buffer
-  }
+  exposeErrorsSnapshot()
   return entry
 }
 
@@ -57,6 +86,7 @@ export function clearErrors() {
 export function installErrorHooks() {
   if (typeof window === 'undefined' || window.__nandhaErrorHooksInstalled) return
   window.__nandhaErrorHooksInstalled = true
+  exposeErrorsSnapshot()
   window.addEventListener('error', (event) => {
     recordError('window.onerror', event.error || event.message, {
       filename: event.filename || undefined,

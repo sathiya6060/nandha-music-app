@@ -1,25 +1,44 @@
 // Auth — Supabase Auth only. There is no demo mode: when Supabase is
 // not configured, sign-in is unavailable and the login page shows a
-// configuration error (fail-closed). The admin allowlist applies in
-// Supabase mode only; roles are admin / artist / listener (see
-// supabase/migrations/001_schema.sql).
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+// configuration error (fail-closed).
+//
+// Admin authority (contract with migration 005 + 007, Area C-ADMIN):
+// the client calls supabase.rpc('is_admin') ONCE per session and uses
+// its result as the isAdmin source of truth — the DB user_roles row
+// decides, not the email. If the RPC errors (e.g. migration 005 not
+// applied yet), the ADMIN_EMAILS allowlist is the fallback FOR UI
+// ROUTING ONLY (a console warning is logged), because RLS still
+// enforces every write server-side. Blocked users
+// (migration 007: profiles.blocked, via the is_blocked() RPC) cannot
+// sign in and cannot restore a session — they are signed out at once
+// and the Login page shows the blocked message.
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './supabase.js'
+import {
+  checkBlockedStatus,
+  resolveRole,
+} from './authHelpers.js'
 
-/** The ONLY account that may access /admin. Case-insensitive. */
-export const ADMIN_EMAILS = ['officialnandhamusic@gmail.com']
+// The pure auth helpers (ADMIN_EMAILS, roleFromSupabaseUser,
+// resolveRole, mapAuthError, checkBlockedStatus) live in
+// authHelpers.js — auth.jsx only exports the provider + hook, so
+// react(only-export-components) stays quiet. Login.jsx imports
+// ADMIN_EMAILS / mapAuthError from authHelpers.js directly.
 
-function isAdminEmail(email) {
-  return ADMIN_EMAILS.includes(String(email || '').trim().toLowerCase())
-}
-
-function roleFromSupabaseUser(sbUser) {
-  if (!sbUser) return 'listener'
-  if (isAdminEmail(sbUser.email)) return 'admin'
-  // L1: app_metadata only. user_metadata is user-writable, so it must
-  // never decide a role.
-  const metaRole = sbUser.app_metadata?.role
-  return metaRole === 'artist' ? 'artist' : 'listener'
+/** Call the is_admin() RPC once; null on any failure (allowlist fallback). */
+async function checkAdminRpc(client) {
+  try {
+    const { data, error } = await client.rpc('is_admin')
+    if (error) throw error
+    return typeof data === 'boolean' ? data : null
+  } catch (err) {
+    console.warn(
+      '[auth] is_admin RPC failed — using the email allowlist for UI routing only '
+        + '(writes are still enforced by RLS):',
+      err?.message || err,
+    )
+    return null
+  }
 }
 
 function isSupabaseConfigured() {
@@ -39,6 +58,56 @@ export function AuthProvider({ children }) {
   // True when Supabase is not configured: sign-in is then unavailable
   // and the login page must say so.
   const [configError, setConfigError] = useState(false)
+  // True when the last sign-in / session restore was refused because
+  // the account is blocked — the Login page shows the blocked message.
+  const [blocked, setBlocked] = useState(false)
+  // is_admin() RPC result for the current session (null = pending or
+  // unavailable — the allowlist decides UI routing until it resolves).
+  const [adminRpc, setAdminRpc] = useState(null)
+  const adminRpcForUserRef = useRef(null)
+
+  // Resolve the admin RPC once for this session's user (guarded by
+  // the ref, so re-renders and repeat auth events never re-call it).
+  const resolveAdminOnce = (sbUser) => {
+    if (!sbUser || adminRpcForUserRef.current === sbUser.id) return
+    adminRpcForUserRef.current = sbUser.id
+    void checkAdminRpc(supabase).then((rpc) => {
+      if (adminRpcForUserRef.current === sbUser.id) {
+        setAdminRpc(rpc)
+        setRole(resolveRole(sbUser, rpc))
+      }
+    })
+  }
+
+  // Apply a session user: enforce `blocked` first, then the admin RPC.
+  const applySessionUser = async (sbUser) => {
+    if (!sbUser) {
+      setUser(null)
+      setRole('listener')
+      setAdminRpc(null)
+      adminRpcForUserRef.current = null
+      setBlocked(false)
+      return
+    }
+    if (await checkBlockedStatus(supabase, sbUser.id)) {
+      // Blocked: sign out at once and refuse the session.
+      try {
+        await supabase.auth.signOut()
+      } catch {
+        // Already signed out — the local state below is what matters.
+      }
+      setUser(null)
+      setRole('listener')
+      setAdminRpc(null)
+      adminRpcForUserRef.current = null
+      setBlocked(true)
+      return
+    }
+    setBlocked(false)
+    setUser(sbUser)
+    setRole(resolveRole(sbUser, null))
+    resolveAdminOnce(sbUser)
+  }
 
   useEffect(() => {
     if (isSupabaseConfigured()) {
@@ -48,20 +117,16 @@ export function AuthProvider({ children }) {
         .getSession()
         .then(({ data }) => {
           if (!mounted) return
-          const sbUser = data?.session?.user || null
-          setUser(sbUser)
-          setRole(roleFromSupabaseUser(sbUser))
           setLoading(false)
+          void applySessionUser(data?.session?.user || null)
         })
         .catch(() => {
           if (mounted) setLoading(false)
         })
 
       const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-        const sbUser = session?.user || null
-        setUser(sbUser)
-        setRole(roleFromSupabaseUser(sbUser))
         setLoading(false)
+        void applySessionUser(session?.user || null)
       })
       return () => {
         mounted = false
@@ -76,6 +141,8 @@ export function AuthProvider({ children }) {
     setRole('listener')
     setLoading(false)
     return undefined
+    // applySessionUser only uses state setters + a ref (both stable).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const signInEmail = async (email, password) => {
@@ -84,11 +151,25 @@ export function AuthProvider({ children }) {
       return { user: null, error: { message: 'config_error' } }
     }
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (!error && data?.user) {
-      setUser(data.user)
-      setRole(roleFromSupabaseUser(data.user))
+    if (error || !data?.user) {
+      return { user: null, error: error || { message: 'Invalid login credentials' } }
     }
-    return { user: data?.user || null, error }
+    if (await checkBlockedStatus(supabase, data.user.id)) {
+      try {
+        await supabase.auth.signOut()
+      } catch {
+        // Ignore — the local state below refuses the sign-in.
+      }
+      setUser(null)
+      setRole('listener')
+      setBlocked(true)
+      return { user: null, error: { message: 'account_blocked' } }
+    }
+    setBlocked(false)
+    setUser(data.user)
+    setRole(resolveRole(data.user, null))
+    resolveAdminOnce(data.user)
+    return { user: data.user, error: null }
   }
 
   const signUpEmail = async (email, password) => {
@@ -99,7 +180,11 @@ export function AuthProvider({ children }) {
     const { data, error } = await supabase.auth.signUp({ email, password })
     if (!error && data?.user) {
       setUser(data.user)
-      setRole(roleFromSupabaseUser(data.user))
+      setRole(resolveRole(data.user, null))
+      // Only resolve the admin RPC once a real session exists — a
+      // confirmation-pending sign-up has no session yet, and its RPC
+      // answer (false) must not stick for the later sign-in.
+      if (data.session) resolveAdminOnce(data.user)
     }
     // data.session is null when email confirmation is required — the
     // caller shows the confirm-email hint in that case.
@@ -125,6 +210,9 @@ export function AuthProvider({ children }) {
     if (!error) {
       setUser(null)
       setRole('listener')
+      setAdminRpc(null)
+      adminRpcForUserRef.current = null
+      setBlocked(false)
     }
     return { error }
   }
@@ -136,6 +224,15 @@ export function AuthProvider({ children }) {
       isAdmin: role === 'admin',
       isArtist: role === 'artist',
       configError,
+      // True when the account is blocked (migration 007). The Login
+      // page reads this after a refused session restore.
+      blocked,
+      // Which source decided the current role: 'rpc' once is_admin()
+      // answered, 'allowlist' while it is pending or unavailable.
+      adminSource: adminRpc === null ? 'allowlist' : 'rpc',
+      // True when Supabase reports the session email as confirmed
+      // (null when confirmation is disabled or not applicable).
+      emailConfirmed: user ? Boolean(user.email_confirmed_at) : null,
       signInEmail,
       signUpEmail,
       signInGoogle,
@@ -144,7 +241,7 @@ export function AuthProvider({ children }) {
     }),
     // signIn*/signOut are stable closures over state setters
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, role, configError, loading],
+    [user, role, configError, loading, blocked, adminRpc],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

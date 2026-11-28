@@ -16,6 +16,18 @@ export const LOCALES = {
 const DEFAULT_LANG = 'en';
 const STORAGE_KEY = 'nandha-lang-v2';
 
+/**
+ * True only for a real locale key (S8475): a plain `LOCALES[code]`
+ * lookup is NOT enough — `LOCALES['__proto__']` returns
+ * Object.prototype (truthy), so a poisoned localStorage value would
+ * be accepted as the language and `LOCALES[lang].font` would be
+ * undefined. Own-property check closes that hole.
+ */
+export function isKnownLocale(code) {
+  return typeof code === 'string' &&
+    Object.prototype.hasOwnProperty.call(LOCALES, code)
+}
+
 const LanguageContext = createContext(null);
 
 function interpolate(str, vars) {
@@ -33,13 +45,13 @@ export function LanguageProvider({ children }) {
   const [lang, setLangState] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved && LOCALES[saved]) return saved;
+      if (saved && isKnownLocale(saved)) return saved;
     } catch { /* ignore */ }
     return DEFAULT_LANG;
   });
 
   const setLang = (code) => {
-    if (!LOCALES[code]) return;
+    if (!isKnownLocale(code)) return;
     setLangState(code);
     try { localStorage.setItem(STORAGE_KEY, code); } catch { /* ignore */ }
   };

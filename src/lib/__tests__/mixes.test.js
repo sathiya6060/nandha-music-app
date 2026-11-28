@@ -85,6 +85,15 @@ describe('getReleaseRadar', () => {
     expect(radar.tracks.map((t) => t.id)).toEqual(['c'])
     expect(radar.isFallback).toBe(true)
   })
+
+  it('never treats an unparseable release date as fresh (S7773: Number.NaN)', () => {
+    const badDate = { ...A, id: 'bad', releaseDate: 'not-a-date' }
+    const radar = getReleaseRadar([badDate, B], { date: new Date(2026, 10, 27) })
+    // B (20 Nov) is the only fresh track; the bad-date track falls
+    // through to the newest-first fallback ordering, never "fresh".
+    expect(radar.isFallback).toBe(false)
+    expect(radar.tracks.map((t) => t.id)).toEqual(['b'])
+  })
 })
 
 describe('getDaylist', () => {
