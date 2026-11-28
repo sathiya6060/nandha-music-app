@@ -17,7 +17,7 @@ const { resolveState, insertState, insertCalls, redisDelCalls, supabaseState } =
   const insertState = { error: null }
   const insertCalls = []
   const redisDelCalls = []
-  const supabaseState = { value: null }
+  const supabaseState = { value: null, sessionUserId: null }
   return { resolveState, insertState, insertCalls, redisDelCalls, supabaseState }
 })
 
@@ -48,6 +48,15 @@ function fakeSupabase() {
         return { error: insertState.error }
       },
     }),
+    auth: {
+      getSession: async () => ({
+        data: {
+          session: supabaseState.sessionUserId
+            ? { user: { id: supabaseState.sessionUserId } }
+            : null,
+        },
+      }),
+    },
   }
 }
 
@@ -65,6 +74,7 @@ beforeEach(() => {
   insertCalls.length = 0
   redisDelCalls.length = 0
   supabaseState.value = fakeSupabase()
+  supabaseState.sessionUserId = null
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
 
@@ -90,6 +100,31 @@ describe('recordPlay / flushPlays', () => {
     // Buffer is empty after a successful flush.
     expect(await cache.flushPlays()).toEqual({ flushed: 0 })
     expect(insertCalls).toHaveLength(1)
+  })
+
+  it('includes user_id when signed in (010: plays are attributed)', async () => {
+    await loadCache()
+    resolveState.map = { slug1: UUID1 }
+    supabaseState.sessionUserId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+    cache.recordPlay('slug1')
+    const res = await cache.flushPlays()
+    expect(res).toEqual({ flushed: 1 })
+    expect(insertCalls[0].rows).toEqual([
+      { track_id: UUID1, user_id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', count: 1, played_at: expect.any(String) },
+    ])
+  })
+
+  it('omits user_id for guests (no session) — rows stay unattributed', async () => {
+    await loadCache()
+    resolveState.map = { slug1: UUID1 }
+    supabaseState.sessionUserId = null
+    cache.recordPlay('slug1')
+    const res = await cache.flushPlays()
+    expect(res).toEqual({ flushed: 1 })
+    expect(insertCalls[0].rows).toEqual([
+      { track_id: UUID1, count: 1, played_at: expect.any(String) },
+    ])
+    expect(insertCalls[0].rows[0]).not.toHaveProperty('user_id')
   })
 
   it('drops rows that cannot be resolved (local-only track) and never retries them', async () => {

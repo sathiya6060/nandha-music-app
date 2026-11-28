@@ -288,8 +288,22 @@ export async function flushPlays() {
     const { resolveTrackDbIds } = await import('./supabaseCatalog.js');
     const dbIds = await resolveTrackDbIds(entries.map(([trackId]) => trackId));
     resolvableEntries = entries.filter(([trackId]) => dbIds.get(trackId));
+    // 010 (28 Nov 2026): attribute plays to the caller. Migration 005
+    // deliberately allows NULL user_id until this ships; once this is
+    // live-verified, 010 tightens the policy to user_id = auth.uid().
+    // Best-effort: a failed session read keeps the old unattributed row
+    // (guests have no INSERT grant at all, so their flush still 401s
+    // as before — expected, not an error).
+    let userId = null
+    try {
+      const { data } = await supabase.auth.getSession()
+      userId = data?.session?.user?.id ?? null
+    } catch {
+      userId = null
+    }
     const rows = resolvableEntries.map(([track_id, count]) => ({
       track_id: dbIds.get(track_id),
+      ...(userId ? { user_id: userId } : {}),
       count,
       played_at: new Date().toISOString(),
     }));

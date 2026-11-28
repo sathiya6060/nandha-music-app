@@ -24,6 +24,7 @@ import {
   dropAllSignedAudioUrls,
   fileNameOf,
 } from '../lib/signedAudio.js'
+import { sanitizeQueue } from '../lib/validateStored.js'
 
 // Static imports (S9, 27 Nov 2026): cache.js and config.js used to be
 // loaded with dynamic import() here, but both are statically imported
@@ -100,12 +101,15 @@ function readQuality() {
 function readQueue() {
   const saved = readJSON(LS_QUEUE, null)
   if (saved && Array.isArray(saved.queue)) {
+    // A3-6 (28 Nov 2026): validate restored queue entries — a tampered
+    // stored entry with a forged audio URL must never be played.
+    const queue = sanitizeQueue(saved.queue)
     return {
-      queue: saved.queue,
+      queue,
       queueIndex:
         Number.isInteger(saved.queueIndex) &&
         saved.queueIndex >= 0 &&
-        saved.queueIndex < saved.queue.length
+        saved.queueIndex < queue.length
           ? saved.queueIndex
           : 0,
     }
@@ -117,7 +121,8 @@ function readQueue() {
  *  These play BEFORE the context queue continues. */
 function readUserQueue() {
   const saved = readJSON(LS_USER_QUEUE, null)
-  return Array.isArray(saved) ? saved.filter(Boolean) : []
+  // A3-6 (28 Nov 2026): same validation as the main queue.
+  return sanitizeQueue(saved)
 }
 
 function readStoredFlag(key, defaultValue) {
