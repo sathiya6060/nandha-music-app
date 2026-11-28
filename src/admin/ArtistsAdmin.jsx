@@ -23,6 +23,7 @@ import {
   AdminToolbar,
   AdminBulkBar,
   AdminListContent,
+  AdminFirstColumns,
   AdminRowActions,
   AdminFormActions,
   AdminTable,
@@ -327,18 +328,19 @@ export default function ArtistsAdmin() {
         t={t}
         list={list}
         loading={artistsLoading}
-        emptyTitle={t('admin.noArtistsFound')}
-        emptyHint={t('admin.noTracksFoundHint')}
-        emptyActionLabel={t('admin.addFirstArtist')}
-        onEmptyAction={startNew}
+        empty={{
+          title: t('admin.noArtistsFound'),
+          hint: t('admin.noTracksFoundHint'),
+          actionLabel: t('admin.addFirstArtist'),
+          onAction: startNew,
+        }}
       >
         <AdminTable
           list={list}
           selectAllLabel={t('admin.artists')}
           columns={
             <>
-              <th scope="col">{t('admin.photo')}</th>
-              <th scope="col" aria-sort={list.ariaSort('name')}>{list.sortHeader('name', t('admin.userName'))}</th>
+              <AdminFirstColumns list={list} coverLabel={t('admin.photo')} sortKey="name" sortLabel={t('admin.userName')} />
               <th scope="col">{t('admin.description')}</th>
               <th scope="col">{t('common.actions')}</th>
             </>

@@ -21,16 +21,16 @@ import {
   AdminToolbar,
   AdminBulkBar,
   AdminListContent,
+  AdminFirstColumns,
   AdminRowActions,
-  AdminFormActions,
-  AdminTrackOrderEditor,
+  AdminTrackOrderForm,
+  AdminRemoveTrackDialog,
   AdminTable,
   AdminCards,
   AdminCard,
   AdminPagination,
   AdminDeleteDialogs,
 } from './components/AdminList.jsx'
-import ConfirmDialog from './components/ConfirmDialog.jsx'
 import './lists.css'
 import {
   getMergedTracks,
@@ -252,15 +252,15 @@ export default function AlbumsAdmin() {
             </label>
           </div>
 
-          <AdminTrackOrderEditor
+          <AdminTrackOrderForm
             t={t}
             orderedTracks={orderedTracks}
             unselectedTracks={unselectedTracks}
             onMove={moveTrack}
             onToggle={toggleTrack}
+            saveLabel={t('admin.saveAlbum')}
+            onCancel={() => setEditing(null)}
           />
-
-          <AdminFormActions t={t} saveLabel={t('admin.saveAlbum')} onCancel={() => setEditing(null)} />
         </form>
       )}
 
@@ -272,18 +272,19 @@ export default function AlbumsAdmin() {
         t={t}
         list={list}
         loading={tracksLoading || albumsLoading}
-        emptyTitle={t('admin.noAlbumsFound')}
-        emptyHint={t('admin.noTracksFoundHint')}
-        emptyActionLabel={t('admin.addFirstAlbum')}
-        onEmptyAction={startNew}
+        empty={{
+          title: t('admin.noAlbumsFound'),
+          hint: t('admin.noTracksFoundHint'),
+          actionLabel: t('admin.addFirstAlbum'),
+          onAction: startNew,
+        }}
       >
         <AdminTable
           list={list}
           selectAllLabel={t('admin.albums')}
           columns={
             <>
-              <th scope="col">{t('admin.cover')}</th>
-              <th scope="col" aria-sort={list.ariaSort('title')}>{list.sortHeader('title', t('admin.title'))}</th>
+              <AdminFirstColumns list={list} coverLabel={t('admin.cover')} sortKey="title" sortLabel={t('admin.title')} />
               <th scope="col" aria-sort={list.ariaSort('releaseDate')}>{list.sortHeader('releaseDate', t('admin.releaseDate'))}</th>
               <th scope="col">{t('admin.tracks')}</th>
               <th scope="col">{t('common.actions')}</th>
@@ -346,19 +347,7 @@ export default function AlbumsAdmin() {
         onConfirmDelete={doDeleteAlbum}
         onConfirmBulkDelete={doBulkDelete}
       />
-      <ConfirmDialog
-        open={list.confirmState?.kind === 'removeTrack'}
-        title={t('admin.confirmRemoveTrack', { title: adminTracks.find((tr) => tr.id === list.confirmState?.trackId)?.titleTa || adminTracks.find((tr) => tr.id === list.confirmState?.trackId)?.titleEn || list.confirmState?.trackId || '' })}
-        body={t('admin.deleteNoUndo')}
-        confirmLabel={t('common.remove')}
-        danger
-        onConfirm={() => {
-          const trackId = list.confirmState.trackId
-          list.setConfirmState(null)
-          doRemoveTrack(trackId)
-        }}
-        onCancel={() => list.setConfirmState(null)}
-      />
+      <AdminRemoveTrackDialog t={t} list={list} tracks={adminTracks} onRemoveTrack={doRemoveTrack} />
     </div>
   )
 }

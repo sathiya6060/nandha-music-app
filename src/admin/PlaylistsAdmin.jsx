@@ -21,16 +21,16 @@ import {
   AdminToolbar,
   AdminBulkBar,
   AdminListContent,
+  AdminFirstColumns,
   AdminRowActions,
-  AdminFormActions,
-  AdminTrackOrderEditor,
+  AdminTrackOrderForm,
+  AdminRemoveTrackDialog,
   AdminTable,
   AdminCards,
   AdminCard,
   AdminPagination,
   AdminDeleteDialogs,
 } from './components/AdminList.jsx'
-import ConfirmDialog from './components/ConfirmDialog.jsx'
 import './lists.css'
 import {
   getMergedTracks,
@@ -253,15 +253,15 @@ export default function PlaylistsAdmin() {
             <textarea className="admin-input admin-textarea" rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </label>
 
-          <AdminTrackOrderEditor
+          <AdminTrackOrderForm
             t={t}
             orderedTracks={orderedTracks}
             unselectedTracks={unselectedTracks}
             onMove={moveTrack}
             onToggle={toggleTrack}
+            saveLabel={t('admin.savePlaylist')}
+            onCancel={() => setEditing(null)}
           />
-
-          <AdminFormActions t={t} saveLabel={t('admin.savePlaylist')} onCancel={() => setEditing(null)} />
         </form>
       )}
 
@@ -273,18 +273,19 @@ export default function PlaylistsAdmin() {
         t={t}
         list={list}
         loading={tracksLoading || playlistsLoading}
-        emptyTitle={t('admin.noPlaylistsFound')}
-        emptyHint={t('admin.noTracksFoundHint')}
-        emptyActionLabel={t('admin.addFirstPlaylist')}
-        onEmptyAction={startNew}
+        empty={{
+          title: t('admin.noPlaylistsFound'),
+          hint: t('admin.noTracksFoundHint'),
+          actionLabel: t('admin.addFirstPlaylist'),
+          onAction: startNew,
+        }}
       >
         <AdminTable
           list={list}
           selectAllLabel={t('admin.playlists')}
           columns={
             <>
-              <th scope="col">{t('admin.cover')}</th>
-              <th scope="col" aria-sort={list.ariaSort('name')}>{list.sortHeader('name', t('admin.title'))}</th>
+              <AdminFirstColumns list={list} coverLabel={t('admin.cover')} sortKey="name" sortLabel={t('admin.title')} />
               <th scope="col">{t('admin.description')}</th>
               <th scope="col" aria-sort={list.ariaSort('count')}>{list.sortHeader('count', t('admin.tracks'))}</th>
               <th scope="col">{t('common.actions')}</th>
@@ -340,19 +341,7 @@ export default function PlaylistsAdmin() {
         onConfirmDelete={doDeletePlaylist}
         onConfirmBulkDelete={doBulkDelete}
       />
-      <ConfirmDialog
-        open={list.confirmState?.kind === 'removeTrack'}
-        title={t('admin.confirmRemoveTrack', { title: adminTracks.find((tr) => tr.id === list.confirmState?.trackId)?.titleTa || adminTracks.find((tr) => tr.id === list.confirmState?.trackId)?.titleEn || list.confirmState?.trackId || '' })}
-        body={t('admin.deleteNoUndo')}
-        confirmLabel={t('common.remove')}
-        danger
-        onConfirm={() => {
-          const trackId = list.confirmState.trackId
-          list.setConfirmState(null)
-          doRemoveTrack(trackId)
-        }}
-        onCancel={() => list.setConfirmState(null)}
-      />
+      <AdminRemoveTrackDialog t={t} list={list} tracks={adminTracks} onRemoveTrack={doRemoveTrack} />
     </div>
   )
 }

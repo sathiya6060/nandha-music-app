@@ -22,6 +22,7 @@ import {
   AdminToolbar,
   AdminBulkBar,
   AdminListContent,
+  AdminFirstColumns,
   AdminTable,
   AdminCards,
   AdminCard,
@@ -48,6 +49,29 @@ const GENRES = ['Devotional', 'Love', 'Melody', 'Siddhar', 'Sivan']
 function formatDuration(sec) {
   const s = Number(sec) || 0
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
+// The Edit / Unpublish / Delete action set, rendered identically in
+// the table row and the mobile card (the table's deleted-row Restore
+// button stays in the page — only the shared set moves here).
+function TrackActions({ t, tr, isAdmin, onUnpublish, onDelete }) {
+  return (
+    <>
+      <Link to={`/admin/tracks/${tr.id}/edit`} className="admin-btn admin-btn-small">
+        {t('common.edit')}
+      </Link>
+      {isAdmin && normalizeStatus(tr.status) === 'published' && (
+        <button type="button" className="admin-btn admin-btn-small" onClick={() => onUnpublish(tr)}>
+          {t('common.unpublish')}
+        </button>
+      )}
+      {isAdmin && (
+        <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => onDelete(tr)}>
+          {t('common.delete')}
+        </button>
+      )}
+    </>
+  )
 }
 
 export default function TracksAdmin() {
@@ -298,18 +322,19 @@ export default function TracksAdmin() {
         t={t}
         list={list}
         loading={tracksLoading}
-        emptyTitle={t('admin.noTracksFound')}
-        emptyHint={t('admin.noTracksFoundHint')}
-        emptyActionLabel={t('admin.addFirstTrack')}
-        onEmptyAction={() => navigate('/admin/tracks/new')}
+        empty={{
+          title: t('admin.noTracksFound'),
+          hint: t('admin.noTracksFoundHint'),
+          actionLabel: t('admin.addFirstTrack'),
+          onAction: () => navigate('/admin/tracks/new'),
+        }}
       >
         <AdminTable
           list={list}
           selectAllLabel={t('admin.tracks')}
           columns={
             <>
-              <th scope="col">{t('admin.cover')}</th>
-              <th scope="col" aria-sort={list.ariaSort('title')}>{list.sortHeader('title', t('admin.title'))}</th>
+              <AdminFirstColumns list={list} coverLabel={t('admin.cover')} sortKey="title" sortLabel={t('admin.title')} />
               <th scope="col" aria-sort={list.ariaSort('artist')}>{list.sortHeader('artist', t('admin.artist'))}</th>
               <th scope="col" aria-sort={list.ariaSort('album')}>{list.sortHeader('album', t('admin.album'))}</th>
               <th scope="col">{t('admin.genre')}</th>
@@ -357,21 +382,7 @@ export default function TracksAdmin() {
                         {t('common.restore')}
                       </button>
                     ) : (
-                      <>
-                        <Link to={`/admin/tracks/${tr.id}/edit`} className="admin-btn admin-btn-small">
-                          {t('common.edit')}
-                        </Link>
-                        {isAdmin && normalizeStatus(tr.status) === 'published' && (
-                          <button type="button" className="admin-btn admin-btn-small" onClick={() => handleUnpublish(tr)}>
-                            {t('common.unpublish')}
-                          </button>
-                        )}
-                        {isAdmin && (
-                          <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => handleDelete(tr)}>
-                            {t('common.delete')}
-                          </button>
-                        )}
-                      </>
+                      <TrackActions t={t} tr={tr} isAdmin={isAdmin} onUnpublish={handleUnpublish} onDelete={handleDelete} />
                     )}
                   </div>
                 </td>
@@ -407,19 +418,7 @@ export default function TracksAdmin() {
                 }
                 menuLabel={`${t('common.actions')} — ${tr.titleTa || tr.titleEn || tr.id}`}
               >
-                <Link to={`/admin/tracks/${tr.id}/edit`} className="admin-btn admin-btn-small">
-                  {t('common.edit')}
-                </Link>
-                {isAdmin && normalizeStatus(tr.status) === 'published' && (
-                  <button type="button" className="admin-btn admin-btn-small" onClick={() => handleUnpublish(tr)}>
-                    {t('common.unpublish')}
-                  </button>
-                )}
-                {isAdmin && (
-                  <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => handleDelete(tr)}>
-                    {t('common.delete')}
-                  </button>
-                )}
+                <TrackActions t={t} tr={tr} isAdmin={isAdmin} onUnpublish={handleUnpublish} onDelete={handleDelete} />
               </AdminCard>
             ))}
           </AdminCards>

@@ -106,29 +106,33 @@ export function AdminBulkBar({ t, list, children }) {
 
 // The loading / empty / rows switch is identical in all four pages
 // (only the loading flag and the empty-state copy differ). The page
-// keeps its own columns, rows and cards as children.
-export function AdminListContent({
-  t,
-  list,
-  loading,
-  emptyTitle,
-  emptyHint,
-  emptyActionLabel,
-  onEmptyAction,
-  children,
-}) {
+// keeps its own columns, rows and cards as children. `empty` groups
+// the empty-state copy so the call sites stay short.
+export function AdminListContent({ t, list, loading, empty, children }) {
   if (loading) return <AdminSkeleton label={t('admin.loadingRows')} />
   if (list.pageRows.length === 0) {
     return (
       <AdminEmpty
-        title={emptyTitle}
-        hint={emptyHint}
-        actionLabel={emptyActionLabel}
-        onAction={onEmptyAction}
+        title={empty.title}
+        hint={empty.hint}
+        actionLabel={empty.actionLabel}
+        onAction={empty.onAction}
       />
     )
   }
   return <>{children}</>
+}
+
+// The first two table columns are the same shape on every list page
+// (a cover/photo column, then the sortable name/title column); only
+// the labels and the sort key differ.
+export function AdminFirstColumns({ list, coverLabel, sortKey, sortLabel }) {
+  return (
+    <>
+      <th scope="col">{coverLabel}</th>
+      <th scope="col" aria-sort={list.ariaSort(sortKey)}>{list.sortHeader(sortKey, sortLabel)}</th>
+    </>
+  )
 }
 
 // The Edit + Delete row actions are identical in the table rows and
@@ -162,10 +166,54 @@ export function AdminFormActions({ t, saveLabel, onCancel }) {
   )
 }
 
-// The ordered-track editor shared by the Albums and Playlists forms:
-// the ordered list with move up / down / remove, plus the add-tracks
-// checkbox grid. `orderedTracks` / `unselectedTracks` are the page's
-// own derivations; onMove / onToggle come from useOrderedTracks.
+// The ordered-track editor plus its Save / Cancel buttons — one
+// form section in the Albums and Playlists editors (the form itself
+// stays in the page; this is only the shared tail of it).
+export function AdminTrackOrderForm({
+  t,
+  orderedTracks,
+  unselectedTracks,
+  onMove,
+  onToggle,
+  saveLabel,
+  onCancel,
+}) {
+  return (
+    <>
+      <AdminTrackOrderEditor
+        t={t}
+        orderedTracks={orderedTracks}
+        unselectedTracks={unselectedTracks}
+        onMove={onMove}
+        onToggle={onToggle}
+      />
+      <AdminFormActions t={t} saveLabel={saveLabel} onCancel={onCancel} />
+    </>
+  )
+}
+
+// The remove-track confirm dialog shared by the Albums and Playlists
+// editors: removing a track from the list is destructive (L33), so
+// the toggle opens this confirm and only the confirmed removal calls
+// onRemoveTrack. `tracks` is the page's track list (for the title).
+export function AdminRemoveTrackDialog({ t, list, tracks, onRemoveTrack }) {
+  const trackId = list.confirmState?.trackId
+  const track = tracks.find((tr) => tr.id === trackId)
+  return (
+    <ConfirmDialog
+      open={list.confirmState?.kind === 'removeTrack'}
+      title={t('admin.confirmRemoveTrack', { title: track?.titleTa || track?.titleEn || trackId || '' })}
+      body={t('admin.deleteNoUndo')}
+      confirmLabel={t('common.remove')}
+      danger
+      onConfirm={() => {
+        list.setConfirmState(null)
+        onRemoveTrack(trackId)
+      }}
+      onCancel={() => list.setConfirmState(null)}
+    />
+  )
+}
 export function AdminTrackOrderEditor({ t, orderedTracks, unselectedTracks, onMove, onToggle }) {
   return (
     <>

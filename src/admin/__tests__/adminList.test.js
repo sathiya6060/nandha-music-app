@@ -329,10 +329,7 @@ describe('useAdminList + AdminList', () => {
     const loading = await render({
       list: { pageRows: [] },
       loading: true,
-      emptyTitle: 'emptyTitle',
-      emptyHint: 'emptyHint',
-      emptyActionLabel: 'emptyAction',
-      onEmptyAction: () => {},
+      empty: { title: 'emptyTitle', hint: 'emptyHint', actionLabel: 'emptyAction', onAction: () => {} },
     })
     try {
       expect(loading.container.querySelectorAll('.list-skeleton-row')).toHaveLength(5)
@@ -344,10 +341,7 @@ describe('useAdminList + AdminList', () => {
     const empty = await render({
       list: { pageRows: [] },
       loading: false,
-      emptyTitle: 'emptyTitle',
-      emptyHint: 'emptyHint',
-      emptyActionLabel: 'emptyAction',
-      onEmptyAction: () => {},
+      empty: { title: 'emptyTitle', hint: 'emptyHint', actionLabel: 'emptyAction', onAction: () => {} },
     })
     try {
       expect(empty.container.textContent).toContain('emptyTitle')
@@ -359,10 +353,7 @@ describe('useAdminList + AdminList', () => {
     const rows = await render({
       list: { pageRows: [{ id: 'a' }] },
       loading: false,
-      emptyTitle: 'emptyTitle',
-      emptyHint: 'emptyHint',
-      emptyActionLabel: 'emptyAction',
-      onEmptyAction: () => {},
+      empty: { title: 'emptyTitle', hint: 'emptyHint', actionLabel: 'emptyAction', onAction: () => {} },
     })
     try {
       expect(rows.container.querySelector('#rows')).toBeTruthy()
