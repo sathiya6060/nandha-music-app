@@ -46,6 +46,8 @@ export default {
   'common.retry': 'फिर से कोशिश करें',
   'common.noResults': 'कोई परिणाम नहीं',
   'common.tryDifferent': 'कुछ और खोजकर देखें।',
+  'track.notFound': 'गाना नहीं मिला',
+  'track.notFoundMessage': 'यह गाना हटाया गया हो सकता है, या लिंक गलत हो सकता है।',
   'common.quality': 'गुणवत्ता',
   'common.clear': 'साफ़ करें',
   'common.close': 'बंद करें',

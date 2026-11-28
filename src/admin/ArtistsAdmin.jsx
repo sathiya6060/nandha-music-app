@@ -1,4 +1,6 @@
 // Artists admin — list + editor (photo, bilingual bio, social links).
+// List scaffolding (search/sort/page/selection/delete) lives in the
+// shared useAdminList hook + AdminList components.
 import { useMemo, useState } from 'react'
 import { artists } from '../data/catalog.js'
 import { useArtists } from '../lib/supabaseCatalog.js'
@@ -13,15 +15,20 @@ import {
   SAVE_TIMEOUT_MS,
 } from '../lib/supabaseAdmin.js'
 import { useToast } from '../lib/toast.jsx'
+import { useAdminList } from './lib/useAdminList.jsx'
 import {
-  useDebouncedValue,
-  sortRows,
-  paginateRows,
-  pageCountFor,
-  clampPage,
-  LIST_PAGE_SIZES,
-} from './lib/listUtils.js'
-import ConfirmDialog from './components/ConfirmDialog.jsx'
+  AdminPageHead,
+  AdminErrorNotice,
+  AdminToolbar,
+  AdminBulkBar,
+  AdminSkeleton,
+  AdminEmpty,
+  AdminTable,
+  AdminCards,
+  AdminCard,
+  AdminPagination,
+  AdminDeleteDialogs,
+} from './components/AdminList.jsx'
 import './lists.css'
 import {
   getMergedArtists,
@@ -54,80 +61,36 @@ export default function ArtistsAdmin() {
   const [form, setForm] = useState(EMPTY_ARTIST)
   const [photoPreview, setPhotoPreview] = useState('')
   const [photoFile, setPhotoFile] = useState(null)
-  const [error, setError] = useState('')
-  const [confirmState, setConfirmState] = useState(null) // { kind: 'delete'|'bulkDelete', artist?, albums?, tracks? }
-  const [search, setSearch] = useState('')
-  const [sort, setSort] = useState({ key: 'name', dir: 'asc' })
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(25)
-  const [selected, setSelected] = useState(new Set())
   const showToast = useToast()
 
   // Supabase read layer (B1); static catalog + local overrides are
   // the fallback.
   const { data: sbArtists, isLoading: artistsLoading, refetch: refetchArtists } = useArtists()
   const mergedArtists = useMemo(() => getMergedArtists(sbArtists || artists), [version, sbArtists])
-  const debouncedSearch = useDebouncedValue(search)
   const artistName = (a) => a.nameTa || a.name || a.nameEn || ''
-  const visibleArtists = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase()
-    if (!q) return mergedArtists
-    return mergedArtists.filter((a) => [a.name, a.nameTa, a.nameEn, a.bioEn, a.bioTa]
-      .filter(Boolean)
-      .some((v) => String(v).toLowerCase().includes(q)))
-  }, [mergedArtists, debouncedSearch])
-  const sortedArtists = useMemo(
-    () => sortRows(visibleArtists, sort.key, sort.dir, (a) => artistName(a), 'text'),
-    [visibleArtists, sort],
-  )
-  const artistPageCount = pageCountFor(sortedArtists.length, pageSize)
-  const artistCurrentPage = clampPage(page, sortedArtists.length, pageSize)
-  const pageArtists = paginateRows(sortedArtists, artistCurrentPage, pageSize)
-  const toggleSort = (key) => {
-    setSort((prev) => (prev.key === key
-      ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
-      : { key, dir: 'asc' }))
-    setPage(1)
-  }
-  const sortHeader = (key, label) => (
-    <button
-      type="button"
-      className="list-sort-btn"
-      onClick={() => toggleSort(key)}
-      aria-label={`${label} — ${sort.key === key && sort.dir === 'desc' ? t('admin.sortDesc') : t('admin.sortAsc')}`}
-    >
-      {label}
-      <span className="list-sort-arrow" aria-hidden="true">
-        {sort.key === key ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}
-      </span>
-    </button>
-  )
-  const toggleSelect = (id) => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-  const toggleSelectPage = () => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      const allSelected = pageArtists.every((a) => next.has(a.id))
-      for (const a of pageArtists) {
-        if (allSelected) next.delete(a.id)
-        else next.add(a.id)
-      }
-      return next
-    })
-  }
+  const list = useAdminList({
+    t,
+    user,
+    isAdmin,
+    showToast,
+    rows: mergedArtists,
+    searchFilter: (a, q) =>
+      !q ||
+      [a.name, a.nameTa, a.nameEn, a.bioEn, a.bioTa]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q)),
+    sortValue: (a) => artistName(a),
+    sortKind: () => 'text',
+    initialSort: { key: 'name', dir: 'asc' },
+    bumpVersion: () => setVersion((v) => v + 1),
+  })
 
   const startNew = () => {
     setEditing('new')
     setForm(EMPTY_ARTIST)
     setPhotoPreview('')
     setPhotoFile(null)
-    setError('')
+    list.setError('')
   }
 
   const startEdit = (artist) => {
@@ -147,7 +110,7 @@ export default function ArtistsAdmin() {
     })
     setPhotoPreview(artist.photo || artist.image || '')
     setPhotoFile(null)
-    setError('')
+    list.setError('')
   }
 
   const onPhotoChange = (e) => {
@@ -162,11 +125,11 @@ export default function ArtistsAdmin() {
     e.preventDefault()
     // H3: defense in depth — RLS is the real gate.
     if (!isAdmin) {
-      setError(t('admin.notAdmin'))
+      list.setError(t('admin.notAdmin'))
       return
     }
     if (!form.name.trim() && !form.nameTa.trim()) {
-      setError(t('admin.artistNameRequired'))
+      list.setError(t('admin.artistNameRequired'))
       return
     }
     const base = editing === 'new' ? {} : mergedArtists.find((a) => a.id === editing) || {}
@@ -213,7 +176,7 @@ export default function ArtistsAdmin() {
           }
         }
       } catch (err) {
-        setError(err?.code === 'timeout' ? t('admin.saveTimeout') : adminErrorMessage(err, t))
+        list.setError(err?.code === 'timeout' ? t('admin.saveTimeout') : adminErrorMessage(err, t))
         return
       }
       logActivity({ actor: user?.email || 'Admin', action: editing === 'new' ? 'Created artist' : 'Updated artist', detail: form.name || form.nameTa })
@@ -221,11 +184,11 @@ export default function ArtistsAdmin() {
       showToast(t('admin.saved'))
       setEditing(null)
       setPhotoFile(null)
-      setVersion((v) => v + 1)
+      list.bumpVersion()
       return
     }
     // Admin is Supabase-only (27 Nov 2026): no local fallback.
-    setError(t('admin.dbNotConnected'))
+    list.setError(t('admin.dbNotConnected'))
   }
 
   // Pasted-report C4: deleting an artist cascades to all their
@@ -237,119 +200,65 @@ export default function ArtistsAdmin() {
   const handleDelete = async (artist) => {
     // H3: defense in depth — RLS is the real gate.
     if (!isAdmin) {
-      setError(t('admin.notAdmin'))
+      list.setError(t('admin.notAdmin'))
       return
     }
-    setError('')
+    list.setError('')
     if (!supabaseWritesEnabled()) {
-      setError(t('admin.dbNotConnected'))
+      list.setError(t('admin.dbNotConnected'))
       return
     }
     try {
       const { albums, tracks } = await countArtistDependents(artist)
-      setConfirmState({ kind: 'delete', artist, albums, tracks })
+      list.setConfirmState({ kind: 'delete', item: artist, albums, tracks })
     } catch (err) {
-      setError(adminDeleteErrorMessage(err, t))
+      list.setError(adminDeleteErrorMessage(err, t))
     }
   }
 
-  const doDeleteArtist = async (artist) => {
-    const name = artist.name || artist.nameTa || artist.id
-    if (!isAdmin) {
-      setError(t('admin.notAdmin'))
-      return
-    }
-    setError('')
-    if (supabaseWritesEnabled()) {
-      try {
-        await deleteArtistFromSupabase(artist, { confirmCascade: true })
-      } catch (err) {
-        setError(adminDeleteErrorMessage(err, t))
-        return
-      }
-      logActivity({ actor: user?.email || 'Admin', action: 'Deleted artist', detail: name })
-      showToast(t('admin.itemDeleted', { title: name }))
-      setSelected((prev) => {
-        const next = new Set(prev)
-        next.delete(artist.id)
-        return next
-      })
-      setVersion((v) => v + 1)
-      return
-    }
-    setError(t('admin.dbNotConnected'))
-  }
+  // No refetch after an artist delete (unlike Tracks/Playlists) — the
+  // version bump re-reads the merged list, as before.
+  const doDeleteArtist = (artist) =>
+    list.deleteOne({
+      item: artist,
+      label: artist.name || artist.nameTa || artist.id,
+      deleteFn: deleteArtistFromSupabase,
+      deleteOptions: { confirmCascade: true },
+      activity: 'Deleted artist',
+    })
 
-  const doBulkDelete = async () => {
-    if (selected.size === 0) return
-    if (!isAdmin) {
-      setError(t('admin.notAdmin'))
-      return
-    }
-    setError('')
-    if (!supabaseWritesEnabled()) {
-      setError(t('admin.dbNotConnected'))
-      return
-    }
-    // Bulk delete uses one dialog for the whole selection, so there
-    // is no per-artist typed name here; each delete still passes
-    // confirmCascade after the single confirmation.
-    let done = 0
-    const failed = []
-    for (const id of selected) {
-      const artist = mergedArtists.find((a) => a.id === id)
-      if (!artist) {
-        failed.push(id)
-        continue
-      }
-      try {
-        await deleteArtistFromSupabase(artist, { confirmCascade: true })
-        done += 1
-      } catch {
-        failed.push(artist.name || artist.nameTa || artist.id)
-      }
-    }
-    if (done > 0) {
-      logActivity({ actor: user?.email || 'Admin', action: 'Bulk deleted artists', detail: `${done} artist(s)` })
-      showToast(t('admin.bulkDeleteResult', { done, total: selected.size }))
-    }
-    if (failed.length > 0) {
-      setError(t('admin.bulkDeleteFailed', { count: failed.length, titles: failed.join(', ') }))
-    }
-    setSelected(new Set())
-    setVersion((v) => v + 1)
-  }
+  const doBulkDelete = () =>
+    list.deleteSelected({
+      items: mergedArtists,
+      getLabel: (a) => a.name || a.nameTa || a.id,
+      deleteFn: deleteArtistFromSupabase,
+      deleteOptions: { confirmCascade: true },
+      activity: 'Bulk deleted artists',
+      bulkUnit: 'artist(s)',
+    })
+
+  const deleteArtist = list.confirmState?.item
+  const deleteHasDependents =
+    (list.confirmState?.albums > 0 || list.confirmState?.tracks > 0)
 
   return (
     <div className="admin-page">
-      <div className="admin-page-head">
-        <div>
-          <h1 className="admin-title">{t('admin.artists')}</h1>
-          <p className="admin-subtitle">
-            {sortedArtists.length} {t('admin.artists')}
-          </p>
-        </div>
-        <button type="button" className="admin-btn admin-btn-primary" onClick={startNew}>
-          {t('admin.newArtist')}
-        </button>
-      </div>
+      <AdminPageHead
+        title={t('admin.artists')}
+        subtitle={`${list.sorted.length} ${t('admin.artists')}`}
+        newLabel={t('admin.newArtist')}
+        onNew={startNew}
+      />
 
-      {error && (
-        <div className="admin-notice admin-notice-warn" role="status" aria-live="polite">
-          {error}
-          <button
-            type="button"
-            className="admin-btn admin-btn-small"
-            onClick={() => {
-              setError('')
-              void refetchArtists()
-            }}
-            style={{ marginLeft: 12 }}
-          >
-            {t('admin.fallbackRetry')}
-          </button>
-        </div>
-      )}
+      <AdminErrorNotice
+        error={list.error}
+        role="status"
+        retryLabel={t('admin.fallbackRetry')}
+        onRetry={() => {
+          list.setError('')
+          void refetchArtists()
+        }}
+      />
 
       <FallbackBanner
         loading={artistsLoading}
@@ -362,7 +271,7 @@ export default function ArtistsAdmin() {
           <div className="admin-form-grid">
             <label className="admin-field">
               <span>{t('admin.nameEn')}</span>
-              <input className="admin-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} aria-required="true" aria-invalid={Boolean(error)} />
+              <input className="admin-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} aria-required="true" aria-invalid={Boolean(list.error)} />
             </label>
             <label className="admin-field">
               <span>{t('admin.nameTa')}</span>
@@ -421,81 +330,44 @@ export default function ArtistsAdmin() {
         </form>
       )}
 
-      <div className="admin-toolbar">
-        <input
-          type="search"
-          className="admin-input admin-search"
-          placeholder={t('admin.searchArtists')}
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-          aria-label={t('admin.searchArtists')}
-        />
-        <label className="list-page-size">
-          {t('admin.rowsPerPage')}
-          <select
-            className="admin-input"
-            value={pageSize}
-            onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }}
-            aria-label={t('admin.rowsPerPage')}
-          >
-            {LIST_PAGE_SIZES.map((size) => (
-              <option key={size} value={size}>{size}</option>
-            ))}
-          </select>
-        </label>
-      </div>
+      <AdminToolbar t={t} list={list} searchPlaceholder={t('admin.searchArtists')} searchLabel={t('admin.searchArtists')} />
 
-      {selected.size > 0 && (
-        <div className="admin-bulkbar">
-          <span>{t('admin.selectedCount', { count: selected.size })}</span>
-          <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => setConfirmState({ kind: 'bulkDelete' })}>
-            {t('admin.bulkDelete')}
-          </button>
-          <button type="button" className="admin-btn admin-btn-small admin-btn-ghost" onClick={() => setSelected(new Set())}>
-            {t('common.cancel')}
-          </button>
-        </div>
-      )}
+      <AdminBulkBar t={t} list={list}>
+        <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => list.setConfirmState({ kind: 'bulkDelete' })}>
+          {t('admin.bulkDelete')}
+        </button>
+        <button type="button" className="admin-btn admin-btn-small admin-btn-ghost" onClick={() => list.clearSelection()}>
+          {t('common.cancel')}
+        </button>
+      </AdminBulkBar>
 
       {artistsLoading ? (
-        <div className="list-skeleton" aria-busy="true" aria-label={t('admin.loadingRows')}>
-          {[0, 1, 2, 3, 4].map((i) => (
-            <div key={i} className="list-skeleton-row" />
-          ))}
-        </div>
-      ) : pageArtists.length === 0 ? (
-        <div className="admin-empty">
-          <h2>{t('admin.noArtistsFound')}</h2>
-          <p>{t('admin.noTracksFoundHint')}</p>
-          <button type="button" className="admin-btn admin-btn-primary" onClick={startNew}>
-            {t('admin.addFirstArtist')}
-          </button>
-        </div>
+        <AdminSkeleton label={t('admin.loadingRows')} />
+      ) : list.pageRows.length === 0 ? (
+        <AdminEmpty
+          title={t('admin.noArtistsFound')}
+          hint={t('admin.noTracksFoundHint')}
+          actionLabel={t('admin.addFirstArtist')}
+          onAction={startNew}
+        />
       ) : (
         <>
-        <div className="admin-table-wrap list-table-wrap">
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th scope="col">
-                <input
-                  type="checkbox"
-                  checked={pageArtists.length > 0 && pageArtists.every((a) => selected.has(a.id))}
-                  onChange={toggleSelectPage}
-                  aria-label={t('admin.artists')}
-                />
-              </th>
-              <th scope="col">{t('admin.photo')}</th>
-              <th scope="col" aria-sort={sort.key === 'name' ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>{sortHeader('name', t('admin.userName'))}</th>
-              <th scope="col">{t('admin.description')}</th>
-              <th scope="col">{t('common.actions')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pageArtists.map((a) => (
+          <AdminTable
+            list={list}
+            selectAllLabel={t('admin.artists')}
+            columns={
+              <>
+                <th scope="col">{t('admin.photo')}</th>
+                <th scope="col" aria-sort={list.ariaSort('name')}>{list.sortHeader('name', t('admin.userName'))}</th>
+                <th scope="col">{t('admin.description')}</th>
+                <th scope="col">{t('common.actions')}</th>
+              </>
+            }
+          >
+            {list.pageRows.map((a) => (
               <tr key={a.id}>
                 <td>
-                  <input type="checkbox" checked={selected.has(a.id)} onChange={() => toggleSelect(a.id)} aria-label={a.nameTa || a.name || a.id} />
+                  <input type="checkbox" checked={list.selected.has(a.id)} onChange={() => list.toggleSelect(a.id)} aria-label={a.nameTa || a.name || a.id} />
                 </td>
                 <td>
                   {a.photo || a.image ? (
@@ -517,78 +389,51 @@ export default function ArtistsAdmin() {
                 </td>
               </tr>
             ))}
-          </tbody>
-        </table>
-        </div>
-        <div className="list-cards">
-          {pageArtists.map((a) => (
-            <article key={a.id} className="list-card">
-              {a.photo || a.image ? (
-                <img src={a.photo || a.image} alt="" className="list-card-thumb" />
-              ) : (
-                <img src="/assets/nandha-logo.png" alt="" className="list-card-thumb" />
-              )}
-              <div className="list-card-body">
-                <span className="list-card-title">{a.nameTa || a.name || '—'}</span>
-                <span className="list-card-sub">{a.name && a.nameTa ? a.name : ''}</span>
-                <span className="list-card-meta">
+          </AdminTable>
+          <AdminCards>
+            {list.pageRows.map((a) => (
+              <AdminCard
+                key={a.id}
+                thumb={
+                  a.photo || a.image ? (
+                    <img src={a.photo || a.image} alt="" className="list-card-thumb" />
+                  ) : (
+                    <img src="/assets/nandha-logo.png" alt="" className="list-card-thumb" />
+                  )
+                }
+                title={a.nameTa || a.name || '—'}
+                sub={a.name && a.nameTa ? a.name : ''}
+                meta={
                   <span className="admin-cell-sub">{a.bioEn || a.bioTa || '—'}</span>
-                </span>
-              </div>
-              <details className="list-card-menu">
-                <summary aria-label={`${t('common.actions')} — ${a.nameTa || a.name || a.id}`}>⋯</summary>
-                <div className="list-card-menu-actions">
-                  <button type="button" className="admin-btn admin-btn-small" onClick={() => startEdit(a)}>{t('common.edit')}</button>
-                  <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => handleDelete(a)}>{t('common.delete')}</button>
-                </div>
-              </details>
-            </article>
-          ))}
-        </div>
+                }
+                menuLabel={`${t('common.actions')} — ${a.nameTa || a.name || a.id}`}
+              >
+                <button type="button" className="admin-btn admin-btn-small" onClick={() => startEdit(a)}>{t('common.edit')}</button>
+                <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => handleDelete(a)}>{t('common.delete')}</button>
+              </AdminCard>
+            ))}
+          </AdminCards>
         </>
       )}
 
-      {sortedArtists.length > pageSize && (
-        <div className="admin-pagination">
-          <button type="button" className="admin-btn admin-btn-small" disabled={artistCurrentPage <= 1} onClick={() => setPage(artistCurrentPage - 1)}>
-            {t('common.previous')}
-          </button>
-          <span>{t('common.pageOf', { page: artistCurrentPage, total: artistPageCount })}</span>
-          <button type="button" className="admin-btn admin-btn-small" disabled={artistCurrentPage >= artistPageCount} onClick={() => setPage(artistCurrentPage + 1)}>
-            {t('common.next')}
-          </button>
-        </div>
-      )}
+      <AdminPagination t={t} list={list} show={list.sorted.length > list.pageSize} />
 
-      <ConfirmDialog
-        open={confirmState?.kind === 'delete'}
-        title={t('admin.confirmDelete', { title: confirmState?.artist?.name || confirmState?.artist?.nameTa || confirmState?.artist?.id || '' })}
-        body={(confirmState?.albums > 0 || confirmState?.tracks > 0)
-          ? t('admin.artistDeleteImpact', { albums: confirmState.albums, tracks: confirmState.tracks })
-          : t('admin.deleteNoUndo')}
-        confirmLabel={t('common.delete')}
-        danger
-        requireTypeName={(confirmState?.albums > 0 || confirmState?.tracks > 0)
-          ? (confirmState.artist?.name || confirmState.artist?.nameTa || confirmState.artist?.id)
-          : null}
-        onConfirm={() => {
-          const artist = confirmState.artist
-          setConfirmState(null)
-          void doDeleteArtist(artist)
-        }}
-        onCancel={() => setConfirmState(null)}
-      />
-      <ConfirmDialog
-        open={confirmState?.kind === 'bulkDelete'}
-        title={t('admin.bulkDelete')}
-        body={t('admin.bulkDeleteConfirm', { count: selected.size })}
-        confirmLabel={t('admin.bulkDelete')}
-        danger
-        onConfirm={() => {
-          setConfirmState(null)
-          void doBulkDelete()
-        }}
-        onCancel={() => setConfirmState(null)}
+      <AdminDeleteDialogs
+        t={t}
+        list={list}
+        deleteTitle={t('admin.confirmDelete', { title: deleteArtist?.name || deleteArtist?.nameTa || deleteArtist?.id || '' })}
+        deleteBody={
+          deleteHasDependents
+            ? t('admin.artistDeleteImpact', { albums: list.confirmState.albums, tracks: list.confirmState.tracks })
+            : t('admin.deleteNoUndo')
+        }
+        requireTypeName={
+          deleteHasDependents
+            ? (deleteArtist?.name || deleteArtist?.nameTa || deleteArtist?.id)
+            : null
+        }
+        onConfirmDelete={doDeleteArtist}
+        onConfirmBulkDelete={doBulkDelete}
       />
     </div>
   )

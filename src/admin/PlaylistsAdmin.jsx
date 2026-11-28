@@ -1,4 +1,6 @@
 // Curated playlists admin — CRUD with track add/remove + reorder.
+// List scaffolding (search/sort/page/selection/delete) lives in the
+// shared useAdminList hook + AdminList components.
 import { useMemo, useState } from 'react'
 import { tracks as catalogTracks, playlists as catalogPlaylists } from '../data/catalog.js'
 import { useTracks, usePlaylists } from '../lib/supabaseCatalog.js'
@@ -7,19 +9,24 @@ import {
   savePlaylistToSupabase,
   deletePlaylistFromSupabase,
   adminErrorMessage,
-  adminDeleteErrorMessage,
   withTimeout,
   SAVE_TIMEOUT_MS,
 } from '../lib/supabaseAdmin.js'
 import { useToast } from '../lib/toast.jsx'
+import { useAdminList } from './lib/useAdminList.jsx'
 import {
-  useDebouncedValue,
-  sortRows,
-  paginateRows,
-  pageCountFor,
-  clampPage,
-  LIST_PAGE_SIZES,
-} from './lib/listUtils.js'
+  AdminPageHead,
+  AdminErrorNotice,
+  AdminToolbar,
+  AdminBulkBar,
+  AdminSkeleton,
+  AdminEmpty,
+  AdminTable,
+  AdminCards,
+  AdminCard,
+  AdminPagination,
+  AdminDeleteDialogs,
+} from './components/AdminList.jsx'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
 import './lists.css'
 import {
@@ -49,90 +56,45 @@ export default function PlaylistsAdmin() {
   const [form, setForm] = useState(EMPTY_PLAYLIST)
   const [coverFile, setCoverFile] = useState(null)
   const [coverPreview, setCoverPreview] = useState('')
-  const [error, setError] = useState('')
-  const [confirmState, setConfirmState] = useState(null) // { kind: 'delete'|'bulkDelete'|'removeTrack', playlist?, trackId? }
-  const [search, setSearch] = useState('')
-  const [sort, setSort] = useState({ key: 'name', dir: 'asc' })
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(25)
-  const [selected, setSelected] = useState(new Set())
   const showToast = useToast()
 
   const mergedPlaylists = useMemo(() => getMergedPlaylists(sbPlaylists || catalogPlaylists), [version, sbPlaylists])
-  const debouncedSearch = useDebouncedValue(search)
   const playlistName = (pl) => pl.name || pl.titleTa || pl.titleEn || ''
   const playlistTrackCount = (pl) => (Array.isArray(pl.trackIds) ? pl.trackIds.length : 0)
-  const visiblePlaylists = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase()
-    if (!q) return mergedPlaylists
-    return mergedPlaylists.filter((pl) => [pl.name, pl.titleTa, pl.titleEn, pl.description, pl.descriptionEn, pl.descriptionTa]
-      .filter(Boolean)
-      .some((v) => String(v).toLowerCase().includes(q)))
-  }, [mergedPlaylists, debouncedSearch])
-  const playlistSortValue = (pl, key) => {
-    if (key === 'name') return playlistName(pl)
-    if (key === 'count') return playlistTrackCount(pl)
-    return ''
-  }
-  const sortedPlaylists = useMemo(
-    () => sortRows(visiblePlaylists, sort.key, sort.dir, playlistSortValue, sort.key === 'count' ? 'number' : 'text'),
-    [visiblePlaylists, sort],
-  )
-  const playlistPageCount = pageCountFor(sortedPlaylists.length, pageSize)
-  const playlistCurrentPage = clampPage(page, sortedPlaylists.length, pageSize)
-  const pagePlaylists = paginateRows(sortedPlaylists, playlistCurrentPage, pageSize)
-  const toggleSort = (key) => {
-    setSort((prev) => (prev.key === key
-      ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
-      : { key, dir: 'asc' }))
-    setPage(1)
-  }
-  const sortHeader = (key, label) => (
-    <button
-      type="button"
-      className="list-sort-btn"
-      onClick={() => toggleSort(key)}
-      aria-label={`${label} — ${sort.key === key && sort.dir === 'desc' ? t('admin.sortDesc') : t('admin.sortAsc')}`}
-    >
-      {label}
-      <span className="list-sort-arrow" aria-hidden="true">
-        {sort.key === key ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}
-      </span>
-    </button>
-  )
-  const toggleSelect = (id) => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-  const toggleSelectPage = () => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      const allSelected = pagePlaylists.every((pl) => next.has(pl.id))
-      for (const pl of pagePlaylists) {
-        if (allSelected) next.delete(pl.id)
-        else next.add(pl.id)
-      }
-      return next
-    })
-  }
+  const list = useAdminList({
+    t,
+    user,
+    isAdmin,
+    showToast,
+    rows: mergedPlaylists,
+    searchFilter: (pl, q) =>
+      !q ||
+      [pl.name, pl.titleTa, pl.titleEn, pl.description, pl.descriptionEn, pl.descriptionTa]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q)),
+    sortValue: (pl, key) => {
+      if (key === 'name') return playlistName(pl)
+      if (key === 'count') return playlistTrackCount(pl)
+      return ''
+    },
+    sortKind: (key) => (key === 'count' ? 'number' : 'text'),
+    initialSort: { key: 'name', dir: 'asc' },
+    bumpVersion: () => setVersion((v) => v + 1),
+  })
 
   const startNew = () => {
     setEditing('new')
     setForm(EMPTY_PLAYLIST)
     setCoverFile(null)
     setCoverPreview('')
-    setError('')
+    list.setError('')
   }
 
   const startEdit = (playlist) => {
     // C5: never open the editor with an unloaded track list — the
     // save would treat "no tracks loaded" as "no tracks in playlist".
     if (tracksLoading) {
-      setError(t('admin.tracksLoading'))
+      list.setError(t('admin.tracksLoading'))
       return
     }
     setEditing(playlist.id)
@@ -142,13 +104,13 @@ export default function PlaylistsAdmin() {
       trackIds: Array.isArray(playlist.trackIds) ? [...playlist.trackIds] : [],
     })
     setCoverPreview(playlist.cover || '')
-    setError('')
+    list.setError('')
   }
 
   const toggleTrack = (trackId) => {
     // L33: removing a track from the list is destructive — confirm it.
     if (form.trackIds.includes(trackId)) {
-      setConfirmState({ kind: 'removeTrack', trackId })
+      list.setConfirmState({ kind: 'removeTrack', trackId })
       return
     }
     setForm((f) => ({
@@ -185,11 +147,11 @@ export default function PlaylistsAdmin() {
     e.preventDefault()
     // H3: defense in depth — RLS is the real gate.
     if (!isAdmin) {
-      setError(t('admin.notAdmin'))
+      list.setError(t('admin.notAdmin'))
       return
     }
     if (!form.name.trim()) {
-      setError(t('admin.playlistNameRequired'))
+      list.setError(t('admin.playlistNameRequired'))
       return
     }
     const base = editing === 'new' ? {} : mergedPlaylists.find((p) => p.id === editing) || {}
@@ -230,128 +192,68 @@ export default function PlaylistsAdmin() {
         await refetchTracks()
         showToast(t('admin.saved') + droppedNote)
       } catch (err) {
-        setError(err?.code === 'timeout' ? t('admin.saveTimeout') : adminErrorMessage(err, t))
+        list.setError(err?.code === 'timeout' ? t('admin.saveTimeout') : adminErrorMessage(err, t))
         return
       }
       logActivity({ actor: user?.email || 'Admin', action: editing === 'new' ? 'Created playlist' : 'Updated playlist', detail: form.name })
-      setError('')
+      list.setError('')
       setEditing(null)
       setCoverFile(null)
-      setVersion((v) => v + 1)
+      list.bumpVersion()
       return
     }
     // Admin is Supabase-only (27 Nov 2026): no local fallback.
-    setError(t('admin.dbNotConnected'))
+    list.setError(t('admin.dbNotConnected'))
   }
 
   // Playlist delete is a hard delete in the DB — no Undo toast is
   // offered (there is no soft-delete to undo from).
   const handleDelete = (playlist) => {
-    setConfirmState({ kind: 'delete', playlist })
+    list.setConfirmState({ kind: 'delete', item: playlist })
   }
 
-  const doDeletePlaylist = async (playlist) => {
-    const name = playlist.name || playlist.titleTa || playlist.titleEn || playlist.id
-    // H3: defense in depth — RLS is the real gate.
-    if (!isAdmin) {
-      setError(t('admin.notAdmin'))
-      return
-    }
-    setError('')
-    if (supabaseWritesEnabled()) {
-      try {
-        await deletePlaylistFromSupabase(playlist)
-      } catch (err) {
-        setError(adminDeleteErrorMessage(err, t))
-        return
-      }
-      logActivity({ actor: user?.email || 'Admin', action: 'Deleted playlist', detail: name })
-      await refetchPlaylists()
-      showToast(t('admin.itemDeleted', { title: name }))
-      setSelected((prev) => {
-        const next = new Set(prev)
-        next.delete(playlist.id)
-        return next
-      })
-      setVersion((v) => v + 1)
-      return
-    }
-    // Admin is Supabase-only (27 Nov 2026): no local fallback.
-    setError(t('admin.dbNotConnected'))
-  }
+  const doDeletePlaylist = (playlist) =>
+    list.deleteOne({
+      item: playlist,
+      label: playlistName(playlist) || playlist.id,
+      deleteFn: deletePlaylistFromSupabase,
+      activity: 'Deleted playlist',
+      refetch: refetchPlaylists,
+    })
 
-  const doBulkDelete = async () => {
-    if (selected.size === 0) return
-    if (!isAdmin) {
-      setError(t('admin.notAdmin'))
-      return
-    }
-    setError('')
-    if (!supabaseWritesEnabled()) {
-      setError(t('admin.dbNotConnected'))
-      return
-    }
-    let done = 0
-    const failed = []
-    for (const id of selected) {
-      const playlist = mergedPlaylists.find((pl) => pl.id === id)
-      if (!playlist) {
-        failed.push(id)
-        continue
-      }
-      try {
-        await deletePlaylistFromSupabase(playlist)
-        done += 1
-      } catch {
-        failed.push(playlist.name || playlist.titleTa || playlist.titleEn || playlist.id)
-      }
-    }
-    if (done > 0) {
-      logActivity({ actor: user?.email || 'Admin', action: 'Bulk deleted playlists', detail: `${done} playlist(s)` })
-      await refetchPlaylists()
-      showToast(t('admin.bulkDeleteResult', { done, total: selected.size }))
-    }
-    if (failed.length > 0) {
-      setError(t('admin.bulkDeleteFailed', { count: failed.length, titles: failed.join(', ') }))
-    }
-    setSelected(new Set())
-    setVersion((v) => v + 1)
-  }
+  const doBulkDelete = () =>
+    list.deleteSelected({
+      items: mergedPlaylists,
+      getLabel: (pl) => playlistName(pl) || pl.id,
+      deleteFn: deletePlaylistFromSupabase,
+      activity: 'Bulk deleted playlists',
+      bulkUnit: 'playlist(s)',
+      refetch: refetchPlaylists,
+    })
 
   const orderedTracks = form.trackIds.map((id) => adminTracks.find((tr) => tr.id === id)).filter(Boolean)
   const unselectedTracks = adminTracks.filter((tr) => !form.trackIds.includes(tr.id))
+  const deletePlaylist = list.confirmState?.item
 
   return (
     <div className="admin-page">
-      <div className="admin-page-head">
-        <div>
-          <h1 className="admin-title">{t('admin.playlists')}</h1>
-          <p className="admin-subtitle">
-            {sortedPlaylists.length} {t('admin.playlists')}
-          </p>
-        </div>
-        <button type="button" className="admin-btn admin-btn-primary" onClick={startNew}>
-          {t('admin.newPlaylist')}
-        </button>
-      </div>
+      <AdminPageHead
+        title={t('admin.playlists')}
+        subtitle={`${list.sorted.length} ${t('admin.playlists')}`}
+        newLabel={t('admin.newPlaylist')}
+        onNew={startNew}
+      />
 
-      {error && (
-        <div className="admin-notice admin-notice-warn" role="status" aria-live="polite">
-          {error}
-          <button
-            type="button"
-            className="admin-btn admin-btn-small"
-            onClick={() => {
-              setError('')
-              void refetchTracks()
-              void refetchPlaylists()
-            }}
-            style={{ marginLeft: 12 }}
-          >
-            {t('admin.fallbackRetry')}
-          </button>
-        </div>
-      )}
+      <AdminErrorNotice
+        error={list.error}
+        role="status"
+        retryLabel={t('admin.fallbackRetry')}
+        onRetry={() => {
+          list.setError('')
+          void refetchTracks()
+          void refetchPlaylists()
+        }}
+      />
 
       <FallbackBanner
         loading={tracksLoading || playlistsLoading}
@@ -367,7 +269,7 @@ export default function PlaylistsAdmin() {
           <div className="admin-form-grid">
             <label className="admin-field">
               <span>{t('admin.title')}</span>
-              <input className="admin-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} aria-required="true" aria-invalid={Boolean(error)} />
+              <input className="admin-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} aria-required="true" aria-invalid={Boolean(list.error)} />
             </label>
             <label className="admin-field">
               <span>{t('admin.coverFile')}</span>
@@ -415,82 +317,45 @@ export default function PlaylistsAdmin() {
         </form>
       )}
 
-      <div className="admin-toolbar">
-        <input
-          type="search"
-          className="admin-input admin-search"
-          placeholder={t('admin.searchPlaylists')}
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-          aria-label={t('admin.searchPlaylists')}
-        />
-        <label className="list-page-size">
-          {t('admin.rowsPerPage')}
-          <select
-            className="admin-input"
-            value={pageSize}
-            onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }}
-            aria-label={t('admin.rowsPerPage')}
-          >
-            {LIST_PAGE_SIZES.map((size) => (
-              <option key={size} value={size}>{size}</option>
-            ))}
-          </select>
-        </label>
-      </div>
+      <AdminToolbar t={t} list={list} searchPlaceholder={t('admin.searchPlaylists')} searchLabel={t('admin.searchPlaylists')} />
 
-      {selected.size > 0 && (
-        <div className="admin-bulkbar">
-          <span>{t('admin.selectedCount', { count: selected.size })}</span>
-          <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => setConfirmState({ kind: 'bulkDelete' })}>
-            {t('admin.bulkDelete')}
-          </button>
-          <button type="button" className="admin-btn admin-btn-small admin-btn-ghost" onClick={() => setSelected(new Set())}>
-            {t('common.cancel')}
-          </button>
-        </div>
-      )}
+      <AdminBulkBar t={t} list={list}>
+        <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => list.setConfirmState({ kind: 'bulkDelete' })}>
+          {t('admin.bulkDelete')}
+        </button>
+        <button type="button" className="admin-btn admin-btn-small admin-btn-ghost" onClick={() => list.clearSelection()}>
+          {t('common.cancel')}
+        </button>
+      </AdminBulkBar>
 
       {tracksLoading || playlistsLoading ? (
-        <div className="list-skeleton" aria-busy="true" aria-label={t('admin.loadingRows')}>
-          {[0, 1, 2, 3, 4].map((i) => (
-            <div key={i} className="list-skeleton-row" />
-          ))}
-        </div>
-      ) : pagePlaylists.length === 0 ? (
-        <div className="admin-empty">
-          <h2>{t('admin.noPlaylistsFound')}</h2>
-          <p>{t('admin.noTracksFoundHint')}</p>
-          <button type="button" className="admin-btn admin-btn-primary" onClick={startNew}>
-            {t('admin.addFirstPlaylist')}
-          </button>
-        </div>
+        <AdminSkeleton label={t('admin.loadingRows')} />
+      ) : list.pageRows.length === 0 ? (
+        <AdminEmpty
+          title={t('admin.noPlaylistsFound')}
+          hint={t('admin.noTracksFoundHint')}
+          actionLabel={t('admin.addFirstPlaylist')}
+          onAction={startNew}
+        />
       ) : (
         <>
-        <div className="admin-table-wrap list-table-wrap">
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th scope="col">
-                <input
-                  type="checkbox"
-                  checked={pagePlaylists.length > 0 && pagePlaylists.every((pl) => selected.has(pl.id))}
-                  onChange={toggleSelectPage}
-                  aria-label={t('admin.playlists')}
-                />
-              </th>
-              <th scope="col">{t('admin.cover')}</th>
-              <th scope="col" aria-sort={sort.key === 'name' ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>{sortHeader('name', t('admin.title'))}</th>
-              <th scope="col">{t('admin.description')}</th>
-              <th scope="col" aria-sort={sort.key === 'count' ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>{sortHeader('count', t('admin.tracks'))}</th>
-              <th scope="col">{t('common.actions')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pagePlaylists.map((p) => (
+          <AdminTable
+            list={list}
+            selectAllLabel={t('admin.playlists')}
+            columns={
+              <>
+                <th scope="col">{t('admin.cover')}</th>
+                <th scope="col" aria-sort={list.ariaSort('name')}>{list.sortHeader('name', t('admin.title'))}</th>
+                <th scope="col">{t('admin.description')}</th>
+                <th scope="col" aria-sort={list.ariaSort('count')}>{list.sortHeader('count', t('admin.tracks'))}</th>
+                <th scope="col">{t('common.actions')}</th>
+              </>
+            }
+          >
+            {list.pageRows.map((p) => (
               <tr key={p.id}>
                 <td>
-                  <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} aria-label={playlistName(p) || p.id} />
+                  <input type="checkbox" checked={list.selected.has(p.id)} onChange={() => list.toggleSelect(p.id)} aria-label={playlistName(p) || p.id} />
                 </td>
                 <td>{p.cover ? <img src={p.cover} alt="" className="admin-thumb" /> : <img src="/assets/nandha-logo.png" alt="" className="admin-thumb admin-thumb-logo" />}</td>
                 <td><span className="admin-cell-main">{p.name || p.titleTa || p.titleEn || '—'}</span></td>
@@ -504,86 +369,55 @@ export default function PlaylistsAdmin() {
                 </td>
               </tr>
             ))}
-          </tbody>
-        </table>
-        </div>
-        <div className="list-cards">
-          {pagePlaylists.map((p) => (
-            <article key={p.id} className="list-card">
-              {p.cover ? (
-                <img src={p.cover} alt="" className="list-card-thumb" />
-              ) : (
-                <img src="/assets/nandha-logo.png" alt="" className="list-card-thumb" />
-              )}
-              <div className="list-card-body">
-                <span className="list-card-title">{playlistName(p) || '—'}</span>
-                <span className="list-card-sub">{p.description || p.descriptionEn || p.descriptionTa || ''}</span>
-                <span className="list-card-meta">
+          </AdminTable>
+          <AdminCards>
+            {list.pageRows.map((p) => (
+              <AdminCard
+                key={p.id}
+                thumb={
+                  p.cover ? (
+                    <img src={p.cover} alt="" className="list-card-thumb" />
+                  ) : (
+                    <img src="/assets/nandha-logo.png" alt="" className="list-card-thumb" />
+                  )
+                }
+                title={playlistName(p) || '—'}
+                sub={p.description || p.descriptionEn || p.descriptionTa || ''}
+                meta={
                   <span className="admin-cell-sub">{playlistTrackCount(p)} {t('admin.tracks')}</span>
-                </span>
-              </div>
-              <details className="list-card-menu">
-                <summary aria-label={`${t('common.actions')} — ${playlistName(p) || p.id}`}>⋯</summary>
-                <div className="list-card-menu-actions">
-                  <button type="button" className="admin-btn admin-btn-small" onClick={() => startEdit(p)}>{t('common.edit')}</button>
-                  <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => handleDelete(p)}>{t('common.delete')}</button>
-                </div>
-              </details>
-            </article>
-          ))}
-        </div>
+                }
+                menuLabel={`${t('common.actions')} — ${playlistName(p) || p.id}`}
+              >
+                <button type="button" className="admin-btn admin-btn-small" onClick={() => startEdit(p)}>{t('common.edit')}</button>
+                <button type="button" className="admin-btn admin-btn-small admin-btn-danger" onClick={() => handleDelete(p)}>{t('common.delete')}</button>
+              </AdminCard>
+            ))}
+          </AdminCards>
         </>
       )}
 
-      {sortedPlaylists.length > pageSize && (
-        <div className="admin-pagination">
-          <button type="button" className="admin-btn admin-btn-small" disabled={playlistCurrentPage <= 1} onClick={() => setPage(playlistCurrentPage - 1)}>
-            {t('common.previous')}
-          </button>
-          <span>{t('common.pageOf', { page: playlistCurrentPage, total: playlistPageCount })}</span>
-          <button type="button" className="admin-btn admin-btn-small" disabled={playlistCurrentPage >= playlistPageCount} onClick={() => setPage(playlistCurrentPage + 1)}>
-            {t('common.next')}
-          </button>
-        </div>
-      )}
+      <AdminPagination t={t} list={list} show={list.sorted.length > list.pageSize} />
 
-      <ConfirmDialog
-        open={confirmState?.kind === 'delete'}
-        title={t('admin.confirmDelete', { title: confirmState?.playlist ? playlistName(confirmState.playlist) : '' })}
-        body={t('admin.deleteNoUndo')}
-        confirmLabel={t('common.delete')}
-        danger
-        onConfirm={() => {
-          const playlist = confirmState.playlist
-          setConfirmState(null)
-          void doDeletePlaylist(playlist)
-        }}
-        onCancel={() => setConfirmState(null)}
+      <AdminDeleteDialogs
+        t={t}
+        list={list}
+        deleteTitle={t('admin.confirmDelete', { title: deletePlaylist ? playlistName(deletePlaylist) : '' })}
+        deleteBody={t('admin.deleteNoUndo')}
+        onConfirmDelete={doDeletePlaylist}
+        onConfirmBulkDelete={doBulkDelete}
       />
       <ConfirmDialog
-        open={confirmState?.kind === 'bulkDelete'}
-        title={t('admin.bulkDelete')}
-        body={t('admin.bulkDeleteConfirm', { count: selected.size })}
-        confirmLabel={t('admin.bulkDelete')}
-        danger
-        onConfirm={() => {
-          setConfirmState(null)
-          void doBulkDelete()
-        }}
-        onCancel={() => setConfirmState(null)}
-      />
-      <ConfirmDialog
-        open={confirmState?.kind === 'removeTrack'}
-        title={t('admin.confirmRemoveTrack', { title: adminTracks.find((tr) => tr.id === confirmState?.trackId)?.titleTa || adminTracks.find((tr) => tr.id === confirmState?.trackId)?.titleEn || confirmState?.trackId || '' })}
+        open={list.confirmState?.kind === 'removeTrack'}
+        title={t('admin.confirmRemoveTrack', { title: adminTracks.find((tr) => tr.id === list.confirmState?.trackId)?.titleTa || adminTracks.find((tr) => tr.id === list.confirmState?.trackId)?.titleEn || list.confirmState?.trackId || '' })}
         body={t('admin.deleteNoUndo')}
         confirmLabel={t('common.remove')}
         danger
         onConfirm={() => {
-          const trackId = confirmState.trackId
-          setConfirmState(null)
+          const trackId = list.confirmState.trackId
+          list.setConfirmState(null)
           doRemoveTrack(trackId)
         }}
-        onCancel={() => setConfirmState(null)}
+        onCancel={() => list.setConfirmState(null)}
       />
     </div>
   )

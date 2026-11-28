@@ -94,11 +94,11 @@ export default function Track() {
     return (
       <div>
         <div className="page-head">
-          <h1 className="page-head__title">{t('common.noResults')}</h1>
+          <h1 className="page-head__title">{t('track.notFound')}</h1>
         </div>
         <EmptyState
-          title={t('common.noResults')}
-          message={t('common.tryDifferent')}
+          title={t('track.notFound')}
+          message={t('track.notFoundMessage')}
           action={<Link className="btn btn-primary" to="/">{t('nav.home')}</Link>}
         />
       </div>

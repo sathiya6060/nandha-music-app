@@ -63,6 +63,15 @@ vi.mock('../../lib/i18n.js', () => ({
 
 vi.mock('../../lib/toast.jsx', () => ({ useToast: () => () => {} }))
 
+// Signed preview mint: the editor mints a signed URL for the stored
+// audio when the Preview hook step opens (the raw private-bucket path
+// can never play). Mocked so no Edge Function call happens in jsdom.
+const mockSignedAudio = vi.hoisted(() => ({ previewUrl: 'https://example.test/preview.mp3' }))
+
+vi.mock('../../lib/signedAudio.js', () => ({
+  resolvePlayableUrl: async () => mockSignedAudio.previewUrl,
+}))
+
 vi.mock('../../lib/supabaseAdmin.js', () => ({
   supabaseWritesEnabled: false,
   saveTrackToSupabase: async () => ({}),
@@ -130,8 +139,9 @@ const MALAIYORAM_TRACK = {
   lyricsEn: [],
 }
 
-async function renderEditor(route) {
-  installDom(`https://nandhamusic.pages.dev${route}`)
+async function renderEditor(route, { beforeMount, media = false } = {}) {
+  installDom(`https://nandhamusic.pages.dev${route}`, { media })
+  if (beforeMount) beforeMount()
   const { createElement: h, act } = await import('react')
   const { createRoot } = await import('react-dom/client')
   const { MemoryRouter, Routes, Route } = await import('react-router-dom')
@@ -303,23 +313,83 @@ describe('TrackEditor', () => {
     }
   })
 
-  it('shows the stored audio file and duration on reopen (Malaiyoram)', async () => {
+  it('shows the stored audio file and duration on reopen even when the browser cannot load the raw storage path (Malaiyoram)', async () => {
+    // Regression for the 28 Nov 2026 live failure: on reopen the
+    // Media tab was blank and the Preview hook showed "Duration
+    // unknown", although the mp3 is stored. The fixture is mapTrack's
+    // ACTUAL output shape for the live row — it carries audio128 /
+    // audio320 / durationSec and NO audioName — so a fix that relies
+    // on audioName cannot pass here. The old code loaded the raw
+    // private-bucket path into a real Audio element; in a real
+    // browser that errors and clobbered the stored duration with
+    // null. jsdom's Audio never errors, so the stub below fires
+    // onerror the way a real browser does. This test FAILS on the
+    // old code (duration becomes "Duration unknown", preview src is
+    // the raw path) and passes with the fix.
+    expect('audioName' in MALAIYORAM_TRACK).toBe(false)
+    expect(MALAIYORAM_TRACK.durationSec).toBe(351)
+    expect(MALAIYORAM_TRACK.audio128).toBe('audio/malaiyoram-veesiya-kaatre.mp3')
     mockTrackState.track = MALAIYORAM_TRACK
     mockTrackState.loading = false
+    let realAudio = null
+    // A real browser fails to load the raw private-bucket path
+    // (audio/<slug>.mp3 is not a URL) — fire onerror like one.
+    const FailingAudio = class {
+      set src(_value) {
+        setTimeout(() => {
+          if (typeof this.onerror === 'function') this.onerror()
+        }, 0)
+      }
+      get src() {
+        return ''
+      }
+    }
     const { container, act, cleanup } = await renderEditor(
       '/admin/tracks/malaiyoram-veesiya-kaatre/edit',
+      {
+        media: true,
+        beforeMount: () => {
+          realAudio = globalThis.Audio
+          globalThis.Audio = FailingAudio
+        },
+      },
     )
     try {
-      // Media tab: the stored mp3 is displayed even though no new
-      // file was picked in this session.
+      // Let the stubbed Audio error fire (old code clobbers the
+      // duration to null here; the fix never loads the raw path).
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 100))
+      })
+      // Media tab: the stored mp3 basename is shown.
       await clickStep(container, act, 'admin.editorStepMedia')
       expect(container.textContent).toContain('malaiyoram-veesiya-kaatre.mp3')
+      expect(container.textContent).toContain('admin.editorDuration')
 
-      // Preview hook tab: the real duration instead of "unknown".
+      // Preview hook tab: stored duration, not "unknown", and the
+      // audio element points at the MINTED preview URL, not the raw
+      // private-bucket path.
       await clickStep(container, act, 'admin.editorStepHook')
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 100))
+      })
       expect(container.textContent).toContain('5:51')
       expect(container.textContent).not.toContain('admin.editorUnknownDuration')
+      const audioEl = container.querySelector('audio')
+      expect(audioEl?.getAttribute('src')).toBe('https://example.test/preview.mp3')
+
+      // Play Preview actually starts the hook (minted URL, not the
+      // raw path that could never play).
+      const playBtn = [...container.querySelectorAll('button')].find((b) =>
+        b.textContent.includes('admin.editorPlayPreview'),
+      )
+      expect(playBtn).toBeTruthy()
+      await act(async () => {
+        playBtn.click()
+        await new Promise((r) => setTimeout(r, 50))
+      })
+      expect(container.textContent).toContain('admin.editorStopPreview')
     } finally {
+      if (realAudio) globalThis.Audio = realAudio
       await cleanup()
     }
   })

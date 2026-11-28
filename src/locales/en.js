@@ -47,6 +47,8 @@ export default {
   'common.retry': 'Try again',
   'common.noResults': 'No results found',
   'common.tryDifferent': 'Try a different search.',
+  'track.notFound': 'Track not found',
+  'track.notFoundMessage': 'This track may have been removed, or the link is wrong.',
   'common.quality': 'Quality',
   'common.clear': 'Clear',
   'common.close': 'Close',
