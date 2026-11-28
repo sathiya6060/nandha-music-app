@@ -9,6 +9,19 @@
 // S9: the dynamic import() used to be here, but cache.js is statically
 // imported elsewhere, so it split nothing).
 import { invalidateTrack, invalidateHome, invalidateSearch } from './cache.js'
+import { sanitizeTrackOverride, sanitizeAdminOverride } from './validateStored.js'
+
+// A3-6 (28 Nov 2026): validate stored overrides before merging — a
+// tampered stored object must not smuggle unchecked fields into a
+// track/album/artist. Invalid overrides are dropped, never merged.
+function cleanOverrides(all, sanitize) {
+  const clean = {}
+  for (const [id, over] of Object.entries(all || {})) {
+    const c = sanitize(over)
+    if (c) clean[id] = c
+  }
+  return clean
+}
 
 const KEYS = {
   tracks: 'nandha-admin-tracks',
@@ -110,7 +123,7 @@ export function restoreAdminTrack(id) {
  * - Soft-deleted tracks are excluded unless includeDeleted is true.
  */
 export function getMergedTracks(baseTracks = []) {
-  const overrides = loadAdminTracks()
+  const overrides = cleanOverrides(loadAdminTracks(), sanitizeTrackOverride)
   const merged = []
   const seen = new Set()
   for (const base of baseTracks) {
@@ -141,7 +154,7 @@ function loadAdminAlbums() {
 }
 
 export function getMergedAlbums(baseAlbums = []) {
-  const overrides = loadAdminAlbums()
+  const overrides = cleanOverrides(loadAdminAlbums(), sanitizeAdminOverride)
   const merged = baseAlbums.map((a) => (overrides[a.id] ? { ...a, ...overrides[a.id] } : a))
   const baseIds = new Set(baseAlbums.map((a) => a.id))
   for (const [id, over] of Object.entries(overrides)) {
@@ -165,7 +178,7 @@ export function saveAdminArtist(artist) {
 }
 
 export function getMergedArtists(baseArtists = []) {
-  const overrides = loadAdminArtists()
+  const overrides = cleanOverrides(loadAdminArtists(), sanitizeAdminOverride)
   const merged = baseArtists.map((a) => (overrides[a.id] ? { ...a, ...overrides[a.id] } : a))
   const baseIds = new Set(baseArtists.map((a) => a.id))
   for (const [id, over] of Object.entries(overrides)) {
