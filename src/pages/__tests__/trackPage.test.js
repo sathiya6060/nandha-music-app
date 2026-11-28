@@ -118,7 +118,7 @@ describe('Track page', () => {
     mockPageState.track = null
     const { container, cleanup } = await renderTrackPage('/track/vaazhvinil-orumurayenum')
     try {
-      expect(container.innerHTML).toContain('common.noResults')
+      expect(container.innerHTML).toContain('track.notFound')
       expect(container.innerHTML).not.toContain('Vaazhvinil Orumurayenum')
       expect(container.innerHTML).not.toContain('வாழ்வினில் ஒருமுறையேனும்')
     } finally {

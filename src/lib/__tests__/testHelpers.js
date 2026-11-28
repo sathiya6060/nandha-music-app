@@ -149,3 +149,67 @@ export function mockMarakka(overrides = {}) {
     ...overrides,
   }
 }
+
+// DOM helpers shared by the admin render tests (28 Nov 2026).
+// adminList.test.js and adminListPages.test.js each carried their own
+// rowNames / findButton / setSearch — SonarQube flagged the copies
+// as duplicated new code on PR #15, so they live here once.
+// `column` is the 1-based td whose text is the row name (the harness
+// table puts it in column 2, the real pages in column 3).
+export function rowNames(container, column = 3) {
+  return [...container.querySelectorAll(`tbody tr td:nth-child(${column})`)].map(
+    (td) => td.textContent,
+  )
+}
+
+export function findButton(container, text) {
+  return [...container.querySelectorAll('button')].find((b) => b.textContent.includes(text))
+}
+
+export async function setSearch(container, act, value) {
+  const input = container.querySelector('input[type="search"]')
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  await act(async () => {
+    setter.call(input, value)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 250))
+  })
+}
+
+// Shared adminStore mock base for the render tests (28 Nov 2026).
+// trackEditor.test.js and adminListPages.test.js each carried the same
+// label-key literals + normalizeStatus inside their vi.mock factories
+// — SonarQube flagged them as duplicated new code on PR #15, so the
+// base lives here once and each test merges its own extras over it.
+// Use it via an async vi.mock factory — mock factories are hoisted
+// and cannot reference top-level imports, so the helper is imported
+// inside the factory:
+//   vi.mock('../../lib/adminStore.js', async () => {
+//     const { mockAdminStoreBase } = await import('../../lib/__tests__/testHelpers.js')
+//     return mockAdminStoreBase({ getMergedPlaylists: (b = []) => [...b] })
+//   })
+export function mockAdminStoreBase(extra = {}) {
+  return {
+    getMergedTracks: (b = []) => [...b],
+    logActivity: () => {},
+    STATUS_LABEL_KEYS: {
+      draft: 'admin.statusDraft',
+      scheduled: 'admin.statusScheduled',
+      published: 'admin.statusPublished',
+      unlisted: 'admin.statusUnlisted',
+      deleted: 'admin.statusDeleted',
+    },
+    GENRE_LABEL_KEYS: {
+      Devotional: 'admin.genreDevotional',
+      Love: 'admin.genreLove',
+      Melody: 'admin.genreMelody',
+      Siddhar: 'admin.genreSiddhar',
+      Sivan: 'admin.genreSivan',
+    },
+    normalizeStatus: (s) => {
+      const v = String(s || '').toLowerCase()
+      return ['draft', 'scheduled', 'published', 'unlisted', 'deleted'].includes(v) ? v : 'draft'
+    },
+    ...extra,
+  }
+}

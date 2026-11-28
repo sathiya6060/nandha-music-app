@@ -14,10 +14,11 @@
 // percentage anywhere here — only the honest `saving` busy state.
 // Pending file selections can be removed before save; a failed save
 // shows a Retry button.
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { tracks, albums as fallbackAlbums, artists as fallbackArtists, getTrack } from '../data/catalog.js'
 import { useTrack, useAlbums, useArtists } from '../lib/supabaseCatalog.js'
+import { resolvePlayableUrl } from '../lib/signedAudio.js'
 import {
   supabaseWritesEnabled,
   saveTrackToSupabase,
@@ -153,6 +154,9 @@ export default function TrackEditor() {
   const [audioMeta, setAudioMeta] = useState(null)
   const [audioObjectUrl, setAudioObjectUrl] = useState('')
   const [audioDurationSec, setAudioDurationSec] = useState(null)
+  // Signed preview URL for the stored audio (minted on demand — the
+  // raw private-bucket path can never play or decode in a browser).
+  const [previewUrl, setPreviewUrl] = useState('')
   const [coverFile, setCoverFile] = useState(null)
   const [coverPreview, setCoverPreview] = useState('')
   const [errors, setErrors] = useState({})
@@ -185,6 +189,7 @@ export default function TrackEditor() {
   const coverInputRef = useRef(null)
   const hookAudioRef = useRef(null)
   const hookTimerRef = useRef(null)
+  const previewUrlRef = useRef({ url: '', at: 0 })
   const formRefLatest = useRef(form)
   formRefLatest.current = form
 
@@ -200,6 +205,42 @@ export default function TrackEditor() {
   const hasAudio = Boolean(audioFile || audioMeta || existing?.audio128 || existing?.audio320)
   // Playable audio: the newly chosen file, else the stored track URL.
   const audioSrc = audioObjectUrl || existing?.audio128 || existing?.audio320 || ''
+
+  // Stored audio display — derived at RENDER time, never only from the
+  // init effect: mapTrack never sets audioName/audioSize, so the
+  // filename and duration must come from the stored row itself
+  // (audio/<slug>.mp3 basename + duration_sec). The init effect still
+  // seeds audioMeta/audioDurationSec, but the render never depends on
+  // its timing — live-verify 28 Nov 2026: the Media tab was blank and
+  // the Preview hook showed "Duration unknown" on Malaiyoram reopen.
+  const storedAudioPath = existing?.audio128 || existing?.audio320 || ''
+  const storedAudioName = storedAudioPath.split('/').filter(Boolean).pop()?.split('?')[0] || ''
+  const storedDurationSec = Number(existing?.durationSec) > 0 ? Number(existing.durationSec) : null
+  const displayAudioName = audioFile?.name || audioMeta?.name || storedAudioName
+  const displayDurationSec = audioDurationSec ?? storedDurationSec
+  // Playable preview: the newly chosen file (blob URL) or the signed
+  // preview URL — never the raw private-bucket path.
+  const playableAudioSrc = audioObjectUrl || previewUrl
+
+  // Mint a signed preview URL for the stored audio (same helper the
+  // player uses). Cached ~4 min (signed URLs live 5 min); a failed
+  // mint returns '' and the preview simply stays unavailable — the
+  // duration still shows from the stored row.
+  const mintPreviewUrl = useCallback(async () => {
+    if (!existing || !storedAudioPath) return ''
+    const cached = previewUrlRef.current
+    if (cached.url && Date.now() - cached.at < 4 * 60 * 1000) return cached.url
+    try {
+      const url = await resolvePlayableUrl(existing, '128')
+      if (url) {
+        previewUrlRef.current = { url, at: Date.now() }
+        return url
+      }
+    } catch {
+      // Mint failed (offline / expired session) — preview unavailable.
+    }
+    return ''
+  }, [existing, storedAudioPath])
 
   const maybeOfferDraft = (baseForm) => {
     if (shownDraftRef.current) return
@@ -321,11 +362,12 @@ export default function TrackEditor() {
 
   // Audio duration auto-read (display only — the save path already
   // derives duration via the existing flow in supabaseAdmin.js).
+  // ONLY for a newly picked file: for stored audio the DB duration_sec
+  // is authoritative, and loading the raw private-bucket path into an
+  // Audio element errors in a real browser — the old effect then
+  // clobbered the stored duration with null ("Duration unknown").
   useEffect(() => {
-    if (!audioSrc) {
-      setAudioDurationSec(null)
-      return undefined
-    }
+    if (!audioObjectUrl) return undefined
     let cancelled = false
     const audio = new Audio()
     const timer = setTimeout(() => {
@@ -343,18 +385,20 @@ export default function TrackEditor() {
       clearTimeout(timer)
       if (!cancelled) setAudioDurationSec(null)
     }
-    audio.src = audioSrc
+    audio.src = audioObjectUrl
     return () => {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [audioSrc])
+  }, [audioObjectUrl])
 
   // Waveform: decode the audio when the hook step is shown. Any
   // failure (no AudioContext, undecodable file, fetch blocked) falls
-  // back to the duration bar — never a broken step.
+  // back to the duration bar — never a broken step. Decodes the
+  // PLAYABLE url (blob for a picked file, signed URL for stored
+  // audio) — the raw storage path can never be fetched.
   useEffect(() => {
-    if (step !== 4 || !audioSrc) {
+    if (step !== 4 || !playableAudioSrc) {
       setPeaks(null)
       return undefined
     }
@@ -363,7 +407,7 @@ export default function TrackEditor() {
       try {
         const buffer = audioFile
           ? await audioFile.arrayBuffer()
-          : await (await fetch(audioSrc)).arrayBuffer()
+          : await (await fetch(playableAudioSrc)).arrayBuffer()
         const AudioCtx = window.AudioContext || window.webkitAudioContext
         if (!AudioCtx) return
         const ctx = new AudioCtx()
@@ -381,7 +425,21 @@ export default function TrackEditor() {
     return () => {
       cancelled = true
     }
-  }, [step, audioSrc, audioFile])
+  }, [step, playableAudioSrc, audioFile])
+
+  // Mint the signed preview URL when the Preview hook step opens, so
+  // the waveform can decode and Play Preview has a playable src.
+  // (playHook mints on demand too, if this has not run yet.)
+  useEffect(() => {
+    if (step !== 4 || audioFile) return undefined
+    let cancelled = false
+    void mintPreviewUrl().then((url) => {
+      if (!cancelled && url) setPreviewUrl(url)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [step, audioFile, mintPreviewUrl])
 
   const set = (key, value) => {
     setForm((f) => ({ ...f, [key]: value }))
@@ -455,7 +513,10 @@ export default function TrackEditor() {
     if (audioObjectUrl) URL.revokeObjectURL(audioObjectUrl)
     setAudioObjectUrl('')
     setAudioFile(null)
-    setAudioDurationSec(null)
+    // Back to the stored track: duration from the stored row (the
+    // render-time fallback shows it too; this keeps step validation
+    // honest as well).
+    setAudioDurationSec(Number(existing?.durationSec) > 0 ? Number(existing.durationSec) : null)
     setAudioMeta(
       existing?.audioName ? { name: existing.audioName, size: existing.audioSize || 0 } : null,
     )
@@ -484,13 +545,32 @@ export default function TrackEditor() {
     setHookPlaying(false)
   }
 
-  const playHook = () => {
+  const playHook = async () => {
     const el = hookAudioRef.current
     if (!el || !audioSrc) return
     const start = Math.max(0, Number(form.hookStartSec) || 0)
     const duration = Math.max(1, Number(form.hookDurationSec) || 30)
     stopHook()
-    el.currentTime = start
+    // Point the element at a playable URL: the newly picked file, the
+    // minted preview, or mint one now (the raw storage path never
+    // plays). Set el.src directly — the state render may lag the
+    // async mint. If no URL can be minted the preview stays stopped
+    // instead of pretending to play.
+    let src = playableAudioSrc
+    if (!src) {
+      src = await mintPreviewUrl()
+      if (src) setPreviewUrl(src)
+    }
+    if (!src) return
+    if (el.getAttribute('src') !== src) {
+      el.src = src
+      el.load()
+    }
+    try {
+      el.currentTime = start
+    } catch {
+      // currentTime before metadata loads — the seek applies on load.
+    }
     void el.play().catch(() => setHookPlaying(false))
     setHookPlaying(true)
     hookTimerRef.current = setTimeout(stopHook, duration * 1000)
@@ -517,7 +597,7 @@ export default function TrackEditor() {
 
   const goNext = () => {
     const stepDef = TRACK_EDITOR_STEPS[step]
-    const coded = validateStep(stepDef.id, form, { hasAudio, durationSec: audioDurationSec })
+    const coded = validateStep(stepDef.id, form, { hasAudio, durationSec: displayDurationSec })
     if (Object.keys(coded).length > 0) {
       setErrors((e) => ({ ...e, ...mapErrors(coded) }))
       return
@@ -560,7 +640,7 @@ export default function TrackEditor() {
 
     const coded = validateAllSteps(
       { ...form, status: effectiveStatus },
-      { hasAudio, durationSec: audioDurationSec },
+      { hasAudio, durationSec: displayDurationSec },
     )
     if (Object.keys(coded).length > 0) {
       const mapped = mapErrors(coded)
@@ -706,7 +786,7 @@ export default function TrackEditor() {
   const hookStart = Math.max(0, Number(form.hookStartSec) || 0)
   const hookDuration = Math.max(1, Number(form.hookDurationSec) || 30)
   const previewTitle = form.titleTa.trim() || form.titleEn.trim()
-  const previewDuration = audioDurationSec ? formatDurationSec(audioDurationSec) : t('admin.editorUnknownDuration')
+  const previewDuration = displayDurationSec ? formatDurationSec(displayDurationSec) : t('admin.editorUnknownDuration')
 
   const renderStep = () => {
     switch (step) {
@@ -847,13 +927,13 @@ export default function TrackEditor() {
                 aria-label={t('admin.audioFile')}
               />
               {fieldError('audio')}
-              {audioMeta && (
+              {displayAudioName ? (
                 <div className="track-editor__file-row">
-                  <span className="track-editor__file-name">{audioMeta.name}</span>
-                  {audioMeta.size ? <span className="track-editor__file-meta">{formatBytes(audioMeta.size)}</span> : null}
-                  {audioDurationSec != null && (
+                  <span className="track-editor__file-name">{displayAudioName}</span>
+                  {audioMeta?.size ? <span className="track-editor__file-meta">{formatBytes(audioMeta.size)}</span> : null}
+                  {displayDurationSec != null && (
                     <span className="track-editor__file-meta">
-                      {t('admin.editorDuration', { duration: formatDurationSec(audioDurationSec) })}
+                      {t('admin.editorDuration', { duration: formatDurationSec(displayDurationSec) })}
                     </span>
                   )}
                   {audioFile && (
@@ -862,7 +942,7 @@ export default function TrackEditor() {
                     </button>
                   )}
                 </div>
-              )}
+              ) : null}
             </div>
 
             <div className="admin-field">
@@ -1080,11 +1160,11 @@ export default function TrackEditor() {
                         />
                       )
                     })}
-                    {audioDurationSec ? (
+                    {displayDurationSec ? (
                       <line
-                        x1={(hookStart / audioDurationSec) * 640}
+                        x1={(hookStart / displayDurationSec) * 640}
                         y1="0"
-                        x2={(hookStart / audioDurationSec) * 640}
+                        x2={(hookStart / displayDurationSec) * 640}
                         y2="96"
                         stroke="#F59E0B"
                         strokeWidth="3"
@@ -1093,12 +1173,12 @@ export default function TrackEditor() {
                   </svg>
                 ) : (
                   <div className="track-editor__waveform-bar" aria-hidden="true">
-                    {audioDurationSec ? (
+                    {displayDurationSec ? (
                       <div
                         className="track-editor__waveform-fill"
                         style={{
-                          left: `${Math.min(100, (hookStart / audioDurationSec) * 100)}%`,
-                          width: `${Math.min(100 - (hookStart / audioDurationSec) * 100, (hookDuration / audioDurationSec) * 100)}%`,
+                          left: `${Math.min(100, (hookStart / displayDurationSec) * 100)}%`,
+                          width: `${Math.min(100 - (hookStart / displayDurationSec) * 100, (hookDuration / displayDurationSec) * 100)}%`,
                         }}
                       />
                     ) : null}
@@ -1110,8 +1190,8 @@ export default function TrackEditor() {
               {audioSrc && (
                 <div className="track-editor__waveform-marks" aria-hidden="true">
                   <span>0:00</span>
-                  {audioDurationSec ? <span>{formatDurationSec(audioDurationSec / 2)}</span> : null}
-                  <span>{audioDurationSec ? formatDurationSec(audioDurationSec) : t('admin.editorUnknownDuration')}</span>
+                  {displayDurationSec ? <span>{formatDurationSec(displayDurationSec / 2)}</span> : null}
+                  <span>{displayDurationSec ? formatDurationSec(displayDurationSec) : t('admin.editorUnknownDuration')}</span>
                 </div>
               )}
               <div className="track-editor__hook-actions">
@@ -1129,7 +1209,7 @@ export default function TrackEditor() {
                   </span>
                 )}
               </div>
-              <audio ref={hookAudioRef} src={audioSrc || undefined} preload="metadata" />
+              <audio ref={hookAudioRef} src={playableAudioSrc || undefined} preload="metadata" />
             </div>
           </>
         )

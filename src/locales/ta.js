@@ -46,6 +46,8 @@ export default {
   'common.retry': 'மீண்டும் முயலவும்',
   'common.noResults': 'முடிவுகள் இல்லை',
   'common.tryDifferent': 'வேறு வார்த்தையில் தேடிப் பாருங்கள்.',
+  'track.notFound': 'பாடல் கிடைக்கவில்லை',
+  'track.notFoundMessage': 'இந்தப் பாடல் நீக்கப்பட்டிருக்கலாம், அல்லது இணைப்பு தவறாக இருக்கலாம்.',
   'common.quality': 'தரம்',
   'common.clear': 'அழி',
   'common.close': 'மூடு',

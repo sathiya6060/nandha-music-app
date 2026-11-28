@@ -793,8 +793,9 @@ export function PlayerProvider({ children }) {
         audio.currentTime = 0
         setCurrentTime(0)
       }
-      // (Re)attach src if it was cleared (e.g. after a skip).
-      // The signed URL is minted async; attachSrc starts playback itself.
+      // (Re)attach src if it was cleared (e.g. after a skip or an
+      // unplayable stop). The signed URL is minted async; attachSrc
+      // starts playback itself.
       if (!audio.src) {
         loadSeqRef.current += 1
         attachSrc(audio, current, qualityRef.current, { autoplay: true })
@@ -1280,6 +1281,18 @@ export function PlayerProvider({ children }) {
       // Ignore errors when no src is set (sample tracks / cleared queue).
       if (!audio.getAttribute('src') && !audio.currentSrc) return
       const current = trackRef.current
+      // A track that cannot start/load must STOP with the notice — never
+      // silently play a different song (live-verify 28 Nov 2026:
+      // Malaiyoram failed to start and the bar switched to Vaazhvinil).
+      // Clearing src leaves the element stopped so pressing Play again
+      // re-attaches with a fresh mint. Natural end-advance (onEnded →
+      // next) is untouched.
+      const stopOnUnplayable = () => {
+        showNotice(UNPLAYABLE_NOTICE)
+        setIsPlaying(false)
+        audio.removeAttribute('src')
+        audio.load()
+      }
       // Signed URL expired mid-play (403 on a Range request): mint a fresh
       // one and resume from where playback stopped. Once per track load.
       if (
@@ -1297,9 +1310,7 @@ export function PlayerProvider({ children }) {
         resolvePlayableUrl(current, qualityRef.current).then((url) => {
           if (seq !== loadSeqRef.current) return
           if (!url) {
-            showNotice('Could not play this track — skipping')
-            setIsPlaying(false)
-            skipToNextPlayable(queueIndexRef.current)
+            stopOnUnplayable()
             return
           }
           audio.src = url
@@ -1318,12 +1329,11 @@ export function PlayerProvider({ children }) {
           if (audio.readyState >= 1) onMeta()
           else audio.addEventListener('loadedmetadata', onMeta)
         }).catch(() => {
-          // S9383: a rejected re-mint used to float silently — skip
-          // on, like a failed mint, instead of hanging.
+          // S9383: a rejected re-mint used to float silently — now it
+          // stops with the notice, like a failed mint, instead of
+          // skipping to another track.
           if (seq !== loadSeqRef.current) return
-          showNotice('Could not play this track — skipping')
-          setIsPlaying(false)
-          skipToNextPlayable(queueIndexRef.current)
+          stopOnUnplayable()
         })
         return
       }
@@ -1342,9 +1352,9 @@ export function PlayerProvider({ children }) {
           return
         }
       }
-      showNotice('Could not play this track — skipping')
-      setIsPlaying(false)
-      skipToNextPlayable(queueIndexRef.current)
+      // Unplayable (retry used up, no pinned copy): stop with the
+      // notice — never silently play another song.
+      stopOnUnplayable()
     }
 
     const onPlay = () => setIsPlaying(true)
